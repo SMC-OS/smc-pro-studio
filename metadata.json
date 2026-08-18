@@ -1,0 +1,6 @@
+{
+  "name": "SMC PRO STUDIO",
+  "description": "Luxury stone & architectural surface platform featuring AI Design Studio, Instant Estimator, Project Tracker, and Material Comparison for Simo Marble & Construction.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
