@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
+import { Avatar, Card, Chip, SectionHeading } from "../components/ui";
 import { fetchPublicProfessionals, type PublicProfessional } from "../services/socialClient";
 
 type LoadState =
@@ -20,8 +22,19 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "Professional",
 };
 
+type DiscoverTab = "people" | "materials" | "projects" | "inspiration";
+
+const TABS: Array<{ key: DiscoverTab; label: string }> = [
+  { key: "people", label: "People" },
+  { key: "materials", label: "Materials" },
+  { key: "projects", label: "Projects" },
+  { key: "inspiration", label: "Inspiration" },
+];
+
 export default function DiscoverRoute() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [tab, setTab] = useState<DiscoverTab>("people");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(() => {
     setState({ status: "loading" });
@@ -36,29 +49,84 @@ export default function DiscoverRoute() {
     load();
   }, [load]);
 
+  const filtered = useMemo(() => {
+    if (state.status !== "ready") return [];
+    const needle = query.trim().toLowerCase();
+    if (!needle) return state.professionals;
+    return state.professionals.filter((pro) => {
+      const haystack = [
+        pro.profile?.display_name,
+        pro.company_name,
+        pro.service_area,
+        pro.category ? CATEGORY_LABELS[pro.category] ?? pro.category : null,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [state, query]);
+
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-lg font-semibold text-[var(--smc-charcoal)]">Discover</h1>
-        <p className="text-sm text-[var(--smc-charcoal-soft)]">Professionals on SMC Pro Studio. Materials and project inspiration arrive in a later slice.</p>
+    <div className="flex flex-col gap-5">
+      <SectionHeading eyebrow="Discover" title="Find people, materials and inspiration" description="Search the SMC Pro Studio community." />
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--smc-charcoal-faint)]" aria-hidden="true" />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={tab === "people" ? "Search architects, fabricators, installers…" : "Search Discover"}
+          aria-label="Search Discover"
+          className="w-full rounded-[var(--smc-radius-pill)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] py-3 pl-11 pr-4 text-sm text-[var(--smc-charcoal)] focus:border-[var(--smc-mineral-bronze)] focus:outline-none"
+        />
       </div>
 
-      {state.status === "loading" && <LoadingState label="Loading professionals" />}
-      {state.status === "error" && <ErrorState message={state.message} onRetry={load} />}
-      {state.status === "ready" && state.professionals.length === 0 && (
-        <EmptyState title="No public professional profiles yet" description="Professionals who complete onboarding will appear here." />
-      )}
-      {state.status === "ready" && state.professionals.length > 0 && (
-        <ul className="flex flex-col gap-3">
-          {state.professionals.map((pro) => (
-            <li key={pro.user_id} className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] p-4">
-              <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{pro.profile?.display_name ?? "SMC professional"}</p>
-              <p className="text-xs text-[var(--smc-charcoal-faint)]">{pro.category ? CATEGORY_LABELS[pro.category] ?? pro.category : "Professional"}</p>
-              {pro.company_name && <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{pro.company_name}</p>}
-              {pro.service_area && <p className="text-xs text-[var(--smc-charcoal-faint)]">{pro.service_area}</p>}
-            </li>
-          ))}
-        </ul>
+      <div role="tablist" aria-label="Discover categories" className="flex gap-2 overflow-x-auto pb-1">
+        {TABS.map((t) => (
+          <Chip key={t.key} role="tab" aria-selected={tab === t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
+            {t.label}
+          </Chip>
+        ))}
+      </div>
+
+      {tab !== "people" ? (
+        <EmptyState
+          title={`${TABS.find((t) => t.key === tab)?.label} arrive in a later slice`}
+          description="This category isn't built yet — no results are simulated here. Materials, Projects and Inspiration land alongside their respective catalogue and portfolio phases."
+        />
+      ) : (
+        <>
+          {state.status === "loading" && <LoadingState label="Loading professionals" />}
+          {state.status === "error" && <ErrorState message={state.message} onRetry={load} />}
+          {state.status === "ready" && state.professionals.length === 0 && (
+            <EmptyState title="No public professional profiles yet" description="Professionals who complete onboarding will appear here." />
+          )}
+          {state.status === "ready" && state.professionals.length > 0 && filtered.length === 0 && (
+            <EmptyState title="No matches" description={`Nothing found for "${query}".`} />
+          )}
+          {filtered.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {filtered.map((pro) => {
+                const name = pro.profile?.display_name ?? "SMC professional";
+                return (
+                  <Card as="li" key={pro.user_id} className="flex items-start gap-3 p-4">
+                    <Avatar name={name} size={44} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{name}</p>
+                      <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">
+                        {pro.category ? CATEGORY_LABELS[pro.category] ?? pro.category : "Professional"}
+                      </p>
+                      {pro.company_name && <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{pro.company_name}</p>}
+                      {pro.service_area && <p className="text-xs text-[var(--smc-charcoal-faint)]">{pro.service_area}</p>}
+                    </div>
+                  </Card>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );

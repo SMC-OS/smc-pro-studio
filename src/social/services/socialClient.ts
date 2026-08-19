@@ -125,3 +125,46 @@ export async function savePost(postId: string): Promise<void> {
   const { error } = await client.from("saved_posts").insert({ user_id: userData.user.id, post_id: postId });
   if (error) throw new Error("This could not be saved right now.");
 }
+
+export async function unsavePost(postId: string): Promise<void> {
+  const client = requireClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError || !userData.user) throw new Error("Sign in to manage saved posts.");
+  const { error } = await client.from("saved_posts").delete().eq("user_id", userData.user.id).eq("post_id", postId);
+  if (error) throw new Error("This could not be unsaved right now.");
+}
+
+/** Which of the given post ids the signed-in user has already saved — used so the feed can render an honest, real toggle state rather than assuming "not saved." */
+export async function fetchMySavedPostIds(postIds: string[]): Promise<Set<string>> {
+  if (postIds.length === 0 || !isSupabaseConfigured) return new Set();
+  const client = getSupabaseClient();
+  const { data: userData } = await client.auth.getUser();
+  if (!userData.user) return new Set();
+  const { data, error } = await client.from("saved_posts").select("post_id").eq("user_id", userData.user.id).in("post_id", postIds);
+  if (error) return new Set();
+  return new Set((data ?? []).map((row) => row.post_id as string));
+}
+
+export interface OwnProfessionalProfile {
+  user_id: string;
+  category: string | null;
+  company_name: string | null;
+  services: string[];
+  service_area: string | null;
+  website_url: string | null;
+  verification_status: "not_verified" | "pending" | "verified" | "rejected";
+}
+
+/** Owner-only read (professional_profiles_owner_read) — visible regardless of the public-read gate, so an incomplete professional profile can still show honestly to its own owner. */
+export async function fetchOwnProfessionalProfile(): Promise<OwnProfessionalProfile | null> {
+  const client = requireClient();
+  const { data: userData, error: userError } = await client.auth.getUser();
+  if (userError || !userData.user) return null;
+  const { data, error } = await client
+    .from("professional_profiles")
+    .select("user_id, category, company_name, services, service_area, website_url, verification_status")
+    .eq("user_id", userData.user.id)
+    .maybeSingle();
+  if (error) throw new Error("Your professional profile could not be loaded. Please try again.");
+  return data as OwnProfessionalProfile | null;
+}

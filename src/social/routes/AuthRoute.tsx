@@ -1,20 +1,15 @@
-import { useNavigate } from "react-router-dom";
-import SecureAuthPortal from "../../components/SecureAuthPortal";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import AuthForm from "../components/AuthForm";
 
-/**
- * Reuses the existing, already-correct Supabase auth logic in
- * SecureAuthPortal (real sign-up/sign-in/reset, fail-closed OAuth, account
- * type + professional category with no role escalation). Its dark visual
- * styling has not been reworked to the bright Phase 3 identity yet — that
- * is explicitly deferred to a follow-up design-consolidation slice rather
- * than done as a rushed part of this one.
- */
 export default function AuthRoute() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedMode = searchParams.get("mode");
+  const initialMode = requestedMode === "register" ? "register" : "login";
 
   return (
     <div className="flex justify-center py-6">
-      <SecureAuthPortal onLoginSuccess={() => navigate("/profile")} onNavigateLanding={() => navigate("/")} />
+      <AuthForm initialMode={initialMode} onSuccess={() => navigate("/profile")} />
     </div>
   );
 }
