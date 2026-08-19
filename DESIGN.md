@@ -1,8 +1,36 @@
 # SMC Pro Studio UX direction
 
+## Product direction amendment — 2026-08-19 (professional network pivot)
+
+**Old emphasis (Phase 1–3 slices 1–3):** social-first discovery — a "premium social community" modelled loosely on consumer social apps, with Home as a content feed and Discover as a materials/people/inspiration browse surface.
+
+**New locked emphasis, effective this amendment:** SMC Pro Studio is a **professional network and project collaboration platform for the built environment** — closer in spirit to LinkedIn (professional identity, networking, discovery, connections, credibility) and CompanyCam (project evidence, site photography, real work history) than to Instagram, while remaining an original SMC product. Content is not the product; the network and real-world work are the product.
+
+This is a re-emphasis and re-labelling of the existing foundation, not a rebuild:
+- The relational schema (`follows`, `connections`, `posts`, `post_media`, `comments`, `reactions`, `saved_posts`) already supports this direction as-is — no new migration is required for the Phase 3 professional-network foundation work.
+- The reusable primitives, auth, bead/notch mobile nav, desktop rail, RLS foundations, and honest-state discipline all carry forward unchanged.
+- What changes is information architecture, navigation labelling, screen purpose/copy, and feature prioritisation — see `tasks/plan.md`'s amendment section for the navigation/screen-hierarchy delta and `tasks/todo.md` for the re-ordered priority list.
+
+**Core relationship model (mandatory, three distinct concepts):**
+- **Follow** — unilateral, "I want to see this person/company's public work and updates." Implies no trust, access, or relationship.
+- **Connect** — mutual request/accept, "I want to establish a professional relationship." States: none / requested / pending-incoming / connected.
+- **Collaborate** — project-scoped participation with membership, roles, and permissions. Never conflated with Follow or Connect as an authorization concept.
+
+**Primary journey:** Discover → Network → Connect → Project → Deliver (the existing SMC service journey — Design → Quote → Survey → Fabrication → Installation — nests inside "Project → Deliver").
+
+**Primary navigation (mobile + desktop rail):** Home · Network · Create · Projects · Profile. Messages remains reachable contextually (header/profile/project/connection actions and a notification shortcut) rather than occupying a primary tab.
+
+**What was "Discover" becomes "Network":** professional discovery — people, trades, companies — is the primary use of that surface, so it is renamed and reframed rather than duplicated. Materials/product discovery remains real but becomes a secondary, contextual surface (reachable from Home, Network, Projects, and search) instead of a primary tab. See the amendment section in `tasks/plan.md` for the concrete screen-hierarchy delta.
+
+**Stories are de-emphasized**, reframed toward field/project updates ("Today on Site", "Material Arrival", "Installation Progress") rather than entertainment-style ephemeral content, and remain a secondary feature — not rebuilt into a Phase 4-style moderation system yet.
+
+**Reactions/comments/saves remain but stay secondary** to professional identity, discovery, connections, and project evidence — never the product's centre of gravity, never gamified.
+
 ## Experience statement
 
-SMC Pro Studio is a premium social community where people discover stone and architectural inspiration, connect with relevant professionals, and turn saved ideas into governed real-world projects.
+SMC Pro Studio is where homeowners, trades and design professionals find each other, prove their work, discover materials and services, build professional relationships, and turn connections into real projects.
+
+*(Superseded statement, kept for history — see amendment above: "SMC Pro Studio is a premium social community where people discover stone and architectural inspiration, connect with relevant professionals, and turn saved ideas into governed real-world projects.")*
 
 ## Information hierarchy
 
@@ -32,8 +60,8 @@ SMC Pro Studio is a premium social community where people discover stone and arc
 
 | Screen | Must communicate | Must not do |
 |---|---|---|
-| Home | Stories, feed provenance, visibility, contextual project/material actions | Fake posts, counts, trends, or success fallback |
-| Discover | Search intent, useful filters, materials/people/projects/inspiration | Present unknown stock, price, origin, or popularity as fact |
+| Home | Professional activity (project updates, portfolio, opportunities), field updates, provenance, visibility, contextual project/material actions | Fake posts, counts, trends, engagement-first framing, or success fallback |
+| Network *(was Discover, amended 2026-08-19)* | Professional discovery — people, trades, companies, service area/profession filters; materials/projects/inspiration remain reachable as secondary/contextual entries | Present unknown stock, price, origin, popularity, or fabricated availability/verification as fact |
 | Story viewer | Author, expiry, report, contextual material/project action | Auto-publish private project media |
 | Create | Content type, audience, project association, upload status | Default private project content to public |
 | Messages | Conversation membership, project context, delivery/error status | Expose non-member or internal conversations |

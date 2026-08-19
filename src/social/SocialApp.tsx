@@ -7,6 +7,7 @@ import DiscoverRoute from "./routes/DiscoverRoute";
 import HomeRoute from "./routes/HomeRoute";
 import MessagesRoute from "./routes/MessagesRoute";
 import ProfileRoute from "./routes/ProfileRoute";
+import PublicProfileRoute from "./routes/PublicProfileRoute";
 import ResetPasswordRoute from "./routes/ResetPasswordRoute";
 import { completeAuthRedirect } from "../services/authClient";
 import "./tokens.css";
@@ -18,6 +19,7 @@ import "./tokens.css";
 // import from the production bundle. Verified after `npm run build` by
 // grepping dist/ for "otp-preview" / "OtpPreviewRoute" — nothing matches.
 import OtpPreviewRoute from "./routes/OtpPreviewRoute";
+import InteractionPreviewRoute from "./routes/InteractionPreviewRoute";
 
 /**
  * Phase 3 social shell. Mounted instead of the legacy `App` only when
@@ -43,9 +45,11 @@ export default function SocialApp() {
           <Route path="create" element={<CreateRoute />} />
           <Route path="messages" element={<MessagesRoute />} />
           <Route path="profile" element={<ProfileRoute />} />
+          <Route path="profile/:userId" element={<PublicProfileRoute />} />
           <Route path="auth" element={<AuthRoute />} />
           <Route path="auth/reset-password" element={<ResetPasswordRoute />} />
           {import.meta.env.DEV && <Route path="dev/otp-preview" element={<OtpPreviewRoute />} />}
+          {import.meta.env.DEV && <Route path="dev/interaction-preview" element={<InteractionPreviewRoute />} />}
         </Route>
       </Routes>
     </BrowserRouter>

@@ -4,7 +4,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { StoriesTray } from "../components/StoriesTray";
 import { PostCard } from "../components/PostCard";
 import { EditorialHeading } from "../components/ui";
-import { fetchMySavedPostIds, fetchPublicFeed, type FeedPost } from "../services/socialClient";
+import { fetchMySavedPostIds, fetchPostEngagement, fetchPublicFeed, type FeedPost, type PostEngagement } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
 
 type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; posts: FeedPost[] };
@@ -13,6 +13,7 @@ export default function HomeRoute() {
   const auth = useAuthSession();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [engagement, setEngagement] = useState<Map<string, PostEngagement>>(new Map());
 
   const load = useCallback(() => {
     setState({ status: "loading" });
@@ -36,6 +37,18 @@ export default function HomeRoute() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.status, state]);
+
+  useEffect(() => {
+    if (state.status !== "ready" || state.posts.length === 0) return;
+    let cancelled = false;
+    fetchPostEngagement(state.posts.map((post) => post.id)).then((map) => {
+      if (!cancelled) setEngagement(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -70,7 +83,13 @@ export default function HomeRoute() {
             <ul className="flex flex-col gap-3">
               {state.posts.map((post) => (
                 <li key={post.id}>
-                  <PostCard post={post} canSave={auth.status === "authenticated"} initiallySaved={savedIds.has(post.id)} />
+                  <PostCard
+                    post={post}
+                    auth={auth}
+                    canSave={auth.status === "authenticated"}
+                    initiallySaved={savedIds.has(post.id)}
+                    engagement={engagement.get(post.id)}
+                  />
                 </li>
               ))}
             </ul>

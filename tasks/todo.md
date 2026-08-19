@@ -39,15 +39,38 @@
 - [ ] Web production and server builds pass.
 - [ ] Owner validates provider and deletion UX.
 
-## Phase 3 — Social core
+## Phase 3 — Professional network foundation *(re-scoped 2026-08-19, was "Social core")*
+
+**Amendment note:** product direction locked to a professional network + project collaboration platform (see `DESIGN.md` and `tasks/plan.md` amendment sections). Original checklist items below are kept and checked off as before — nothing is deleted — with a new priority order layered on top:
+
+1. Professional Network (screen, was Discover)
+2. Professional Profiles
+3. Connections
+4. Follow
+5. Network search/filter (profession, location, service area)
+6. Company/business presentation foundation (architecture only — no schema yet)
+7. Professional activity feed (Home)
+8. Project/work updates
+9. Public portfolio content
+10. "Looking For..." / opportunity architecture (design only — no build yet)
+11. Project invitations foundation (design only — no build yet)
+12. Saved professionals/materials
+13. Comments/reactions kept secondary, only where they support work/networking
+14. Guest public professional discovery
+
+Stories become secondary (field/project-update framing, not rebuilt this phase).
+
+### Phase 3 Slice 3 progress note (2026-08-19)
+
+Real comments/reactions/saves UI, Follow/Connect UI (`FollowButton`/`ConnectButton`), a new `/profile/:userId` public profile route, and a Discover-tab expansion to 6 categories were built and verified this slice — see the session's phase-3 project-memory notes for the full file list, security review, and test results. This work satisfies checklist items below marked "(slice 3)". Not yet committed; still needs owner review, and the Discover→Network rename/reframe from this amendment has not yet been applied to that code (next slice).
 
 - [ ] Introduce feature-flagged router, mobile shell, design tokens, and lazy route boundaries. (Router/shell/tokens done behind `VITE_SOCIAL_SHELL_ENABLED`; routes are not yet code-split/lazy-loaded.)
 - [ ] Build customer/professional profiles with honest empty states. (Own-profile read view done; editing, avatars, and the professional-specific fields are not built yet.)
 - [ ] Build post/media creation, visibility, owner removal, and report entry point. (Text-only post creation with visibility choice is done; media attachments, owner delete UI, and reporting are not.)
 - [ ] Build public/personalized feed without fabricated counts or fallback content. (Public feed reads real (currently empty) data honestly; there is no personalised/followers feed yet.)
-- [ ] Build follows, connections, saves, reactions, and comments. (Schema, RLS, and service functions exist for follow/unfollow/save; there is no UI for any of it yet, and comments/reactions have no service functions or UI yet.)
-- [ ] Build stories with expiry, views, contextual actions, reporting, and honest empty state. (Not started; Home shows an honest "not built yet" notice instead of a Stories tray.)
-- [ ] Build Discover search/filter for materials, people, projects, and inspiration. (Public professional directory only; no search/filter, and materials/projects/inspiration wait on later phases' schema.)
+- [x] Build follows, connections, saves, reactions, and comments. (slice 3 — `ReactionButton`, `CommentsDrawer`, `FollowButton`, `ConnectButton`, wired into `PostCard`/`PublicProfileRoute`; real DB-backed, no fabricated counts, security-reviewed. Public follower/following counts still deliberately not shown — RLS only lets the two parties read a given `follows` row.)
+- [ ] Build stories with expiry, views, contextual actions, reporting, and honest empty state. (Not started; de-emphasized per the 2026-08-19 amendment — reframe toward field/project updates before investing further, not an entertainment-style rebuild.)
+- [ ] Build Network search/filter for people, trades, companies, and service area/profession *(was "Discover search/filter for materials, people, projects, and inspiration")*. (slice 3 added a basic search box + category tabs on the still-named DiscoverRoute with only the professional-directory tab real; the Network rename/reframe and profession/location/service-area filter structure from the amendment is NOT yet applied — next slice.)
 
 ### Phase 3 progress notes (this slice)
 

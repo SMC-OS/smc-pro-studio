@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { Bookmark, BookmarkCheck } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Bookmark, BookmarkCheck, MessageCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { Avatar, Card } from "./ui";
-import { savePost, unsavePost, type FeedPost } from "../services/socialClient";
+import { CommentsDrawer } from "./CommentsDrawer";
+import { ReactionButton } from "./ReactionButton";
+import { savePost, unsavePost, type FeedPost, type PostEngagement } from "../services/socialClient";
+import type { AuthSessionState } from "../services/useAuthSession";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -16,20 +19,32 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+const EMPTY_ENGAGEMENT: PostEngagement = { reactionCount: 0, commentCount: 0, reactedByMe: false };
+
 export function PostCard({
   post,
+  auth,
   canSave,
   initiallySaved = false,
+  engagement,
 }: {
   post: FeedPost;
+  auth: AuthSessionState;
   /** Save requires a signed-in user — guests still see the post, just not the affordance. */
   canSave: boolean;
   initiallySaved?: boolean;
+  /** Undefined means the count couldn't be confirmed yet — rendered as "unknown", never guessed as zero. */
+  engagement?: PostEngagement;
 }) {
   const [saved, setSaved] = useState(initiallySaved);
   const [busy, setBusy] = useState(false);
+  const [commentCount, setCommentCount] = useState(engagement?.commentCount ?? 0);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const navigate = useNavigate();
 
   const authorName = post.author?.display_name ?? "SMC member";
+  const canInteract = auth.status === "authenticated";
+  const knownEngagement = engagement ?? EMPTY_ENGAGEMENT;
 
   async function toggleSave() {
     if (busy) return;
@@ -49,13 +64,13 @@ export function PostCard({
   return (
     <Card as="article" className="p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <Link to={`/profile/${post.author_id}`} className="flex items-center gap-3 outline-none">
           <Avatar name={authorName} size={38} />
           <div>
-            <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{authorName}</p>
+            <p className="text-sm font-semibold text-[var(--smc-charcoal)] hover:underline">{authorName}</p>
             <p className="text-xs text-[var(--smc-charcoal-faint)]">{timeAgo(post.created_at)}</p>
           </div>
-        </div>
+        </Link>
         {canSave && (
           <button
             type="button"
@@ -76,14 +91,41 @@ export function PostCard({
 
       {post.body && <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--smc-charcoal-soft)]">{post.body}</p>}
 
+      <div className="mt-3 flex items-center gap-1 border-t border-[var(--smc-border)] pt-2">
+        <ReactionButton
+          postId={post.id}
+          count={knownEngagement.reactionCount}
+          reacted={knownEngagement.reactedByMe}
+          canReact={canInteract}
+          onSignInRequired={() => navigate("/auth")}
+        />
+        <button
+          type="button"
+          onClick={() => setCommentsOpen(true)}
+          aria-label={`View comments (${commentCount})`}
+          className="flex items-center gap-1.5 rounded-[var(--smc-radius-pill)] px-2 py-1.5 text-sm text-[var(--smc-charcoal-soft)] transition-colors hover:bg-[var(--smc-limestone)]"
+        >
+          <MessageCircle className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span className="tabular-nums">{commentCount}</span>
+        </button>
+      </div>
+
       {!canSave && (
-        <p className="mt-3 text-xs text-[var(--smc-charcoal-faint)]">
+        <p className="mt-2 text-xs text-[var(--smc-charcoal-faint)]">
           <Link to="/auth" className="font-semibold text-[var(--smc-mineral-bronze)] hover:underline">
             Sign in
           </Link>{" "}
-          to save this post.
+          to save, like, or comment.
         </p>
       )}
+
+      <CommentsDrawer
+        postId={post.id}
+        open={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+        auth={auth}
+        onCommentCountChange={(delta) => setCommentCount((current) => Math.max(0, current + delta))}
+      />
     </Card>
   );
 }
