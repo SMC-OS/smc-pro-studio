@@ -12,11 +12,11 @@
 
 ## Phase 2A — Supabase local foundation
 
-- [ ] Establish pinned Supabase dependencies, local CLI config, generated types, and migration conventions.
-- [ ] Add identity/profile/account-type migrations with RLS and role-separation tests.
-- [ ] Add relationships and block/mute migrations with adversarial RLS tests.
-- [ ] Add public/private storage buckets and upload-policy tests.
-- [ ] Run Supabase security/performance advisors and resolve findings.
+- [ ] Establish pinned Supabase dependencies, local CLI config, generated types, and migration conventions. (Supabase JS is pinned and `supabase/config.toml` exists; generated TypeScript types are not wired up yet.)
+- [x] Add identity/profile/account-type migrations with RLS and role-separation tests. (`20260818194558_identity_profiles_roles.sql` + `rls.test.sql` + `phase2-foundation.test.mjs`.)
+- [x] Add relationships and block/mute migrations with adversarial RLS tests. (Follows/connections/blocks landed in the Phase 3 social-core migration — see Phase 3 notes below — rather than as a separate Phase 2A step; structural pgTAP coverage exists in `rls_social_core.test.sql`, but it has not been executed against a live Postgres instance in this session — see Phase 3 notes.)
+- [x] Add public/private storage buckets and upload-policy tests. (`20260818194625_storage_foundations.sql` + `rls.test.sql`.)
+- [ ] Run Supabase security/performance advisors and resolve findings. (Not run this session — needs the confirmed dev/staging Supabase project, see below.)
 
 ### Checkpoint — Data foundation
 
@@ -26,12 +26,12 @@
 
 ## Phase 2B — Authentication vertical slices
 
-- [ ] Guest browse plus auth-required action boundary.
-- [ ] Email sign-up/sign-in/verification/reset/sign-out/session restore.
-- [ ] Customer/professional onboarding; profession never grants roles.
-- [ ] Google/Apple/Facebook OAuth callback and provider-linking boundary.
-- [ ] Web/Android/iOS redirect contract and secure token-storage boundary.
-- [ ] Account deletion/session revocation/retention workflow.
+- [ ] Guest browse plus auth-required action boundary. (RLS distinguishes anon/authenticated throughout; the guest-facing UI boundary is being built screen by screen in Phase 3 — see notes.)
+- [x] Email sign-up/sign-in/verification/reset/sign-out/session restore. (`src/services/authClient.ts` + `SecureAuthPortal.tsx`.)
+- [x] Customer/professional onboarding; profession never grants roles. (Signup form collects account type/category; the `on_auth_user_created` trigger only ever assigns the `user` role.)
+- [ ] Google/Apple/Facebook OAuth callback and provider-linking boundary. (Fail-closed by default and wired to a real Supabase call; no provider has real SMC-owned credentials configured/tested yet.)
+- [ ] Web/Android/iOS redirect contract and secure token-storage boundary. (Web + Capacitor scheme handled in code; unverified on an actual native build.)
+- [ ] Account deletion/session revocation/retention workflow. (Request creation + sign-out work; the identity-lock/retention-review/completion lifecycle has no processing logic yet.)
 
 ### Checkpoint — Authentication
 
@@ -41,13 +41,20 @@
 
 ## Phase 3 — Social core
 
-- [ ] Introduce feature-flagged router, mobile shell, design tokens, and lazy route boundaries.
-- [ ] Build customer/professional profiles with honest empty states.
-- [ ] Build post/media creation, visibility, owner removal, and report entry point.
-- [ ] Build public/personalized feed without fabricated counts or fallback content.
-- [ ] Build follows, connections, saves, reactions, and comments.
-- [ ] Build stories with expiry, views, contextual actions, reporting, and honest empty state.
-- [ ] Build Discover search/filter for materials, people, projects, and inspiration.
+- [ ] Introduce feature-flagged router, mobile shell, design tokens, and lazy route boundaries. (Router/shell/tokens done behind `VITE_SOCIAL_SHELL_ENABLED`; routes are not yet code-split/lazy-loaded.)
+- [ ] Build customer/professional profiles with honest empty states. (Own-profile read view done; editing, avatars, and the professional-specific fields are not built yet.)
+- [ ] Build post/media creation, visibility, owner removal, and report entry point. (Text-only post creation with visibility choice is done; media attachments, owner delete UI, and reporting are not.)
+- [ ] Build public/personalized feed without fabricated counts or fallback content. (Public feed reads real (currently empty) data honestly; there is no personalised/followers feed yet.)
+- [ ] Build follows, connections, saves, reactions, and comments. (Schema, RLS, and service functions exist for follow/unfollow/save; there is no UI for any of it yet, and comments/reactions have no service functions or UI yet.)
+- [ ] Build stories with expiry, views, contextual actions, reporting, and honest empty state. (Not started; Home shows an honest "not built yet" notice instead of a Stories tray.)
+- [ ] Build Discover search/filter for materials, people, projects, and inspiration. (Public professional directory only; no search/filter, and materials/projects/inspiration wait on later phases' schema.)
+
+### Phase 3 progress notes (this slice)
+
+- New `supabase/migrations/20260819120000_social_core.sql`: `follows`, `connections`, `blocks`, `posts`, `post_media`, `comments`, `reactions`, `saved_posts`, all RLS-enabled, deny-by-default, with a shared `private.can_view_post()` helper so visibility logic isn't duplicated per table. Structural pgTAP coverage in `supabase/tests/database/rls_social_core.test.sql` — **not executed against a live Postgres/Supabase instance in this session** (no local Supabase CLI/Docker available here, and the one Supabase project visible via the Supabase MCP has an unrelated migration history and zero tables, so it was left untouched). Needs `supabase test db` locally or against an explicitly-approved dev project before this is considered verified.
+- New `src/social/` module: feature-flagged shell (`AppShell.tsx`, `SocialApp.tsx`), the five primary routes, `socialClient.ts` (guest-safe reads + authenticated writes), honest loading/empty/error states throughout. Verified in a real Chromium browser (Playwright) at mobile and desktop viewports, flag on and off, guest state only.
+- Known gap: the reused `SecureAuthPortal` auth screen keeps its original dark/gold styling — restyling it to the bright identity is deferred to a follow-up slice rather than rushed into this one.
+- Known gap: desktop currently reuses the same bottom nav as mobile; the plan's desktop nav-rail adaptation is not built yet.
 
 ### Checkpoint — Social core
 
