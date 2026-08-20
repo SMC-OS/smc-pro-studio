@@ -28,6 +28,17 @@ export interface PublicProfessional {
   profile: PublicAuthor | null;
 }
 
+export interface ProfessionalDiscoveryFilters {
+  /** `professional_profiles.category` — a bounded enum, matched exactly. */
+  category?: string;
+  /** Free-text match against `professional_profiles.service_area` (the only
+   *  location/coverage-area field the schema has — there is no separate
+   *  "location" column, so this filter covers both concepts honestly rather
+   *  than a fabricated second field). */
+  serviceArea?: string;
+  limit?: number;
+}
+
 export class SocialUnavailableError extends Error {
   constructor(message = "This requires a configured Supabase connection.") {
     super(message);
@@ -53,13 +64,21 @@ export async function fetchPublicFeed(limit = 20): Promise<FeedPost[]> {
   return (data ?? []) as unknown as FeedPost[];
 }
 
-/** Guest-safe: reads only public professional profiles. */
-export async function fetchPublicProfessionals(limit = 20): Promise<PublicProfessional[]> {
+/**
+ * Guest-safe: reads only public professional profiles. Filters are applied
+ * server-side (not just over an already-fetched page) so a profession or
+ * service-area filter reflects the real matching set, not a truncated one.
+ */
+export async function fetchPublicProfessionals(filters: ProfessionalDiscoveryFilters = {}): Promise<PublicProfessional[]> {
   if (!isSupabaseConfigured) return [];
-  const { data, error } = await getSupabaseClient()
+  let query = getSupabaseClient()
     .from("professional_profiles")
     .select("user_id, category, company_name, service_area, profile:profiles(id, display_name, username, avatar_path, account_type)")
-    .limit(limit);
+    .limit(filters.limit ?? 50);
+  if (filters.category) query = query.eq("category", filters.category);
+  const serviceArea = filters.serviceArea?.trim();
+  if (serviceArea) query = query.ilike("service_area", `%${serviceArea}%`);
+  const { data, error } = await query;
   if (error) throw new Error("Professionals could not be loaded. Please try again.");
   return (data ?? []) as unknown as PublicProfessional[];
 }

@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import AuthRoute from "./routes/AuthRoute";
 import CreateRoute from "./routes/CreateRoute";
-import DiscoverRoute from "./routes/DiscoverRoute";
+import NetworkRoute from "./routes/NetworkRoute";
 import HomeRoute from "./routes/HomeRoute";
 import MessagesRoute from "./routes/MessagesRoute";
 import ProfileRoute from "./routes/ProfileRoute";
@@ -41,7 +41,12 @@ export default function SocialApp() {
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<HomeRoute />} />
-          <Route path="discover" element={<DiscoverRoute />} />
+          <Route path="network" element={<NetworkRoute />} />
+          {/* Back-compat alias: "Discover" was renamed to "Network" in the
+              2026-08-19 professional-network pivot (see DESIGN.md). Old
+              /discover links/bookmarks keep working via redirect rather
+              than breaking. */}
+          <Route path="discover" element={<Navigate to="/network" replace />} />
           <Route path="create" element={<CreateRoute />} />
           <Route path="messages" element={<MessagesRoute />} />
           <Route path="profile" element={<ProfileRoute />} />

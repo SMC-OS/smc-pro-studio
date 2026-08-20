@@ -18,7 +18,7 @@ export default function CreateRoute() {
     return (
       <EmptyState
         title="Sign in to create a post"
-        description="Posting requires an SMC Pro Studio account. Guests can browse Home and Discover freely."
+        description="Posting requires an SMC Pro Studio account. Guests can browse Home and Network freely."
       />
     );
   }

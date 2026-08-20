@@ -1,4 +1,4 @@
-import { Compass, Home, MessageCircle, Plus, User } from "lucide-react";
+import { Home, MessageCircle, Plus, User, Users } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useAuthSession } from "../services/useAuthSession";
 
@@ -12,7 +12,7 @@ import { useAuthSession } from "../services/useAuthSession";
  */
 const NAV_ITEMS = [
   { to: "/", label: "Home", icon: Home, end: true, emphasized: false },
-  { to: "/discover", label: "Discover", icon: Compass, end: false, emphasized: false },
+  { to: "/network", label: "Network", icon: Users, end: false, emphasized: false },
   { to: "/create", label: "Create", icon: Plus, end: false, emphasized: true },
   { to: "/messages", label: "Messages", icon: MessageCircle, end: false, emphasized: false },
   { to: "/profile", label: "Profile", icon: User, end: false, emphasized: false },

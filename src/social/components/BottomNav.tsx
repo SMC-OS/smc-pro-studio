@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Compass, Home, MessageCircle, Plus, User } from "lucide-react";
+import { Home, MessageCircle, Plus, User, Users } from "lucide-react";
 import {
   animate,
   motion,
@@ -32,7 +32,7 @@ import { matchPath, NavLink, useLocation } from "react-router-dom";
 
 const NAV_ITEMS = [
   { to: "/", label: "Home", icon: Home, end: true, emphasized: false },
-  { to: "/discover", label: "Discover", icon: Compass, end: false, emphasized: false },
+  { to: "/network", label: "Network", icon: Users, end: false, emphasized: false },
   { to: "/create", label: "Create", icon: Plus, end: false, emphasized: true },
   { to: "/messages", label: "Messages", icon: MessageCircle, end: false, emphasized: false },
   { to: "/profile", label: "Profile", icon: User, end: false, emphasized: false },
