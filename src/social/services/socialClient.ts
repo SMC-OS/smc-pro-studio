@@ -461,3 +461,65 @@ export async function revokeConnectionRequest(connectionId: string): Promise<voi
     .maybeSingle();
   if (error || !data) throw new Error("This request could not be withdrawn right now.");
 }
+
+/**
+ * The signed-in user's real connection relationships, for the Connections
+ * management screen — everything `connections_party_read` RLS lets them
+ * see (rows where they're requester or addressee), narrowed to the three
+ * meaningful ongoing states this screen manages. `declined`/`revoked` rows
+ * are excluded: they're terminal history, not something to act on here.
+ *
+ * There's deliberately no way to end an already-`connected` relationship:
+ * no RLS policy allows updating an `accepted` connections row (see
+ * ConnectButton.tsx's comment) — a "disconnect" control would either
+ * silently fail or need a new migration, so this is a reported gap, not
+ * built here.
+ */
+export type ConnectionRelationship = "incoming" | "outgoing" | "connected";
+
+export interface ConnectionListItem {
+  connectionId: string;
+  relationship: ConnectionRelationship;
+  otherUser: PublicAuthor;
+  createdAt: string;
+}
+
+interface ConnectionRow {
+  id: string;
+  requester_id: string;
+  addressee_id: string;
+  status: "pending" | "accepted" | "declined" | "revoked";
+  created_at: string;
+  requester: PublicAuthor | null;
+  addressee: PublicAuthor | null;
+}
+
+export async function fetchMyConnections(limit = 100): Promise<ConnectionListItem[]> {
+  if (!isSupabaseConfigured) return [];
+  const client = getSupabaseClient();
+  const { data: userData } = await client.auth.getUser();
+  const me = userData.user?.id;
+  if (!me) return [];
+  const { data, error } = await client
+    .from("connections")
+    .select(
+      "id, requester_id, addressee_id, status, created_at, " +
+        "requester:profiles!connections_requester_id_fkey(id, display_name, username, avatar_path, account_type), " +
+        "addressee:profiles!connections_addressee_id_fkey(id, display_name, username, avatar_path, account_type)"
+    )
+    .or(`requester_id.eq.${me},addressee_id.eq.${me}`)
+    .in("status", ["pending", "accepted"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error("Your connections could not be loaded. Please try again.");
+  const rows = (data ?? []) as unknown as ConnectionRow[];
+  const items: ConnectionListItem[] = [];
+  for (const row of rows) {
+    const iAmRequester = row.requester_id === me;
+    const other = iAmRequester ? row.addressee : row.requester;
+    if (!other) continue; // Defensive: skip a row whose counterpart profile couldn't be read rather than render a broken entry.
+    const relationship: ConnectionRelationship = row.status === "accepted" ? "connected" : iAmRequester ? "outgoing" : "incoming";
+    items.push({ connectionId: row.id, relationship, otherUser: other, createdAt: row.created_at });
+  }
+  return items;
+}

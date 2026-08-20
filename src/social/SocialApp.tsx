@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import AuthRoute from "./routes/AuthRoute";
+import ConnectionsRoute from "./routes/ConnectionsRoute";
 import CreateRoute from "./routes/CreateRoute";
 import NetworkRoute from "./routes/NetworkRoute";
 import HomeRoute from "./routes/HomeRoute";
@@ -51,6 +52,9 @@ export default function SocialApp() {
           <Route path="messages" element={<MessagesRoute />} />
           <Route path="profile" element={<ProfileRoute />} />
           <Route path="profile/:userId" element={<PublicProfileRoute />} />
+          {/* Contextual only — reached from ProfileRoute's "Connections" link,
+              not a primary nav tab (see AGENTS.md's approved nav direction). */}
+          <Route path="connections" element={<ConnectionsRoute />} />
           <Route path="auth" element={<AuthRoute />} />
           <Route path="auth/reset-password" element={<ResetPasswordRoute />} />
           {import.meta.env.DEV && <Route path="dev/otp-preview" element={<OtpPreviewRoute />} />}
