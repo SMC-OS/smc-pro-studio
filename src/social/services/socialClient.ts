@@ -237,6 +237,28 @@ export async function fetchPublicProfileById(userId: string): Promise<PublicProf
   return { profile, professional };
 }
 
+/**
+ * A profile owner's own real posts, visible to the current viewer under
+ * exactly the same RLS the general feed uses (`posts_public_read` for
+ * everyone, `posts_relationship_read` additionally opens up
+ * followers/connections-visibility posts to a follower/connection of this
+ * author, `posts_owner_read` for the author themselves). No separate
+ * visibility logic here — the query goes through the normal anon/
+ * authenticated client, so Postgres RLS does the filtering, not this code.
+ */
+export async function fetchPublicPostsByAuthor(authorId: string, limit = 5): Promise<FeedPost[]> {
+  if (!isSupabaseConfigured) return [];
+  const { data, error } = await getSupabaseClient()
+    .from("posts")
+    .select("id, author_id, body, visibility, created_at, author:profiles(id, display_name, username, avatar_path, account_type)")
+    .eq("author_id", authorId)
+    .eq("moderation_status", "visible")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error("This person's activity could not be loaded. Please try again.");
+  return (data ?? []) as unknown as FeedPost[];
+}
+
 // ==========================================================================
 // Post engagement: reaction/comment counts + the signed-in user's own state.
 // Real counts only — computed by counting the rows RLS actually lets us

@@ -9,7 +9,9 @@ import {
   fetchConnectionState,
   fetchFollowState,
   fetchPublicProfileById,
+  fetchPublicPostsByAuthor,
   type ConnectionSummary,
+  type FeedPost,
   type PublicProfileFull,
 } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
@@ -19,6 +21,13 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; data: PublicProfileFull | null; following: boolean; connection: ConnectionSummary };
 
+// Real activity is loaded independently of the profile card itself, so a
+// failure here never hides the profile — it only affects this one section.
+type ActivityState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; posts: FeedPost[] };
+
 const VERIFICATION_LABELS: Record<string, string> = {
   not_verified: "Not verified yet",
   pending: "Verification in progress",
@@ -26,19 +35,37 @@ const VERIFICATION_LABELS: Record<string, string> = {
   rejected: "Verification unsuccessful",
 };
 
+// Mirrors the public.professional_category enum exactly (same source of
+// truth as NetworkRoute.tsx's CATEGORY_LABELS) — no invented categories.
+const CATEGORY_LABELS: Record<string, string> = {
+  architect: "Architect",
+  interior_designer: "Interior Designer",
+  stone_fabricator: "Stone Fabricator",
+  stone_supplier: "Stone Supplier",
+  installer: "Installer",
+  contractor: "Contractor",
+  developer: "Developer",
+  construction_professional: "Construction Professional",
+  smc_team: "SMC Team",
+  other: "Professional",
+};
+
 /**
- * Viewing someone else's profile. `/profile` (ProfileRoute) stays the
- * signed-in user's own management view; this route is the public-facing
- * counterpart reached from post authors and Discover — reading only what
- * `profiles_public_read`/`professional_profiles_public_read` expose, plus
- * Follow/Connect actions where the viewer is signed in and it isn't their
- * own profile (self-follow/self-connect are also blocked at the database
- * level, so this is defense in depth, not the only guard).
+ * Viewing someone else's profile — the professional/network profile
+ * experience (see DESIGN.md's 2026-08-19 amendment). `/profile`
+ * (ProfileRoute) stays the signed-in user's own management view; this
+ * route is the public-facing counterpart reached from post authors and
+ * Network — reading only what `profiles_public_read`/
+ * `professional_profiles_public_read` expose, plus Follow/Connect actions
+ * where the viewer is signed in and it isn't their own profile
+ * (self-follow/self-connect are also blocked at the database level, so
+ * this is defense in depth, not the only guard).
  */
 export default function PublicProfileRoute() {
   const { userId } = useParams<{ userId: string }>();
   const auth = useAuthSession();
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [activity, setActivity] = useState<ActivityState>({ status: "loading" });
 
   const isOwnProfile = auth.status === "authenticated" && userId === auth.session.subject;
 
@@ -57,6 +84,23 @@ export default function PublicProfileRoute() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadActivity = useCallback(() => {
+    if (!userId || isOwnProfile) return;
+    setActivity({ status: "loading" });
+    fetchPublicPostsByAuthor(userId)
+      .then((posts) => setActivity({ status: "ready", posts }))
+      .catch((error: unknown) =>
+        setActivity({ status: "error", message: error instanceof Error ? error.message : "This person's activity could not be loaded." })
+      );
+    // Independent of the profile-card load: a real activity fetch failure
+    // must not hide the profile itself, and vice versa — each is its own
+    // honest loading/error/empty state.
+  }, [userId, isOwnProfile]);
+
+  useEffect(() => {
+    loadActivity();
+  }, [loadActivity]);
 
   if (!userId) return <ErrorState message="No profile was specified." />;
   if (isOwnProfile) return <Navigate to="/profile" replace />;
@@ -80,9 +124,16 @@ export default function PublicProfileRoute() {
               {profile.display_name}
             </EditorialHeading>
             {profile.username && <p className="text-sm text-[var(--smc-charcoal-faint)]">@{profile.username}</p>}
-            <span className="mt-2 inline-block rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] bg-[var(--smc-limestone)] px-2.5 py-1 text-xs font-semibold capitalize text-[var(--smc-charcoal-soft)]">
-              {profile.account_type}
-            </span>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {isProfessional && professional?.category && (
+                <span className="inline-block rounded-[var(--smc-radius-pill)] border border-[var(--smc-mineral-bronze)]/40 bg-[var(--smc-limestone)] px-2.5 py-1 text-xs font-semibold text-[var(--smc-mineral-bronze)]">
+                  {CATEGORY_LABELS[professional.category] ?? "Professional"}
+                </span>
+              )}
+              <span className="inline-block rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] bg-[var(--smc-limestone)] px-2.5 py-1 text-xs font-semibold capitalize text-[var(--smc-charcoal-soft)]">
+                {profile.account_type}
+              </span>
+            </div>
           </div>
         </div>
         {profile.bio ? (
@@ -146,6 +197,31 @@ export default function PublicProfileRoute() {
           ) : (
             <p className="mt-2 text-sm text-[var(--smc-charcoal-faint)]">Professional details have not been added yet.</p>
           )}
+        </Card>
+      )}
+
+      {isProfessional && (
+        <Card className="p-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--smc-mineral-bronze)]">Recent activity</p>
+          <div className="mt-3">
+            {activity.status === "loading" && <LoadingState label="Loading activity" />}
+            {activity.status === "error" && <ErrorState message={activity.message} onRetry={loadActivity} />}
+            {activity.status === "ready" && activity.posts.length === 0 && (
+              <p className="text-sm text-[var(--smc-charcoal-faint)]">No public activity yet.</p>
+            )}
+            {activity.status === "ready" && activity.posts.length > 0 && (
+              <ul className="flex flex-col gap-3">
+                {activity.posts.map((post) => (
+                  <li key={post.id} className="border-t border-[var(--smc-border)] pt-3 first:border-0 first:pt-0">
+                    <p className="text-sm text-[var(--smc-charcoal-soft)]">{post.body ?? "(no text)"}</p>
+                    <p className="mt-1 text-xs text-[var(--smc-charcoal-faint)]">
+                      {new Date(post.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Card>
       )}
     </div>
