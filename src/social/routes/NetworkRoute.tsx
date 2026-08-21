@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
 import { Avatar, Card, Chip, SectionHeading } from "../components/ui";
-import { fetchPublicProfessionals, type PublicProfessional } from "../services/socialClient";
+import { searchPublicProfessionals, type PublicProfessional } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
 
 /**
@@ -14,10 +14,14 @@ import { useAuthSession } from "../services/useAuthSession";
  * kept as secondary, honestly-labelled tabs rather than removed.
  */
 
+type SearchCursor = { displayName: string; userId: string };
+
 type LoadState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; professionals: PublicProfessional[] };
+  | { status: "ready"; professionals: PublicProfessional[]; cursor: SearchCursor | null; loadingMore: boolean };
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 const CATEGORY_LABELS: Record<string, string> = {
   architect: "Architect",
@@ -70,47 +74,68 @@ export default function NetworkRoute() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [tab, setTab] = useState<NetworkTab>("professionals");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [profession, setProfession] = useState("");
   const [serviceArea, setServiceArea] = useState("");
+  const [debouncedServiceArea, setDebouncedServiceArea] = useState("");
 
-  const hasStructuredFilters = profession !== "" || serviceArea.trim() !== "";
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedServiceArea(serviceArea), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [serviceArea]);
+
+  const hasAnyFilter = profession !== "" || debouncedServiceArea.trim() !== "" || debouncedQuery.trim() !== "";
 
   const load = useCallback(() => {
     setState({ status: "loading" });
-    fetchPublicProfessionals({ category: profession || undefined, serviceArea: serviceArea || undefined })
-      .then((professionals) => setState({ status: "ready", professionals }))
+    searchPublicProfessionals({
+      q: debouncedQuery || undefined,
+      category: profession || undefined,
+      serviceArea: debouncedServiceArea || undefined,
+    })
+      .then((page) => setState({ status: "ready", professionals: page.items, cursor: page.nextCursor, loadingMore: false }))
       .catch((error: unknown) =>
         setState({ status: "error", message: error instanceof Error ? error.message : "Network could not be loaded." })
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profession, serviceArea]);
+  }, [profession, debouncedServiceArea, debouncedQuery]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    if (state.status !== "ready") return [];
-    const needle = query.trim().toLowerCase();
-    if (!needle) return state.professionals;
-    return state.professionals.filter((pro) => {
-      const haystack = [
-        pro.profile?.display_name,
-        pro.company_name,
-        pro.service_area,
-        pro.category ? CATEGORY_LABELS[pro.category] ?? pro.category : null,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(needle);
-    });
-  }, [state, query]);
+  function loadMore() {
+    if (state.status !== "ready" || !state.cursor || state.loadingMore) return;
+    const cursor = state.cursor;
+    setState({ ...state, loadingMore: true });
+    searchPublicProfessionals({
+      q: debouncedQuery || undefined,
+      category: profession || undefined,
+      serviceArea: debouncedServiceArea || undefined,
+      afterDisplayName: cursor.displayName,
+      afterUserId: cursor.userId,
+    })
+      .then((page) =>
+        setState((prev) =>
+          prev.status === "ready"
+            ? { status: "ready", professionals: [...prev.professionals, ...page.items], cursor: page.nextCursor, loadingMore: false }
+            : prev
+        )
+      )
+      .catch(() => setState((prev) => (prev.status === "ready" ? { ...prev, loadingMore: false } : prev)));
+  }
 
   function clearFilters() {
     setProfession("");
     setServiceArea("");
+    setDebouncedServiceArea("");
     setQuery("");
+    setDebouncedQuery("");
   }
 
   return (
@@ -181,13 +206,13 @@ export default function NetworkRoute() {
 
           {state.status === "loading" && <LoadingState label="Loading professionals" />}
           {state.status === "error" && <ErrorState message={state.message} onRetry={load} />}
-          {state.status === "ready" && state.professionals.length === 0 && !hasStructuredFilters && (
+          {state.status === "ready" && state.professionals.length === 0 && !hasAnyFilter && (
             <EmptyState title="No public professional profiles yet" description="Professionals who complete onboarding will appear here." />
           )}
-          {state.status === "ready" && state.professionals.length === 0 && hasStructuredFilters && (
+          {state.status === "ready" && state.professionals.length === 0 && hasAnyFilter && (
             <EmptyState
               title="No professionals match these filters"
-              description="Try a different profession or a broader location, or clear the filters to see everyone."
+              description="Try a different profession, search term, or a broader location, or clear the filters to see everyone."
               action={
                 <button
                   type="button"
@@ -199,12 +224,9 @@ export default function NetworkRoute() {
               }
             />
           )}
-          {state.status === "ready" && state.professionals.length > 0 && filtered.length === 0 && (
-            <EmptyState title="No matches" description={`Nothing found for "${query}".`} />
-          )}
-          {filtered.length > 0 && (
+          {state.status === "ready" && state.professionals.length > 0 && (
             <ul className="flex flex-col gap-3">
-              {filtered.map((pro) => {
+              {state.professionals.map((pro) => {
                 const name = pro.profile?.display_name ?? "SMC professional";
                 return (
                   <Card as="li" key={pro.user_id} className="p-0">
@@ -223,6 +245,16 @@ export default function NetworkRoute() {
                 );
               })}
             </ul>
+          )}
+          {state.status === "ready" && state.cursor && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={state.loadingMore}
+              className="self-center rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--smc-charcoal)] hover:bg-[var(--smc-limestone)] disabled:opacity-60"
+            >
+              {state.loadingMore ? "Loading more…" : "Load more"}
+            </button>
           )}
         </>
       )}

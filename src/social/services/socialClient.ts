@@ -28,17 +28,6 @@ export interface PublicProfessional {
   profile: PublicAuthor | null;
 }
 
-export interface ProfessionalDiscoveryFilters {
-  /** `professional_profiles.category` — a bounded enum, matched exactly. */
-  category?: string;
-  /** Free-text match against `professional_profiles.service_area` (the only
-   *  location/coverage-area field the schema has — there is no separate
-   *  "location" column, so this filter covers both concepts honestly rather
-   *  than a fabricated second field). */
-  serviceArea?: string;
-  limit?: number;
-}
-
 export class SocialUnavailableError extends Error {
   constructor(message = "This requires a configured Supabase connection.") {
     super(message);
@@ -64,23 +53,84 @@ export async function fetchPublicFeed(limit = 20): Promise<FeedPost[]> {
   return (data ?? []) as unknown as FeedPost[];
 }
 
+const SEARCH_MIN_PAGE_SIZE = 1;
+const SEARCH_MAX_PAGE_SIZE = 50;
+const SEARCH_DEFAULT_PAGE_SIZE = 20;
+
+function clampSearchPageSize(size: number | undefined): number {
+  if (size === undefined || !Number.isFinite(size)) return SEARCH_DEFAULT_PAGE_SIZE;
+  return Math.min(Math.max(Math.trunc(size), SEARCH_MIN_PAGE_SIZE), SEARCH_MAX_PAGE_SIZE);
+}
+
+export interface ProfessionalSearchFilters {
+  /** Free-text match against display name, company name, and service area (server-side, via `search_public_professionals`). */
+  q?: string;
+  /** `professional_profiles.category` — a bounded enum, matched exactly. */
+  category?: string;
+  /** Free-text match against `professional_profiles.service_area`. */
+  serviceArea?: string;
+  pageSize?: number;
+  /** Keyset cursor — both fields must be provided together (the RPC rejects a partial cursor), or both omitted for the first page. */
+  afterDisplayName?: string;
+  afterUserId?: string;
+}
+
+export interface ProfessionalSearchPage {
+  items: PublicProfessional[];
+  /** Present only when the RPC's one-row overfetch confirms a next page exists. */
+  nextCursor: { displayName: string; userId: string } | null;
+}
+
+interface SearchProfessionalRow {
+  user_id: string;
+  display_name: string;
+  username: string | null;
+  avatar_path: string | null;
+  account_type: AccountType;
+  category: string | null;
+  company_name: string | null;
+  service_area: string | null;
+}
+
 /**
- * Guest-safe: reads only public professional profiles. Filters are applied
- * server-side (not just over an already-fetched page) so a profession or
- * service-area filter reflects the real matching set, not a truncated one.
+ * Guest-safe: calls the `search_public_professionals` SECURITY INVOKER RPC.
+ * RLS (`profiles_public_read`/`professional_profiles_public_read`) applies
+ * exactly as it does for any other query; the RPC additionally excludes
+ * onboarding-incomplete professionals, scoped to this function only — no
+ * general RLS policy changed. The RPC overfetches by one row so `nextCursor`
+ * reflects a real next page rather than an assumption.
  */
-export async function fetchPublicProfessionals(filters: ProfessionalDiscoveryFilters = {}): Promise<PublicProfessional[]> {
-  if (!isSupabaseConfigured) return [];
-  let query = getSupabaseClient()
-    .from("professional_profiles")
-    .select("user_id, category, company_name, service_area, profile:profiles(id, display_name, username, avatar_path, account_type)")
-    .limit(filters.limit ?? 50);
-  if (filters.category) query = query.eq("category", filters.category);
-  const serviceArea = filters.serviceArea?.trim();
-  if (serviceArea) query = query.ilike("service_area", `%${serviceArea}%`);
-  const { data, error } = await query;
+export async function searchPublicProfessionals(filters: ProfessionalSearchFilters = {}): Promise<ProfessionalSearchPage> {
+  if (!isSupabaseConfigured) return { items: [], nextCursor: null };
+  const pageSize = clampSearchPageSize(filters.pageSize);
+  const { data, error } = await getSupabaseClient().rpc("search_public_professionals", {
+    q: filters.q?.trim() || null,
+    category_filter: filters.category || null,
+    service_area_filter: filters.serviceArea?.trim() || null,
+    after_display_name: filters.afterDisplayName ?? null,
+    after_user_id: filters.afterUserId ?? null,
+    page_size: pageSize,
+  });
   if (error) throw new Error("Professionals could not be loaded. Please try again.");
-  return (data ?? []) as unknown as PublicProfessional[];
+  const rows = (data ?? []) as SearchProfessionalRow[];
+  const hasMore = rows.length > pageSize;
+  const page = hasMore ? rows.slice(0, pageSize) : rows;
+  const items: PublicProfessional[] = page.map((row) => ({
+    user_id: row.user_id,
+    category: row.category,
+    company_name: row.company_name,
+    service_area: row.service_area,
+    profile: {
+      id: row.user_id,
+      display_name: row.display_name,
+      username: row.username,
+      avatar_path: row.avatar_path,
+      account_type: row.account_type,
+    },
+  }));
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? { displayName: last.display_name, userId: last.user_id } : null;
+  return { items, nextCursor };
 }
 
 export interface OwnProfile extends PublicAuthor {
