@@ -92,7 +92,18 @@ export function PostCard({
           <div>
             <p className="text-sm font-semibold text-[var(--smc-charcoal)] hover:underline">{authorName}</p>
             {professionalLine && <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">{professionalLine}</p>}
-            <p className="text-xs text-[var(--smc-charcoal-faint)]">{timeAgo(post.created_at)}</p>
+            <p className="text-xs text-[var(--smc-charcoal-faint)]">
+              {timeAgo(post.created_at)}
+              {/* Sourced directly from post_type — a general post shows no badge, and an
+                  unrecognised future value (e.g. a type this client predates) also shows
+                  none rather than being coerced into "Portfolio". */}
+              {post.post_type === "portfolio" && (
+                <>
+                  {" · "}
+                  <span className="font-semibold text-[var(--smc-charcoal-soft)]">Portfolio</span>
+                </>
+              )}
+            </p>
           </div>
         </Link>
         {canSave && (

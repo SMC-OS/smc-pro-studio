@@ -2,6 +2,13 @@ import { getSupabaseClient, isSupabaseConfigured } from "../../services/supabase
 
 export type ContentVisibility = "public" | "followers" | "connections" | "project" | "private";
 export type AccountType = "customer" | "professional";
+/**
+ * Mirrors public.post_type exactly (Phase 3 Slice G). Only 'general' and
+ * 'portfolio' are shipped — field_update/project_update/opportunity remain
+ * deferred (see tasks/todo.md) and must not be added here ahead of the
+ * schema that would back them.
+ */
+export type PostType = "general" | "portfolio";
 
 export interface PublicAuthor {
   id: string;
@@ -21,6 +28,7 @@ export interface FeedPost {
   author_id: string;
   body: string | null;
   visibility: ContentVisibility;
+  post_type: PostType;
   created_at: string;
   /** `professional` is only populated by queries that ask for it (currently just fetchHomeFeed) — optional so fetchPublicPostsByAuthor's narrower select still satisfies this shared type. */
   author: (PublicAuthor & { professional?: FeedAuthorProfessionalSummary | null }) | null;
@@ -75,14 +83,19 @@ const HOME_FEED_PAGE_SIZE = 20;
  * Keyset-paginated on (created_at, id) descending, both already indexable
  * without a new migration; the id tiebreaker keeps pages stable even when
  * two posts share a created_at timestamp.
+ *
+ * The author embed is disambiguated with `!posts_author_id_fkey` because
+ * `posts` and `profiles` have three relationship paths (the direct
+ * many-to-one FK, plus many-to-many via `reactions` and via `saved_posts`)
+ * — PostgREST returns PGRST201 on the plain `profiles(...)` shorthand here.
  */
 export async function fetchHomeFeed(cursor: HomeFeedCursor | null = null, pageSize = HOME_FEED_PAGE_SIZE): Promise<HomeFeedPage> {
   if (!isSupabaseConfigured) return { posts: [], nextCursor: null };
   let query = getSupabaseClient()
     .from("posts")
     .select(
-      "id, author_id, body, visibility, created_at, " +
-        "author:profiles(id, display_name, username, avatar_path, account_type, professional:professional_profiles(category, company_name))"
+      "id, author_id, body, visibility, post_type, created_at, " +
+        "author:profiles!posts_author_id_fkey(id, display_name, username, avatar_path, account_type, professional:professional_profiles(category, company_name))"
     )
     .eq("moderation_status", "visible")
     .order("created_at", { ascending: false })
@@ -206,7 +219,7 @@ export async function fetchOwnProfile(): Promise<OwnProfile | null> {
   return data as OwnProfile | null;
 }
 
-export async function createPost(input: { body: string; visibility: ContentVisibility }): Promise<void> {
+export async function createPost(input: { body: string; visibility: ContentVisibility; postType: PostType }): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError || !userData.user) throw new Error("Sign in to post.");
@@ -217,6 +230,7 @@ export async function createPost(input: { body: string; visibility: ContentVisib
     author_id: userData.user.id,
     body,
     visibility: input.visibility,
+    post_type: input.postType,
   });
   if (error) throw new Error("The post could not be published. Please try again.");
 }
@@ -349,12 +363,15 @@ export async function fetchPublicProfileById(userId: string): Promise<PublicProf
  * author, `posts_owner_read` for the author themselves). No separate
  * visibility logic here — the query goes through the normal anon/
  * authenticated client, so Postgres RLS does the filtering, not this code.
+ *
+ * Same `!posts_author_id_fkey` disambiguation as fetchHomeFeed — see its
+ * comment for why the plain `profiles(...)` shorthand fails here (PGRST201).
  */
 export async function fetchPublicPostsByAuthor(authorId: string, limit = 5): Promise<FeedPost[]> {
   if (!isSupabaseConfigured) return [];
   const { data, error } = await getSupabaseClient()
     .from("posts")
-    .select("id, author_id, body, visibility, created_at, author:profiles(id, display_name, username, avatar_path, account_type)")
+    .select("id, author_id, body, visibility, post_type, created_at, author:profiles!posts_author_id_fkey(id, display_name, username, avatar_path, account_type)")
     .eq("author_id", authorId)
     .eq("moderation_status", "visible")
     .order("created_at", { ascending: false })

@@ -35,6 +35,7 @@ const FAKE_POST: FeedPost = {
   author_id: "00000000-0000-0000-0000-0000000000aa",
   body: "Preview post used only to review the reaction, comment, and save controls — not real content.",
   visibility: "public",
+  post_type: "general",
   created_at: new Date(0).toISOString(),
   author: {
     id: "00000000-0000-0000-0000-0000000000aa",
