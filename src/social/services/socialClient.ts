@@ -11,13 +11,19 @@ export interface PublicAuthor {
   account_type: AccountType;
 }
 
+export interface FeedAuthorProfessionalSummary {
+  category: string | null;
+  company_name: string | null;
+}
+
 export interface FeedPost {
   id: string;
   author_id: string;
   body: string | null;
   visibility: ContentVisibility;
   created_at: string;
-  author: PublicAuthor | null;
+  /** `professional` is only populated by queries that ask for it (currently just fetchHomeFeed) — optional so fetchPublicPostsByAuthor's narrower select still satisfies this shared type. */
+  author: (PublicAuthor & { professional?: FeedAuthorProfessionalSummary | null }) | null;
 }
 
 export interface PublicProfessional {
@@ -40,17 +46,65 @@ function requireClient() {
   return getSupabaseClient();
 }
 
-/** Guest-safe: reads only rows the `posts_public_read` RLS policy exposes. */
-export async function fetchPublicFeed(limit = 20): Promise<FeedPost[]> {
-  if (!isSupabaseConfigured) return [];
-  const { data, error } = await getSupabaseClient()
+export interface HomeFeedCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface HomeFeedPage {
+  posts: FeedPost[];
+  /** Present only when the one-row overfetch confirms a next page exists. */
+  nextCursor: HomeFeedCursor | null;
+}
+
+const HOME_FEED_PAGE_SIZE = 20;
+
+/**
+ * Relationship-aware Home feed. This issues exactly one query, unfiltered by
+ * visibility or relationship, and lets `posts`' existing RLS policies decide
+ * which rows come back: `posts_public_read` (guests and members alike),
+ * `posts_owner_read` (the signed-in caller's own posts), and
+ * `posts_relationship_read` (followers/connections-visibility posts where
+ * the caller genuinely has that relationship) are OR'd together by Postgres
+ * itself — nothing here re-implements or narrows that logic. The only
+ * client-side filter is `moderation_status = 'visible'`, which is a content
+ * display choice (don't surface a post you removed yourself), not an
+ * authorization check — every RLS branch except posts_owner_read already
+ * requires it anyway.
+ *
+ * Keyset-paginated on (created_at, id) descending, both already indexable
+ * without a new migration; the id tiebreaker keeps pages stable even when
+ * two posts share a created_at timestamp.
+ */
+export async function fetchHomeFeed(cursor: HomeFeedCursor | null = null, pageSize = HOME_FEED_PAGE_SIZE): Promise<HomeFeedPage> {
+  if (!isSupabaseConfigured) return { posts: [], nextCursor: null };
+  let query = getSupabaseClient()
     .from("posts")
-    .select("id, author_id, body, visibility, created_at, author:profiles(id, display_name, username, avatar_path, account_type)")
-    .eq("visibility", "public")
+    .select(
+      "id, author_id, body, visibility, created_at, " +
+        "author:profiles(id, display_name, username, avatar_path, account_type, professional:professional_profiles(category, company_name))"
+    )
+    .eq("moderation_status", "visible")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    .limit(pageSize + 1);
+  if (cursor) {
+    // Double-quoted: PostgREST's or()/and() grouped-filter grammar treats
+    // "." and ":" as reserved inside a value (unlike a plain top-level
+    // filter, where an unquoted ISO timestamp is fine) — quoting removes
+    // any ambiguity for the timestamp. The uuid id needs no quoting, since
+    // hyphens aren't reserved there.
+    const quotedCreatedAt = JSON.stringify(cursor.createdAt);
+    query = query.or(`created_at.lt.${quotedCreatedAt},and(created_at.eq.${quotedCreatedAt},id.lt.${cursor.id})`);
+  }
+  const { data, error } = await query;
   if (error) throw new Error("The feed could not be loaded. Please try again.");
-  return (data ?? []) as unknown as FeedPost[];
+  const rows = (data ?? []) as unknown as FeedPost[];
+  const hasMore = rows.length > pageSize;
+  const page = hasMore ? rows.slice(0, pageSize) : rows;
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? { createdAt: last.created_at, id: last.id } : null;
+  return { posts: page, nextCursor };
 }
 
 const SEARCH_MIN_PAGE_SIZE = 1;

@@ -21,6 +21,22 @@ function timeAgo(iso: string): string {
 
 const EMPTY_ENGAGEMENT: PostEngagement = { reactionCount: 0, commentCount: 0, reactedByMe: false };
 
+// Mirrors the public.professional_category enum exactly (same source of
+// truth as NetworkRoute.tsx's/PublicProfileRoute.tsx's CATEGORY_LABELS) —
+// no invented categories.
+const CATEGORY_LABELS: Record<string, string> = {
+  architect: "Architect",
+  interior_designer: "Interior Designer",
+  stone_fabricator: "Stone Fabricator",
+  stone_supplier: "Stone Supplier",
+  installer: "Installer",
+  contractor: "Contractor",
+  developer: "Developer",
+  construction_professional: "Construction Professional",
+  smc_team: "SMC Team",
+  other: "Professional",
+};
+
 export function PostCard({
   post,
   auth,
@@ -46,6 +62,13 @@ export function PostCard({
   const canInteract = auth.status === "authenticated";
   const knownEngagement = engagement ?? EMPTY_ENGAGEMENT;
 
+  // Only real, public-readable data — a customer or a professional who
+  // hasn't filled in a category/company simply shows nothing extra here,
+  // never a placeholder.
+  const professional = post.author?.account_type === "professional" ? post.author.professional : null;
+  const categoryLabel = professional?.category ? CATEGORY_LABELS[professional.category] ?? professional.category : null;
+  const professionalLine = [categoryLabel, professional?.company_name].filter(Boolean).join(" · ");
+
   async function toggleSave() {
     if (busy) return;
     setBusy(true);
@@ -68,6 +91,7 @@ export function PostCard({
           <Avatar name={authorName} size={38} />
           <div>
             <p className="text-sm font-semibold text-[var(--smc-charcoal)] hover:underline">{authorName}</p>
+            {professionalLine && <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">{professionalLine}</p>}
             <p className="text-xs text-[var(--smc-charcoal-faint)]">{timeAgo(post.created_at)}</p>
           </div>
         </Link>
