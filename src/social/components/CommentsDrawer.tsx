@@ -70,15 +70,65 @@ export function CommentsDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, postId]);
 
+  // Kept in a ref (rather than an effect dependency) so this effect only
+  // re-runs when `open` itself changes, not on every parent re-render that
+  // happens to pass a fresh `onClose` closure (PostCard passes an inline
+  // arrow function) — otherwise a background engagement update while the
+  // drawer is open would yank focus back to the close button mid-keystroke.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButtonRef.current?.focus();
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
+
+    function getFocusable(): HTMLElement[] {
+      const panel = panelRef.current;
+      if (!panel) return [];
+      return Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
     }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = getFocusable();
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      const withinPanel = active instanceof Node && panelRef.current?.contains(active);
+      if (event.shiftKey) {
+        if (!withinPanel || active === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (!withinPanel || active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      // Restore focus to whatever triggered the drawer, on every close path
+      // (Escape, overlay click, close button, or the parent unmounting it) —
+      // but only if that element is still around to receive it.
+      if (previouslyFocused && document.body.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+    };
+  }, [open]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();

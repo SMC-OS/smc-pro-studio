@@ -84,7 +84,7 @@ export default function InteractionPreviewRoute() {
           post={FAKE_POST}
           auth={auth}
           canSave={authMode === "authenticated"}
-          engagement={{ reactionCount: 3, commentCount: 2, reactedByMe: false }}
+          engagement={{ status: "confirmed", value: { reactionCount: 3, commentCount: 2, reactedByMe: false } }}
         />
       </Card>
 

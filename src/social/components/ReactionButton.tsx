@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Heart } from "lucide-react";
 import { motion, useReducedMotion, type Transition } from "motion/react";
 import { reactToPost, unreactToPost } from "../services/socialClient";
@@ -17,18 +17,22 @@ export function ReactionButton({
   postId,
   count,
   reacted,
+  unavailable = false,
   canReact,
   onSignInRequired,
 }: {
   postId: string;
-  count: number;
+  /** null = engagement not yet confirmed for this post — rendered as an honest placeholder, never as 0. */
+  count: number | null;
   reacted: boolean;
+  /** True when the last engagement fetch for this post failed — count shown as unavailable, distinct from "loading". */
+  unavailable?: boolean;
   /** Reacting requires a signed-in user — guests still see the real count. */
   canReact: boolean;
   onSignInRequired?: () => void;
 }) {
   const [isReacted, setIsReacted] = useState(reacted);
-  const [displayCount, setDisplayCount] = useState(count);
+  const [displayCount, setDisplayCount] = useState<number | null>(count);
   const [busy, setBusy] = useState(false);
   // A ref (not the `busy` state) guards re-entrancy: state updates are async, so two clicks
   // fired before the first re-render commits could both read `busy === false` from a stale
@@ -36,6 +40,16 @@ export function ReactionButton({
   const inFlight = useRef(false);
   const prefersReducedMotion = useReducedMotion();
   const popTransition: Transition = prefersReducedMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" };
+
+  // Resync to the parent's confirmed values whenever they change (e.g. the
+  // initial engagement fetch resolves, or a retry succeeds after a failure)
+  // — but never while a toggle is in flight, so a fresh optimistic update
+  // isn't stomped by the pre-toggle state it's about to supersede.
+  useEffect(() => {
+    if (inFlight.current) return;
+    setIsReacted(reacted);
+    setDisplayCount(count);
+  }, [reacted, count]);
 
   async function toggle() {
     if (!canReact) {
@@ -47,19 +61,21 @@ export function ReactionButton({
     setBusy(true);
     const next = !isReacted;
     setIsReacted(next);
-    setDisplayCount((current) => current + (next ? 1 : -1));
+    setDisplayCount((current) => (current ?? 0) + (next ? 1 : -1));
     try {
       if (next) await reactToPost(postId);
       else await unreactToPost(postId);
     } catch {
       // Revert — the request didn't actually succeed, so the UI shouldn't claim it did.
       setIsReacted(!next);
-      setDisplayCount((current) => current + (next ? -1 : 1));
+      setDisplayCount((current) => (current === null ? null : current + (next ? -1 : 1)));
     } finally {
       inFlight.current = false;
       setBusy(false);
     }
   }
+
+  const countLabel = displayCount === null ? (unavailable ? "–" : "…") : String(displayCount);
 
   return (
     <button
@@ -81,7 +97,7 @@ export function ReactionButton({
           style={{ color: isReacted ? "var(--smc-mineral-clay)" : undefined }}
         />
       </motion.span>
-      <span className="tabular-nums">{displayCount}</span>
+      <span className="tabular-nums">{countLabel}</span>
     </button>
   );
 }

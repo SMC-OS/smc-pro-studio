@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bookmark, BookmarkCheck, MessageCircle } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Avatar, Card } from "./ui";
@@ -19,7 +19,15 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
-const EMPTY_ENGAGEMENT: PostEngagement = { reactionCount: 0, commentCount: 0, reactedByMe: false };
+/**
+ * Tri-state so Home can distinguish "not yet confirmed" from "confirmed
+ * genuine zero" from "the fetch failed" — a fabricated zero for the first
+ * or third case would misrepresent real engagement data.
+ */
+export type EngagementView =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "confirmed"; value: PostEngagement };
 
 // Mirrors the public.professional_category enum exactly (same source of
 // truth as NetworkRoute.tsx's/PublicProfileRoute.tsx's CATEGORY_LABELS) —
@@ -43,24 +51,64 @@ export function PostCard({
   canSave,
   initiallySaved = false,
   engagement,
+  onEngagementMutated,
 }: {
   post: FeedPost;
   auth: AuthSessionState;
   /** Save requires a signed-in user — guests still see the post, just not the affordance. */
   canSave: boolean;
   initiallySaved?: boolean;
-  /** Undefined means the count couldn't be confirmed yet — rendered as "unknown", never guessed as zero. */
-  engagement?: PostEngagement;
+  /** Loading/failed/confirmed — never collapsed into a fabricated zero. */
+  engagement: EngagementView;
+  /**
+   * Notifies the parent that a reaction/comment mutation for this post just
+   * succeeded server-side, so it can issue a fresh, authoritative engagement
+   * refresh — see the matching comment on HomeRoute's notifyEngagementMutated.
+   */
+  onEngagementMutated?: (postId: string) => void;
 }) {
   const [saved, setSaved] = useState(initiallySaved);
   const [busy, setBusy] = useState(false);
-  const [commentCount, setCommentCount] = useState(engagement?.commentCount ?? 0);
+  // Comments are added/removed through this card's own CommentsDrawer as
+  // server-confirmed deltas (see onCommentCountChange below) — tracked
+  // separately from the fetched `engagement` so a comment posted before the
+  // initial engagement fetch resolves isn't lost, and so a later confirmed
+  // resync (e.g. after a retry) doesn't have to guess whether it already
+  // includes this card's own local changes.
+  const [commentDelta, setCommentDelta] = useState(0);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const navigate = useNavigate();
 
   const authorName = post.author?.display_name ?? "SMC member";
   const canInteract = auth.status === "authenticated";
-  const knownEngagement = engagement ?? EMPTY_ENGAGEMENT;
+
+  const confirmedCommentCount = engagement.status === "confirmed" ? engagement.value.commentCount : null;
+  // A freshly-arrived confirmed count is always the result of the
+  // most-recently-issued fetch for this post (per HomeRoute's per-id
+  // sequencing), so once it changes it is guaranteed to already reflect
+  // every local mutation made through this card up to that point — the
+  // local delta must then be dropped, not added on top (which would
+  // double-count), and future mutations start accumulating fresh from
+  // this new baseline. Depends on the primitive count, not the
+  // `engagement` object identity, which changes on every unrelated
+  // HomeRoute re-render.
+  const lastConfirmedCommentCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (confirmedCommentCount === null) return;
+    if (lastConfirmedCommentCountRef.current === confirmedCommentCount) return;
+    lastConfirmedCommentCountRef.current = confirmedCommentCount;
+    setCommentDelta(0);
+  }, [confirmedCommentCount]);
+  const commentCount =
+    confirmedCommentCount === null
+      ? commentDelta !== 0
+        ? Math.max(0, commentDelta)
+        : null
+      : Math.max(0, confirmedCommentCount + commentDelta);
+  const commentCountLabel = commentCount === null ? (engagement.status === "failed" ? "–" : "…") : String(commentCount);
+
+  const reactionCount = engagement.status === "confirmed" ? engagement.value.reactionCount : null;
+  const reactedByMe = engagement.status === "confirmed" ? engagement.value.reactedByMe : false;
 
   // Only real, public-readable data — a customer or a professional who
   // hasn't filled in a category/company simply shows nothing extra here,
@@ -129,19 +177,20 @@ export function PostCard({
       <div className="mt-3 flex items-center gap-1 border-t border-[var(--smc-border)] pt-2">
         <ReactionButton
           postId={post.id}
-          count={knownEngagement.reactionCount}
-          reacted={knownEngagement.reactedByMe}
+          count={reactionCount}
+          reacted={reactedByMe}
+          unavailable={engagement.status === "failed"}
           canReact={canInteract}
           onSignInRequired={() => navigate("/auth")}
         />
         <button
           type="button"
           onClick={() => setCommentsOpen(true)}
-          aria-label={`View comments (${commentCount})`}
+          aria-label={commentCount === null ? "View comments (count unavailable)" : `View comments (${commentCount})`}
           className="flex items-center gap-1.5 rounded-[var(--smc-radius-pill)] px-2 py-1.5 text-sm text-[var(--smc-charcoal-soft)] transition-colors hover:bg-[var(--smc-limestone)]"
         >
           <MessageCircle className="h-[18px] w-[18px]" aria-hidden="true" />
-          <span className="tabular-nums">{commentCount}</span>
+          <span className="tabular-nums">{commentCountLabel}</span>
         </button>
       </div>
 
@@ -159,7 +208,7 @@ export function PostCard({
         open={commentsOpen}
         onClose={() => setCommentsOpen(false)}
         auth={auth}
-        onCommentCountChange={(delta) => setCommentCount((current) => Math.max(0, current + delta))}
+        onCommentCountChange={(delta) => setCommentDelta((current) => current + delta)}
       />
     </Card>
   );

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { StoriesTray } from "../components/StoriesTray";
-import { PostCard } from "../components/PostCard";
+import { PostCard, type EngagementView } from "../components/PostCard";
 import { EditorialHeading } from "../components/ui";
 import { fetchHomeFeed, fetchMySavedPostIds, fetchPostEngagement, type FeedPost, type HomeFeedCursor, type PostEngagement } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
@@ -16,16 +16,49 @@ export default function HomeRoute() {
   const auth = useAuthSession();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  // Confirmed engagement, accumulated across fetches — an entry here is a
+  // real, server-confirmed result (including genuine zero) and is never
+  // removed once set.
   const [engagement, setEngagement] = useState<Map<string, PostEngagement>>(new Map());
+  // Post ids whose most recent engagement fetch failed — distinct from "not
+  // yet requested"/"in flight" (neither of which appears in this set), so
+  // Home can render "unavailable" instead of guessing zero.
+  const [failedEngagementIds, setFailedEngagementIds] = useState<Set<string>>(new Set());
+  // Every id ever requested (whether it ended up confirmed or failed) —
+  // once an id is here the automatic fetch effect leaves it alone, even
+  // after a failure. Otherwise a failed id would look "missing" again on
+  // the next unrelated state change (e.g. clicking "load more") and get
+  // silently re-fetched, making the explicit Retry control below
+  // meaningless; it also dedupes an id across effect re-runs so it's never
+  // requested twice concurrently.
+  const attemptedEngagementIdsRef = useRef<Set<string>>(new Set());
+  // Per-post sequence number, bumped every time a fetch is issued for that
+  // id (initial batch, Retry, or a post-mutation refresh — see
+  // notifyEngagementMutated). A response is only ever applied if its
+  // captured sequence still matches the current one for that id, so an
+  // older, slower-resolving request (e.g. the initial fetch, still in
+  // flight when a comment/reaction mutation fires its own refresh) can
+  // never overwrite a result from a request issued after it — only the
+  // most-recently-issued request for a given id can ever win.
+  const engagementSeqRef = useRef<Map<string, number>>(new Map());
 
   // Every load() bumps this so an in-flight request whose auth context has
   // since changed (or been superseded by a newer load()) can recognise
   // itself as stale and discard its result instead of overwriting state
   // with the wrong user's rows.
   const requestIdRef = useRef(0);
+  // Bumped alongside a full reload so a late-resolving engagement fetch from
+  // the previous auth/feed context can recognise itself as superseded and
+  // discard its result rather than overwrite state for the new context.
+  const engagementGenerationRef = useRef(0);
 
   const load = useCallback(() => {
     const requestId = ++requestIdRef.current;
+    engagementGenerationRef.current += 1;
+    attemptedEngagementIdsRef.current = new Set();
+    engagementSeqRef.current = new Map();
+    setEngagement(new Map());
+    setFailedEngagementIds(new Set());
     setState({ status: "loading" });
     fetchHomeFeed(null)
       .then((page) => {
@@ -37,6 +70,78 @@ export default function HomeRoute() {
         setState({ status: "error", message: error instanceof Error ? error.message : "The feed could not be loaded." });
       });
   }, []);
+
+  // Fetches engagement for exactly the given ids and merges/records the
+  // result, guarded against both duplicate concurrent requests for the same
+  // id and results from a superseded (pre-reload) generation. Per-id
+  // sequence numbers additionally guard against a *same-generation* but
+  // now-stale request (an earlier fetch for an id that a later request —
+  // Retry, or a post-mutation refresh — has since superseded): each id's
+  // result is only applied if no newer request for that specific id has
+  // been issued since this one started.
+  const fetchEngagementFor = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const generation = engagementGenerationRef.current;
+    const seqs = new Map<string, number>();
+    for (const id of ids) {
+      attemptedEngagementIdsRef.current.add(id);
+      const seq = (engagementSeqRef.current.get(id) ?? 0) + 1;
+      engagementSeqRef.current.set(id, seq);
+      seqs.set(id, seq);
+    }
+    const isCurrent = (id: string) => engagementSeqRef.current.get(id) === seqs.get(id);
+    fetchPostEngagement(ids)
+      .then((map) => {
+        if (engagementGenerationRef.current !== generation) return;
+        setEngagement((prev) => {
+          const merged = new Map(prev);
+          for (const [id, value] of map) {
+            if (isCurrent(id)) merged.set(id, value);
+          }
+          return merged;
+        });
+        setFailedEngagementIds((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set(prev);
+          for (const id of ids) {
+            if (isCurrent(id)) next.delete(id);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        if (engagementGenerationRef.current !== generation) return;
+        setFailedEngagementIds((prev) => {
+          const next = new Set(prev);
+          for (const id of ids) {
+            if (isCurrent(id)) next.add(id);
+          }
+          return next;
+        });
+      });
+  }, []);
+
+  const retryEngagement = useCallback(() => {
+    const ids = Array.from(failedEngagementIds);
+    if (ids.length === 0) return;
+    setFailedEngagementIds(new Set());
+    fetchEngagementFor(ids);
+  }, [failedEngagementIds, fetchEngagementFor]);
+
+  // Called after a reaction/comment mutation for a post actually succeeds
+  // server-side. Issues a fresh, authoritative engagement fetch for just
+  // that post — superseding (via the per-id sequence check above) any
+  // older fetch still in flight for it, so a slower request that started
+  // before the mutation can never land afterward and either double-count
+  // it (already-included in that older read, plus the local optimistic
+  // delta on top) or silently revert it (older read predates the
+  // mutation). Only the freshest request for a given id is ever applied.
+  const notifyEngagementMutated = useCallback(
+    (postId: string) => {
+      fetchEngagementFor([postId]);
+    },
+    [fetchEngagementFor]
+  );
 
   // Same identity while merely re-authenticating as the same signed-in user
   // (e.g. a token refresh event) — a real key change means the definitive,
@@ -94,15 +199,22 @@ export default function HomeRoute() {
 
   useEffect(() => {
     if (state.status !== "ready" || state.posts.length === 0) return;
-    let cancelled = false;
-    fetchPostEngagement(state.posts.map((post) => post.id)).then((map) => {
-      if (!cancelled) setEngagement(map);
-    });
-    return () => {
-      cancelled = true;
-    };
+    // Only auto-fetch ids that have never been requested — avoids
+    // re-fetching (and flashing) already-known posts every time `state`
+    // changes for an unrelated reason (e.g. a "load more" in flight), and
+    // avoids silently re-attempting a failed id outside the explicit Retry
+    // control.
+    const missing = state.posts.map((post) => post.id).filter((id) => !attemptedEngagementIdsRef.current.has(id));
+    fetchEngagementFor(missing);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+
+  function engagementViewFor(postId: string): EngagementView {
+    const confirmed = engagement.get(postId);
+    if (confirmed) return { status: "confirmed", value: confirmed };
+    if (failedEngagementIds.has(postId)) return { status: "failed" };
+    return { status: "loading" };
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -142,11 +254,29 @@ export default function HomeRoute() {
                     auth={auth}
                     canSave={auth.status === "authenticated"}
                     initiallySaved={savedIds.has(post.id)}
-                    engagement={engagement.get(post.id)}
+                    engagement={engagementViewFor(post.id)}
+                    onEngagementMutated={notifyEngagementMutated}
                   />
                 </li>
               ))}
             </ul>
+          )}
+          {state.status === "ready" && failedEngagementIds.size > 0 && (
+            <div
+              role="alert"
+              className="mx-auto mt-3 flex max-w-sm flex-col items-center gap-2 rounded-[var(--smc-radius-card)] border border-[var(--smc-mineral-clay)]/40 bg-[var(--smc-surface-raised)] px-4 py-3 text-center"
+            >
+              <p className="text-sm font-medium text-[var(--smc-charcoal)]">
+                Some reaction and comment counts couldn't be loaded.
+              </p>
+              <button
+                type="button"
+                onClick={retryEngagement}
+                className="rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--smc-charcoal)] hover:bg-[var(--smc-limestone)]"
+              >
+                Retry
+              </button>
+            </div>
           )}
           {state.status === "ready" && state.cursor && !state.loadMoreError && (
             <button

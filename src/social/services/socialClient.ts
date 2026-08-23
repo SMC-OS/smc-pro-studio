@@ -384,9 +384,11 @@ export async function fetchPublicPostsByAuthor(authorId: string, limit = 5): Pro
 // Post engagement: reaction/comment counts + the signed-in user's own state.
 // Real counts only — computed by counting the rows RLS actually lets us
 // read (guests get real counts too, since reactions/comments select is
-// granted to anon for anything can_view_post() allows). On a fetch error we
-// deliberately return an empty map rather than guessing zeros for posts we
-// couldn't check — callers treat "missing entry" as "unknown", not "zero".
+// granted to anon for anything can_view_post() allows). On a fetch error
+// this throws (same convention as every other mutating/read call in this
+// file) rather than returning a fabricated empty map — callers must catch
+// it and keep whichever posts were already confirmed rather than treating
+// "fetch failed" as "zero engagement".
 // ==========================================================================
 
 export interface PostEngagement {
@@ -399,30 +401,26 @@ export async function fetchPostEngagement(postIds: string[]): Promise<Map<string
   const map = new Map<string, PostEngagement>();
   if (postIds.length === 0 || !isSupabaseConfigured) return map;
   const client = getSupabaseClient();
-  try {
-    const [{ data: reactions, error: reactionsError }, { data: comments, error: commentsError }, { data: userData }] = await Promise.all([
-      client.from("reactions").select("post_id, user_id").in("post_id", postIds),
-      client.from("comments").select("post_id").eq("moderation_status", "visible").in("post_id", postIds),
-      client.auth.getUser(),
-    ]);
-    if (reactionsError || commentsError) return map;
-    const myId = userData.user?.id ?? null;
-    for (const id of postIds) map.set(id, { reactionCount: 0, commentCount: 0, reactedByMe: false });
-    for (const row of reactions ?? []) {
-      const entry = map.get(row.post_id as string);
-      if (!entry) continue;
-      entry.reactionCount += 1;
-      if (myId && row.user_id === myId) entry.reactedByMe = true;
-    }
-    for (const row of comments ?? []) {
-      const entry = map.get(row.post_id as string);
-      if (!entry) continue;
-      entry.commentCount += 1;
-    }
-    return map;
-  } catch {
-    return new Map();
+  const [{ data: reactions, error: reactionsError }, { data: comments, error: commentsError }, { data: userData }] = await Promise.all([
+    client.from("reactions").select("post_id, user_id").in("post_id", postIds),
+    client.from("comments").select("post_id").eq("moderation_status", "visible").in("post_id", postIds),
+    client.auth.getUser(),
+  ]);
+  if (reactionsError || commentsError) throw new Error("Engagement counts could not be loaded. Please try again.");
+  const myId = userData.user?.id ?? null;
+  for (const id of postIds) map.set(id, { reactionCount: 0, commentCount: 0, reactedByMe: false });
+  for (const row of reactions ?? []) {
+    const entry = map.get(row.post_id as string);
+    if (!entry) continue;
+    entry.reactionCount += 1;
+    if (myId && row.user_id === myId) entry.reactedByMe = true;
   }
+  for (const row of comments ?? []) {
+    const entry = map.get(row.post_id as string);
+    if (!entry) continue;
+    entry.commentCount += 1;
+  }
+  return map;
 }
 
 export async function reactToPost(postId: string): Promise<void> {
