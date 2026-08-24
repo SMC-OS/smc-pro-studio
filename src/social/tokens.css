@@ -1,0 +1,67 @@
+/*
+ * Phase 3 design tokens: luxury editorial + modern social network + natural
+ * stone/architecture. Scoped to `.smc-shell` so nothing here touches the
+ * existing gold/dark styling used by the legacy dashboard in App.tsx.
+ *
+ * Bright, warm, spacious by default. Charcoal is reserved for typography,
+ * icon emphasis, selected navigation, and high-contrast moments — it is
+ * never the dominant surface. Dark mode is token-ready (see the `--smc-*`
+ * naming) but not implemented as a live theme yet; that is future work.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap');
+
+.smc-shell {
+  /* Warm neutral surfaces */
+  --smc-ivory: #fbf8f2;
+  --smc-limestone: #f4eee2;
+  --smc-travertine: #ece1cb;
+  --smc-sand: #e3d5b8;
+  --smc-surface: var(--smc-ivory);
+  --smc-surface-raised: #ffffff;
+  --smc-surface-sunken: #f6f1e6;
+  --smc-border: #e6dcc7;
+  --smc-border-strong: #d8c9a8;
+
+  /* Typography */
+  --smc-charcoal: #221f1c;
+  --smc-charcoal-soft: #4f4a42;
+  --smc-charcoal-faint: #8a8175;
+  --smc-font-editorial: "Fraunces", "Iowan Old Style", "Georgia", serif;
+
+  /* Material-inspired accents, used sparingly */
+  --smc-mineral-slate: #6d746e;
+  --smc-mineral-clay: #b06a43;
+  --smc-mineral-bronze: #8a6a45;
+  --smc-mineral-blue-grey: #6c7684;
+
+  /* Shape, rhythm and restrained elevation */
+  --smc-radius-card: 1.25rem;
+  --smc-radius-pill: 999px;
+  --smc-shadow-soft: 0 1px 2px rgba(34, 31, 28, 0.04), 0 8px 24px -12px rgba(34, 31, 28, 0.10);
+  --smc-shadow-raised: 0 2px 4px rgba(34, 31, 28, 0.05), 0 16px 32px -16px rgba(34, 31, 28, 0.16);
+  --smc-safe-top: env(safe-area-inset-top, 0px);
+  --smc-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  background-color: var(--smc-surface);
+  color: var(--smc-charcoal);
+}
+
+.smc-shell .smc-editorial {
+  font-family: var(--smc-font-editorial);
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
+}
+
+.smc-shell ::selection {
+  background-color: var(--smc-travertine);
+  color: var(--smc-charcoal);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .smc-shell * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

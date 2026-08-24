@@ -1,5 +1,23 @@
 # SMC Pro Studio Social Transformation Plan
 
+## Amendment — 2026-08-19: professional network pivot
+
+Owner-directed product-direction lock. Full rationale in `DESIGN.md`'s amendment section — summarised here as the concrete architecture/navigation delta against this plan's original "Final navigation" and "Screen hierarchy" sections below (neither section's original text is deleted; both are updated in place to the amended IA, with this note as the record of why).
+
+**Delta against the original plan:**
+- Navigation tab 2 changes from **Discover** to **Network**, re-purposed as professional discovery (people/trades/companies/service area/profession) rather than a materials-led browse surface. Materials/inspiration discovery is preserved but becomes a secondary/contextual surface, not a primary tab.
+- Navigation tab 4 changes from **Messages** to **Projects** — Messages remains fully available, reachable contextually (header/profile/project/connection actions, notification shortcut) rather than a primary tab. Projects becomes primary because project-scoped collaboration (CompanyCam-style evidence, membership, roles) is now a first-class pillar, not a sub-section of Profile.
+- Stories are retained as a foundation but de-emphasized and reframed toward field/project updates rather than entertainment content; no Phase 4-style moderation investment yet.
+- The relationship model gains an explicit third rung — **Follow → Connect → Collaborate** — with Collaborate scoped strictly to project membership/roles/permissions, never conflated with Follow or Connect.
+- **No schema changes required for this pivot.** `follows`, `connections`, `posts`, `comments`, `reactions`, `saved_posts` (all already migrated in `20260819120000_social_core.sql`) fully support the professional-network foundation work below. Project membership/roles (needed for the Collaborate rung and a real Projects tab) remain schema work for Phase 5 as originally planned — this amendment does not pull that forward without a dedicated migration + RLS review.
+- "Looking For..." structured opportunity posts and company/business identity (multi-person company pages) are explicitly deferred — noted as future architecture to design for, not built now.
+
+**Reusable as-is (no rework needed):** router/app shell, design tokens, bead/notch mobile nav mechanism, desktop nav rail mechanism (labels update, mechanism doesn't), auth redesign + animations, OTP UI foundation, `follows`/`connections`/`posts`/`comments`/`reactions`/`saved_posts` schema and RLS, `socialClient.ts` service-layer architecture, honest loading/empty/error/guest state components.
+
+**Reframed, not rebuilt:** Discover → Network (same route mechanics, professional-first content and copy); Home feed copy/prioritisation (professional activity framing over generic "posts"); Stories → field/project updates framing.
+
+**Deferred:** company/business identity schema, "Looking For..." opportunity post architecture, project invitations, full Projects-tab-as-CompanyCam implementation (Phase 5 as originally scoped) — Phase 3 continues to build the network/profile/connection foundation these will eventually sit on top of.
+
 ## Status and guardrails
 
 This is the Phase 1 architecture/UX specification. It makes no application-source, database, Figma, Supabase, PostHog, payment, or native-project changes. Implementation starts only after owner approval.
@@ -23,26 +41,26 @@ The product becomes one network with two profile modes, not two apps:
 - Staff/admin permissions remain server-controlled and are absent until explicitly provisioned.
 - Specialist tools appear inside Material, Project, Technical, and Site contexts instead of the global navigation.
 
-## Final navigation
+## Final navigation *(amended 2026-08-19 — see amendment section above)*
 
 ### Mobile primary navigation
 
 | Tab | Purpose | Authentication boundary |
 |---|---|---|
-| Home | Stories and ranked social/project feed | Public read; interactions require auth |
-| Discover | Search materials, inspiration, projects, professionals | Public read; save/connect actions require auth |
-| Create | Post, story, project update, portfolio/material post | Auth required; options depend on profile and project role |
-| Messages | Direct and project conversations | Auth required; membership-enforced |
-| Profile | Public identity plus private account/workspace | Public profile read; owner controls require auth |
+| Home | Professional activity feed — project/portfolio updates, field updates, opportunities | Public read; interactions require auth |
+| Network *(was Discover)* | Professional discovery — people, trades, companies; materials/inspiration reachable contextually | Public read; save/follow/connect actions require auth |
+| Create | Project update, portfolio post, field update, "Looking For..." (future), general post | Auth required; options depend on profile and project role |
+| Projects *(was Messages)* | Private/collaborative project workspace — evidence, activity, people, materials | Auth required; membership-enforced |
+| Profile | Public professional/customer identity plus private account/workspace | Public profile read; owner controls require auth |
 
-Desktop uses the same information architecture in a persistent left rail; it does not expose a second menu taxonomy.
+Messages remains fully available — reachable via header action, profile action, project action, connection action, and a notification shortcut — rather than occupying a primary tab. Desktop uses the same information architecture in a persistent left rail; it does not expose a second menu taxonomy.
 
 ### Contextual hubs
 
-- Materials: entered from Discover, posts, saved items, or a project.
+- Materials: entered from Home, Network, Projects, search, or contextual actions (no longer a primary-tab-led browse surface).
 - Design Studio: entered from a saved inspiration/material or project.
 - Quote Request: entered from a material, design, professional, or project.
-- Project: entered from Home, Profile, Messages, notifications, or contextual actions.
+- Project: entered from Home, Profile, Network, notifications, or contextual actions.
 - Technical and Site & Installation: project/material sub-sections, progressively disclosed by role.
 - Settings, legal, moderation/help: profile menu, not primary navigation.
 
