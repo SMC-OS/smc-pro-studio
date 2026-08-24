@@ -182,6 +182,7 @@ export function PostCard({
           unavailable={engagement.status === "failed"}
           canReact={canInteract}
           onSignInRequired={() => navigate("/auth")}
+          onMutated={() => onEngagementMutated?.(post.id)}
         />
         <button
           type="button"
@@ -209,6 +210,7 @@ export function PostCard({
         onClose={() => setCommentsOpen(false)}
         auth={auth}
         onCommentCountChange={(delta) => setCommentDelta((current) => current + delta)}
+        onMutated={() => onEngagementMutated?.(post.id)}
       />
     </Card>
   );

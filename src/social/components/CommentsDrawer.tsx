@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Send, Trash2, X } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion, type Transition } from "motion/react";
+import { motion, useReducedMotion, type Transition } from "motion/react";
 import { Avatar } from "./ui";
 import { LoadingState, ErrorState } from "./StateViews";
 import { addComment, deleteComment, fetchComments, type PostComment } from "../services/socialClient";
@@ -38,12 +38,15 @@ export function CommentsDrawer({
   onClose,
   auth,
   onCommentCountChange,
+  onMutated,
 }: {
   postId: string;
   open: boolean;
   onClose: () => void;
   auth: AuthSessionState;
   onCommentCountChange?: (delta: number) => void;
+  /** Called only after a real comment add/delete succeeds server-side — never on failure. Triggers the parent's authoritative engagement refresh. */
+  onMutated?: () => void;
 }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [draft, setDraft] = useState("");
@@ -140,6 +143,7 @@ export function CommentsDrawer({
       setState((current) => (current.status === "ready" ? { status: "ready", comments: [...current.comments, created] } : current));
       setDraft("");
       onCommentCountChange?.(1);
+      onMutated?.();
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Your comment could not be posted.");
     } finally {
@@ -156,6 +160,7 @@ export function CommentsDrawer({
         current.status === "ready" ? { status: "ready", comments: current.comments.filter((c) => c.id !== commentId) } : current
       );
       onCommentCountChange?.(-1);
+      onMutated?.();
     } catch {
       // Leave the comment in place — it wasn't actually deleted.
     } finally {
@@ -164,13 +169,21 @@ export function CommentsDrawer({
   }
 
   return (
-    <AnimatePresence>
+    <>
       {open && (
+        // No AnimatePresence: its exit-completion signal (onAnimationComplete
+        // / onExitComplete) was verified live to never fire in this app —
+        // neither on the overlay nor the panel, even with real non-zero
+        // transitions — so AnimatePresence held this whole subtree mounted
+        // forever after every close, leaving a pointer-events:auto backdrop
+        // covering and blocking the entire page. Plain conditional rendering
+        // unmounts deterministically the instant `open` flips, at the cost of
+        // only the exit transition (the enter animation below is unaffected —
+        // initial/animate need no AnimatePresence ancestor).
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="presentation">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: prefersReducedMotion ? { duration: 0 } : { duration: 0.2 } }}
-            exit={{ opacity: 0, transition: prefersReducedMotion ? { duration: 0 } : { duration: 0.15 } }}
             className="absolute inset-0 bg-[var(--smc-charcoal)]/40"
             onClick={onClose}
             aria-hidden="true"
@@ -182,7 +195,6 @@ export function CommentsDrawer({
             aria-label="Comments"
             initial={{ y: "100%" }}
             animate={{ y: 0, transition: sheetTransition }}
-            exit={{ y: "100%", transition: sheetTransition }}
             className="relative flex max-h-[80vh] w-full flex-col rounded-t-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface)] sm:max-w-md sm:rounded-[var(--smc-radius-card)]"
           >
             <div className="flex items-center justify-between border-b border-[var(--smc-border)] px-5 py-4">
@@ -283,6 +295,6 @@ export function CommentsDrawer({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </>
   );
 }

@@ -20,6 +20,7 @@ export function ReactionButton({
   unavailable = false,
   canReact,
   onSignInRequired,
+  onMutated,
 }: {
   postId: string;
   /** null = engagement not yet confirmed for this post — rendered as an honest placeholder, never as 0. */
@@ -30,6 +31,8 @@ export function ReactionButton({
   /** Reacting requires a signed-in user — guests still see the real count. */
   canReact: boolean;
   onSignInRequired?: () => void;
+  /** Called only after a real react/unreact succeeds server-side — never on failure/rollback. Triggers the parent's authoritative refresh; the optimistic count above is not touched by this call itself. */
+  onMutated?: () => void;
 }) {
   const [isReacted, setIsReacted] = useState(reacted);
   const [displayCount, setDisplayCount] = useState<number | null>(count);
@@ -65,6 +68,7 @@ export function ReactionButton({
     try {
       if (next) await reactToPost(postId);
       else await unreactToPost(postId);
+      onMutated?.();
     } catch {
       // Revert — the request didn't actually succeed, so the UI shouldn't claim it did.
       setIsReacted(!next);
