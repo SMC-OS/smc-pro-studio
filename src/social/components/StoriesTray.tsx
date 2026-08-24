@@ -18,7 +18,7 @@ export function StoriesTray({ auth, displayName }: { auth: AuthSessionState; dis
   return (
     <section aria-label="Stories" className="flex items-center gap-4 overflow-x-auto pb-1">
       {auth.status === "authenticated" ? (
-        <Link to="/create" className="flex flex-col items-center gap-1.5 text-center outline-none">
+        <Link to="/create" className="group flex flex-col items-center gap-1.5 text-center outline-none">
           <span className="relative flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-[var(--smc-border-strong)] bg-[var(--smc-surface-sunken)] transition-colors group-hover:bg-[var(--smc-limestone)]">
             <Avatar name={displayName ?? "You"} size={56} />
             <span

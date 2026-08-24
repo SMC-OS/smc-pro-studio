@@ -52,6 +52,38 @@ export default function HomeRoute() {
   // discard its result rather than overwrite state for the new context.
   const engagementGenerationRef = useRef(0);
 
+  // Same generation/sequence guard as engagement, applied to saved-ids: a
+  // fetch batch resolving here is only ever a plain "is X saved" read, not
+  // itself authoritative-on-arrival the way a mutation is. Bumped alongside
+  // a full reload so a saved-ids fetch from the previous auth/feed context
+  // can't land on the new one.
+  const savedIdsGenerationRef = useRef(0);
+  // Per-post counter bumped by notifySaveMutated every time this post's own
+  // save/unsave succeeds. A saved-ids fetch snapshots each requested id's
+  // counter before it starts; if that counter has moved by the time the
+  // fetch resolves, a mutation for that id landed *during* the fetch, so the
+  // fetch's answer predates it and must be dropped for that id — this is
+  // what lets a successful mutation update savedIds immediately without a
+  // slower, pre-mutation fetch silently reverting it once it finally
+  // resolves. Never reset by a mutation; only a full reload clears it.
+  const savedMutationSeqRef = useRef<Map<string, number>>(new Map());
+  // Guards every async saved-ids/engagement setState below against firing
+  // after this component has unmounted (e.g. the user navigated away while
+  // a fetch was still in flight). Must set `.current = true` in the effect
+  // body itself, not just rely on the `useRef(true)` initializer: under
+  // React StrictMode's dev-only mount -> cleanup -> remount cycle, the
+  // cleanup below runs once (setting it false) before the remount's effect
+  // re-runs — if the effect body didn't also flip it back to true, it would
+  // stay permanently false for the rest of the component's real lifetime,
+  // silently discarding every guarded fetch result forever.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const load = useCallback(() => {
     const requestId = ++requestIdRef.current;
     engagementGenerationRef.current += 1;
@@ -59,6 +91,9 @@ export default function HomeRoute() {
     engagementSeqRef.current = new Map();
     setEngagement(new Map());
     setFailedEngagementIds(new Set());
+    savedIdsGenerationRef.current += 1;
+    savedMutationSeqRef.current = new Map();
+    setSavedIds(new Set());
     setState({ status: "loading" });
     fetchHomeFeed(null)
       .then((page) => {
@@ -119,6 +154,46 @@ export default function HomeRoute() {
           return next;
         });
       });
+  }, []);
+
+  // Fetches "is X saved" for exactly the given ids and merges the result
+  // into savedIds, guarded against both a superseded (pre-reload) generation
+  // and a same-generation mutation that landed for a specific id after this
+  // fetch started (see savedMutationSeqRef above) — that id's answer is
+  // dropped rather than applied, since it predates a since-confirmed change.
+  const fetchSavedIdsFor = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const generation = savedIdsGenerationRef.current;
+    const seqSnapshot = new Map(ids.map((id) => [id, savedMutationSeqRef.current.get(id) ?? 0]));
+    fetchMySavedPostIds(ids).then((fetchedSet) => {
+      if (!mountedRef.current || savedIdsGenerationRef.current !== generation) return;
+      setSavedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) {
+          if ((savedMutationSeqRef.current.get(id) ?? 0) !== seqSnapshot.get(id)) continue;
+          if (fetchedSet.has(id)) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+    });
+  }, []);
+
+  // Called after a save/unsave mutation for a post actually succeeds
+  // server-side. Updates savedIds immediately — HomeRoute is the
+  // authoritative owner of saved state, so a confirmed mutation is applied
+  // the instant it's known, not deferred to the next fetch — and bumps that
+  // post's mutation sequence so any saved-ids fetch already in flight for it
+  // is recognised as stale by fetchSavedIdsFor above once it resolves.
+  const notifySaveMutated = useCallback((postId: string, nowSaved: boolean) => {
+    savedMutationSeqRef.current.set(postId, (savedMutationSeqRef.current.get(postId) ?? 0) + 1);
+    setSavedIds((prev) => {
+      if (prev.has(postId) === nowSaved) return prev;
+      const next = new Set(prev);
+      if (nowSaved) next.add(postId);
+      else next.delete(postId);
+      return next;
+    });
   }, []);
 
   const retryEngagement = useCallback(() => {
@@ -187,15 +262,14 @@ export default function HomeRoute() {
 
   useEffect(() => {
     if (auth.status !== "authenticated" || state.status !== "ready" || state.posts.length === 0) return;
-    let cancelled = false;
-    fetchMySavedPostIds(state.posts.map((post) => post.id)).then((ids) => {
-      if (!cancelled) setSavedIds(ids);
-    });
-    return () => {
-      cancelled = true;
-    };
+    // Re-fetches the full currently-loaded id list (not just newly-added
+    // ones) on every `state` change, including a "load more" — this is also
+    // how a second session's authoritative save/unsave converges here for a
+    // post that was already on screen, since it re-reads every visible id
+    // rather than only ones never seen before.
+    fetchSavedIdsFor(state.posts.map((post) => post.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.status, state]);
+  }, [auth.status, state, fetchSavedIdsFor]);
 
   useEffect(() => {
     if (state.status !== "ready" || state.posts.length === 0) return;
@@ -256,6 +330,7 @@ export default function HomeRoute() {
                     initiallySaved={savedIds.has(post.id)}
                     engagement={engagementViewFor(post.id)}
                     onEngagementMutated={notifyEngagementMutated}
+                    onSaveMutated={notifySaveMutated}
                   />
                 </li>
               ))}

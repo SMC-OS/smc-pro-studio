@@ -52,6 +52,7 @@ export function PostCard({
   initiallySaved = false,
   engagement,
   onEngagementMutated,
+  onSaveMutated,
 }: {
   post: FeedPost;
   auth: AuthSessionState;
@@ -66,9 +67,44 @@ export function PostCard({
    * refresh — see the matching comment on HomeRoute's notifyEngagementMutated.
    */
   onEngagementMutated?: (postId: string) => void;
+  /**
+   * Notifies the parent that this post's save/unsave mutation just succeeded
+   * server-side, so HomeRoute's `savedIds` — the single source of truth —
+   * can update immediately. See HomeRoute's notifySaveMutated: it also bumps
+   * a per-post mutation sequence there so a slower saved-ids fetch that
+   * started before this mutation can recognise itself as stale and not
+   * overwrite it once it resolves. PostCard itself keeps no separate
+   * "pending/ignore-stale" flag — `initiallySaved` is always applied as soon
+   * as no toggle is in flight, because HomeRoute is the one guarding
+   * staleness now.
+   */
+  onSaveMutated?: (postId: string, saved: boolean) => void;
 }) {
   const [saved, setSaved] = useState(initiallySaved);
   const [busy, setBusy] = useState(false);
+  // Ref (not the `busy` state) guards re-entrancy for the same reason
+  // ReactionButton's `inFlight` ref does: state updates are async, so two
+  // clicks fired before the first re-render commits could both read
+  // `busy === false` from a stale closure and race each other. It also
+  // marks the window during which a resync from `initiallySaved` must be
+  // skipped (see below) — this card's own toggle is the freshest possible
+  // truth for that window, and the mutation's own result (applied on
+  // success, below) is what HomeRoute will echo back next.
+  const inFlight = useRef(false);
+
+  // Resyncs `saved` to HomeRoute's authoritative `savedIds` state: applies
+  // the late-resolving initial fetch once it lands after mount, and any
+  // later authoritative change (e.g. a second signed-in session
+  // saving/unsaving the same post) for as long as this card stays mounted.
+  // Skipped only while our own toggle is in flight, so a slower fetch that
+  // was already running before this card's mutation can't flash the
+  // pre-toggle state back in before the mutation's own success path (and
+  // its onSaveMutated notification) applies — with no flag left set
+  // afterward, unlike a permanent ignore-stale mode.
+  useEffect(() => {
+    if (inFlight.current) return;
+    setSaved(initiallySaved);
+  }, [initiallySaved]);
   // Comments are added/removed through this card's own CommentsDrawer as
   // server-confirmed deltas (see onCommentCountChange below) — tracked
   // separately from the fetched `engagement` so a comment posted before the
@@ -118,16 +154,19 @@ export function PostCard({
   const professionalLine = [categoryLabel, professional?.company_name].filter(Boolean).join(" · ");
 
   async function toggleSave() {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     const next = !saved;
     try {
       if (next) await savePost(post.id);
       else await unsavePost(post.id);
       setSaved(next);
+      onSaveMutated?.(post.id, next);
     } catch {
       // Leave the toggle as-is on failure rather than showing a state that didn't actually persist.
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
