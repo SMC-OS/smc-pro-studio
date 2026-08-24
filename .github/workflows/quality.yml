@@ -1,4 +1,4 @@
-﻿name: Quality Checks
+name: Quality Checks
 
 on:
   pull_request:
@@ -20,6 +20,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
