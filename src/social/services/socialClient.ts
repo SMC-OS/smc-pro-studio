@@ -43,8 +43,8 @@ export interface PublicProfessional {
 }
 
 export class SocialUnavailableError extends Error {
-  constructor(message = "This requires a configured Supabase connection.") {
-    super(message);
+  constructor(message = "This requires a configured Supabase connection.", options?: ErrorOptions) {
+    super(message, options);
     this.name = "SocialUnavailableError";
   }
 }

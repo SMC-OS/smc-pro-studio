@@ -229,6 +229,8 @@ Deliver membership-secured conversations, reports/block/mute, moderation queue b
 
 **Slice A (2026-08-24):** direct-messaging schema/RLS foundation landed (`conversations`/`conversation_members`/`messages`, `create_direct_conversation()` RPC) — see `tasks/todo.md` for the exact scope. No UI/route/client wiring yet; `MessagesRoute` remains the placeholder. Block/mute/report UI, the moderation queue, and notifications remain fully unbuilt.
 
+**Slice B (2026-08-24):** typed, unit-tested service boundary landed (`src/social/services/messagingClient.ts` — create/get direct conversation, fetch conversations, fetch messages with keyset pagination, send message) — see `tasks/todo.md` for the exact scope. Still no route/UI/Realtime/notifications/block-mute-UI work; `MessagesRoute` remains the placeholder.
+
 ### Phase 5 — SMC hubs
 
 Consolidate Materials, Design Studio, Quote Request, Project, Technical, and Site & Installation one hub at a time. Existing useful components are adapted, not bulk-deleted. Complete the pricing purge before these routes become production-visible.
