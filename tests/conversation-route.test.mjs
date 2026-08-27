@@ -342,6 +342,82 @@ test("rapid conversation switching cannot show a stale conversation's messages",
   assert.doesNotMatch(document.getElementById("root").textContent, /from convo 1/);
 });
 
+test("refresh adopts the freshly fetched page's nextCursor, so a thread that grew past one page reveals Load older and load-older then honors that new cursor", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  const refreshCursor = { createdAt: "2026-01-01T00:00:04.000Z", id: "m4" };
+  let calls = 0;
+  fetchMessagesImpl = async (conversationId, passedCursor) => {
+    calls += 1;
+    if (calls === 1) {
+      // Initial load: thread currently fits on one page, so nextCursor is null.
+      assert.equal(passedCursor, null);
+      return { messages: [msg("m5", OTHER_USER_ID, "fifth", "2026-01-01T00:00:05.000Z")], nextCursor: null };
+    }
+    if (calls === 2) {
+      // Refresh: the thread has since grown past one page.
+      assert.equal(passedCursor, null);
+      return {
+        messages: [
+          msg("m5", OTHER_USER_ID, "fifth", "2026-01-01T00:00:05.000Z"),
+          msg("m4", OTHER_USER_ID, "fourth", "2026-01-01T00:00:04.000Z"),
+        ],
+        nextCursor: refreshCursor,
+      };
+    }
+    // Load older: must use the cursor the refresh just produced, not the stale null from initial load.
+    assert.deepEqual(passedCursor, refreshCursor);
+    return { messages: [msg("m3", AUTH_USER_ID, "third", "2026-01-01T00:00:03.000Z")], nextCursor: null };
+  };
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.equal(
+    [...container.querySelectorAll("button")].some((b) => /load older/i.test(b.textContent)),
+    false,
+    "no Load older control while nextCursor is null"
+  );
+
+  const refreshButton = [...container.querySelectorAll("button")].find((b) => /^refresh$/i.test(b.textContent));
+  await React.act(async () => { refreshButton.click(); });
+  await flush();
+  assert.equal(calls, 2);
+  const loadOlder = [...container.querySelectorAll("button")].find((b) => /load older/i.test(b.textContent));
+  assert.ok(loadOlder, "a refresh that reveals a non-null nextCursor must surface the Load older control");
+
+  await React.act(async () => { loadOlder.click(); });
+  await flush();
+  assert.equal(calls, 3, "load-older must have fired using the refreshed cursor");
+  const bodies = [...container.querySelectorAll("li p.whitespace-pre-wrap")].map((el) => el.textContent);
+  assert.deepEqual(bodies, ["third", "fourth", "fifth"], "merged pages must stay chronological");
+  assert.equal(new Set(bodies).size, bodies.length, "no duplicate message after merging the refreshed and older pages");
+});
+
+test("a failed refresh preserves the existing messages and pagination state", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  let calls = 0;
+  fetchMessagesImpl = async () => {
+    calls += 1;
+    if (calls === 1) {
+      return { messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null };
+    }
+    throw new Error("refresh failed");
+  };
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+
+  const refreshButton = [...container.querySelectorAll("button")].find((b) => /^refresh$/i.test(b.textContent));
+  await React.act(async () => { refreshButton.click(); });
+  await flush();
+  assert.equal(calls, 2);
+  assert.match(container.textContent, /refresh failed/i);
+  assert.match(container.textContent, /first/, "prior messages must remain visible after a failed refresh");
+  assert.equal(
+    [...container.querySelectorAll("button")].some((b) => /load older/i.test(b.textContent)),
+    false,
+    "pagination state (still no older page) must be unchanged by the failed refresh"
+  );
+});
+
 test("mobile back control links to the conversation list", async () => {
   authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
   fetchMessagesImpl = async () => ({ messages: [], nextCursor: null });

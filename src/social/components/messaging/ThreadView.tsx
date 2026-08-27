@@ -83,7 +83,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
     try {
       const page = await fetchMessages(conversationId, null);
       if (!mountedRef.current) return;
-      setState((prev) => (prev.status === "ready" ? { status: "ready", messages: mergeMessages(prev.messages, page.messages), nextCursor: prev.nextCursor } : prev));
+      setState((prev) => (prev.status === "ready" ? { status: "ready", messages: mergeMessages(prev.messages, page.messages), nextCursor: page.nextCursor } : prev));
     } catch (error) {
       if (!mountedRef.current) return;
       setPageActionError(error instanceof Error ? error.message : "Refresh failed. Please try again.");
