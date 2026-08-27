@@ -231,6 +231,8 @@ Deliver membership-secured conversations, reports/block/mute, moderation queue b
 
 **Slice B (2026-08-24):** typed, unit-tested service boundary landed (`src/social/services/messagingClient.ts` — create/get direct conversation, fetch conversations, fetch messages with keyset pagination, send message) — see `tasks/todo.md` for the exact scope. Still no route/UI/Realtime/notifications/block-mute-UI work; `MessagesRoute` remains the placeholder.
 
+**Slice C (2026-08-27):** the existing Slice B boundary is now wired into an honest direct-messaging UI: authenticated conversation list, responsive `/messages/:conversationId` thread route, keyset “load older” pagination, explicit manual refresh, confirmed-row-only sends, and a profile Message action that navigates only after the direct-conversation RPC succeeds. Guests and malformed IDs query nothing; StrictMode and route-switch generations prevent stale list/thread responses from replacing newer state. No schema, Realtime, polling, unread/delivery/read/presence claims, notifications, moderation, or project-conversation work was added. Messaging remains incomplete overall; see `tasks/todo.md` for verification and remaining scope.
+
 ### Phase 5 — SMC hubs
 
 Consolidate Materials, Design Studio, Quote Request, Project, Technical, and Site & Installation one hub at a time. Existing useful components are adapted, not bulk-deleted. Complete the pricing purge before these routes become production-visible.

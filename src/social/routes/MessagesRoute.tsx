@@ -1,19 +1,25 @@
-import { EmptyState, LoadingState } from "../components/StateViews";
+import { LoadingState, EmptyState } from "../components/StateViews";
+import { GuestMessagesNotice, MessagingLayout } from "../components/messaging/MessagingLayout";
 import { useAuthSession } from "../services/useAuthSession";
 
 /**
- * Messaging is scoped to Phase 4 (member-secured conversations, moderation,
- * notifications) per tasks/plan.md. This route exists so the primary
- * navigation is complete now, but it is honest about not being built yet —
- * no fake inbox, no simulated conversations.
+ * Phase 4 Slice C: the conversation-list screen at `/messages`. No
+ * conversation is selected here — on `lg:` and up the list shows beside a
+ * "pick a conversation" placeholder; below `lg:` the list is the whole
+ * screen (see MessagingLayout). `/messages/:conversationId`
+ * (ConversationRoute) is the thread view.
  */
 export default function MessagesRoute() {
   const auth = useAuthSession();
 
   if (auth.status === "loading") return <LoadingState label="Checking your account" />;
-  if (auth.status === "guest") {
-    return <EmptyState title="Sign in to use Messages" description="Direct and project messaging require an account, and arrive in a later phase." />;
-  }
+  if (auth.status === "guest") return <GuestMessagesNotice />;
 
-  return <EmptyState title="Messages are coming soon" description="Member-secured direct and project conversations are planned for Phase 4 of the social rebuild." />;
+  return (
+    <MessagingLayout
+      mode="list"
+      activeConversationId={null}
+      rightPane={<EmptyState title="Select a conversation" description="Choose a conversation from the list to view it." />}
+    />
+  );
 }

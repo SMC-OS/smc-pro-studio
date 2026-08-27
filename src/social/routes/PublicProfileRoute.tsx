@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Avatar, Card, EditorialHeading } from "../components/ui";
 import { ConnectButton } from "../components/ConnectButton";
 import { FollowButton } from "../components/FollowButton";
+import { MessageButton } from "../components/MessageButton";
 import {
   fetchConnectionState,
   fetchFollowState,
@@ -146,13 +147,14 @@ export default function PublicProfileRoute() {
           <div className="mt-4 flex flex-wrap gap-2">
             <FollowButton userId={userId} initiallyFollowing={state.following} />
             <ConnectButton userId={userId} initialState={state.connection.state} initialConnectionId={state.connection.connectionId} />
+            <MessageButton userId={userId} />
           </div>
         ) : (
           <p className="mt-4 text-sm text-[var(--smc-charcoal-faint)]">
             <Link to="/auth" className="font-semibold text-[var(--smc-mineral-bronze)] hover:underline">
               Sign in
             </Link>{" "}
-            to follow or connect.
+            to follow, connect, or message.
           </p>
         )}
       </Card>

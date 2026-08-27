@@ -6,6 +6,7 @@ import ConnectionsRoute from "./routes/ConnectionsRoute";
 import CreateRoute from "./routes/CreateRoute";
 import NetworkRoute from "./routes/NetworkRoute";
 import HomeRoute from "./routes/HomeRoute";
+import ConversationRoute from "./routes/ConversationRoute";
 import MessagesRoute from "./routes/MessagesRoute";
 import ProfileRoute from "./routes/ProfileRoute";
 import PublicProfileRoute from "./routes/PublicProfileRoute";
@@ -50,6 +51,7 @@ export default function SocialApp() {
           <Route path="discover" element={<Navigate to="/network" replace />} />
           <Route path="create" element={<CreateRoute />} />
           <Route path="messages" element={<MessagesRoute />} />
+          <Route path="messages/:conversationId" element={<ConversationRoute />} />
           <Route path="profile" element={<ProfileRoute />} />
           <Route path="profile/:userId" element={<PublicProfileRoute />} />
           {/* Contextual only — reached from ProfileRoute's "Connections" link,
