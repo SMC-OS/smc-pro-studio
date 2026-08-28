@@ -64,6 +64,31 @@ export interface MessagePage {
   nextCursor: MessageCursor | null;
 }
 
+/**
+ * Phase 4 Slice C.1: the one error boundary every backend (Postgres/
+ * PostgREST/RPC) failure in this file passes through before reaching a
+ * caller. `operation` identifies which messaging action failed — for
+ * tests/logging only, never rendered — so callers/tests can assert on
+ * *which* thing failed without the class needing to inspect, match, or
+ * repeat any part of the underlying error's own text (that text is kept
+ * only as `cause`, never copied into `message`). This is what makes it
+ * structurally impossible for a raw SQLSTATE, schema/table/function/policy
+ * name, or other backend-internal detail to reach the UI through this
+ * type: `message` is always one of the four caller-supplied constants
+ * below, authored by this file, never derived from `error.message`.
+ */
+export type MessagingOperation = "create_conversation" | "list_conversations" | "fetch_messages" | "send_message";
+
+export class MessagingOperationError extends Error {
+  readonly operation: MessagingOperation;
+
+  constructor(operation: MessagingOperation, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "MessagingOperationError";
+    this.operation = operation;
+  }
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Rejects a malformed ID client-side, before it ever reaches a query or RPC call. */
@@ -124,6 +149,8 @@ function clampLimit(limit: number | undefined, fallback: number, max: number, mi
 // Create or retrieve a direct conversation.
 // ==========================================================================
 
+const CREATE_CONVERSATION_ERROR = "This conversation is unavailable. Please try again.";
+
 /**
  * Calls public.create_direct_conversation(other_user_id), the sole
  * client-reachable write path for conversations/conversation_members (see
@@ -132,19 +159,25 @@ function clampLimit(limit: number | undefined, fallback: number, max: number, mi
  * idempotency, and bidirectional-block enforcement; this function performs
  * no business-rule duplication, only auth/shape validation before the call.
  *
- * The RPC's own exception messages (e.g. "cannot start a conversation with
- * yourself", "this conversation is not available") are deliberately
- * authored to be safe and specific — propagated verbatim here rather than
- * genericized, unlike sendMessage's insert-failure handling below, whose
- * underlying RLS-violation text is generic regardless of cause.
+ * Every RPC failure — self-message, missing user, a bidirectional block,
+ * or a genuine network/database problem — collapses to the same
+ * CREATE_CONVERSATION_ERROR text (Slice C.1; previously the RPC's own
+ * exception message, e.g. "create_direct_conversation: this conversation is
+ * not available", was propagated verbatim, which both leaked the internal
+ * function name to the UI and, more importantly, let a caller distinguish
+ * "blocked" from "any other reason" by reading the error text — see the
+ * "do not infer or reveal whether another user blocked the caller"
+ * requirement. Collapsing every cause to one identical message removes that
+ * signal entirely, not just the raw text. The original error/data-shape
+ * problem is preserved as `cause` for logging.
  */
 export async function createOrGetDirectConversation(otherUserId: string): Promise<string> {
   const { client } = await requireAuthenticatedClient("Sign in to start a conversation.");
   requireUuid(otherUserId, "The other participant's user ID");
   const { data, error } = await client.rpc("create_direct_conversation", { other_user_id: otherUserId });
-  if (error) throw new Error(error.message);
+  if (error) throw new MessagingOperationError("create_conversation", CREATE_CONVERSATION_ERROR, { cause: error });
   if (typeof data !== "string" || !data) {
-    throw new Error("The conversation could not be created. Please try again.");
+    throw new MessagingOperationError("create_conversation", CREATE_CONVERSATION_ERROR);
   }
   return data;
 }
@@ -173,7 +206,9 @@ export async function fetchMyConversations(limit?: number): Promise<Conversation
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(boundedLimit);
-  if (error) throw new Error("Your conversations could not be loaded. Please try again.");
+  if (error) {
+    throw new MessagingOperationError("list_conversations", "Your conversations could not be loaded. Please try again.", { cause: error });
+  }
   return (data ?? []) as unknown as ConversationSummary[];
 }
 
@@ -228,7 +263,9 @@ export async function fetchMessages(
     query = query.or(`created_at.lt.${quotedCreatedAt},and(created_at.eq.${quotedCreatedAt},id.lt.${cursor.id})`);
   }
   const { data, error } = await query;
-  if (error) throw new Error("Messages could not be loaded. Please try again.");
+  if (error) {
+    throw new MessagingOperationError("fetch_messages", "This conversation could not be loaded. Please try again.", { cause: error });
+  }
   const rows = (data ?? []) as unknown as DirectMessage[];
   const hasMore = rows.length > boundedPageSize;
   const page = hasMore ? rows.slice(0, boundedPageSize) : rows;
@@ -244,15 +281,14 @@ export async function fetchMessages(
 /**
  * sender_id is always the authenticated caller's own id (from
  * requireAuthenticatedClient) — there is no sender parameter for a caller
- * to spoof through. Insert
- * failures (RLS membership/block rejection, or a genuine network/query
- * failure) are surfaced as one generic message: unlike
- * createOrGetDirectConversation's RPC errors, a raw RLS-violation error on
- * this table carries no meaningfully distinct safe-to-show text regardless
- * of cause, so this matches the existing genericized-error convention
- * already used by createPost/addComment/reactToPost in socialClient.ts.
- * The returned message is the server-confirmed row via `.select().single()`
- * — real id/created_at generated by Postgres, never fabricated or optimistic.
+ * to spoof through. Insert failures (RLS membership/block rejection, or a
+ * genuine network/query failure) are surfaced as one generic
+ * MessagingOperationError message (Slice C.1) — same convention now shared
+ * with createOrGetDirectConversation above, and consistent with the
+ * existing genericized-error convention already used by
+ * createPost/addComment/reactToPost in socialClient.ts. The returned
+ * message is the server-confirmed row via `.select().single()` — real
+ * id/created_at generated by Postgres, never fabricated or optimistic.
  */
 export async function sendMessage(conversationId: string, body: string): Promise<DirectMessage> {
   const { client, userId } = await requireAuthenticatedClient("Sign in to send a message.");
@@ -267,6 +303,8 @@ export async function sendMessage(conversationId: string, body: string): Promise
     .insert({ conversation_id: conversationId, sender_id: userId, body: trimmed })
     .select("id, conversation_id, sender_id, body, created_at")
     .single();
-  if (error) throw new Error("This message could not be sent. Please try again.");
+  if (error) {
+    throw new MessagingOperationError("send_message", "This message could not be sent. Please try again.", { cause: error });
+  }
   return data as unknown as DirectMessage;
 }
