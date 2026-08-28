@@ -28,9 +28,29 @@ mock.module(supabaseClientUrl, {
   },
 });
 
-const { createOrGetDirectConversation, fetchMyConversations, fetchMessages, sendMessage } = await import(
+const { createOrGetDirectConversation, fetchMyConversations, fetchMessages, sendMessage, MessagingOperationError } = await import(
   new URL("../src/social/services/messagingClient.ts", import.meta.url).href
 );
+
+// Phase 4 Slice C.1: every backend-failure branch below asserts three
+// things together — (1) the exact safe message, unconditionally on cause,
+// (2) that the original PostgrestError-shaped object survives as `cause`
+// for logging, and (3) that none of the raw fixture's own internal-looking
+// text (function name, RLS/policy wording, schema/table name) appears
+// anywhere in the thrown error's own message. `assertSafeMessagingError` is
+// the one shared assertion for all of that, so no test needs to duplicate
+// the raw-text-absence check by hand.
+function assertSafeMessagingError(err, { operation, message, cause, rawFragments }) {
+  assert.ok(err instanceof MessagingOperationError, "must be a MessagingOperationError, not a bare Error");
+  assert.equal(err.name, "MessagingOperationError");
+  assert.equal(err.operation, operation);
+  assert.equal(err.message, message, "the thrown error's own message must be exactly the safe, stable text — never derived from the backend error");
+  if (cause !== undefined) assert.equal(err.cause, cause, "the original backend error must survive as `cause` for logging");
+  for (const fragment of rawFragments) {
+    assert.ok(!err.message.includes(fragment), `safe message must not contain raw backend fragment ${JSON.stringify(fragment)}`);
+  }
+  return true;
+}
 
 const VALID_OTHER_ID = "b0000000-0000-0000-0000-000000000002";
 const VALID_CONVO_ID = "c0000000-0000-0000-0000-000000000001";
@@ -120,20 +140,66 @@ test("createOrGetDirectConversation: calls create_direct_conversation with the t
   assert.deepEqual(rpcCalls[0].params, { other_user_id: VALID_OTHER_ID });
 });
 
-test("createOrGetDirectConversation: propagates the RPC's own error message verbatim", async () => {
+// Phase 4 Slice C.1 regression: this is the confirmed QA issue — a blocked
+// user starting a conversation used to see the RPC's raw exception text
+// verbatim, including the internal function name. Every RPC failure now
+// collapses to the same safe message regardless of cause, which is also
+// what makes "blocked" indistinguishable from "any other reason" — the
+// caller gets no signal either way, satisfying "do not infer or reveal
+// whether another user blocked the caller".
+test("createOrGetDirectConversation: a blocked-pair RPC error normalizes to the safe message, never the raw function-name/exception text, with the original error preserved as cause", async () => {
+  const rawError = { message: "create_direct_conversation: this conversation is not available", code: "P0001" };
   currentClient = {
     auth: authUser(AUTH_USER_ID),
-    rpc: async () => ({
-      data: null,
-      error: { message: "create_direct_conversation: cannot start a conversation with yourself" },
-    }),
+    rpc: async () => ({ data: null, error: rawError }),
   };
   await assert.rejects(
     () => createOrGetDirectConversation(VALID_OTHER_ID),
-    (err) => {
-      assert.equal(err.message, "create_direct_conversation: cannot start a conversation with yourself");
-      return true;
-    }
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "create_conversation",
+        message: "This conversation is unavailable. Please try again.",
+        cause: rawError,
+        rawFragments: ["create_direct_conversation", "not available", "P0001"],
+      })
+  );
+});
+
+// A second, differently-worded RPC failure (self-message, this time) must
+// produce the exact same safe message as the blocked-pair case above —
+// proving the two are genuinely indistinguishable to the caller, not just
+// coincidentally similar-looking.
+test("createOrGetDirectConversation: a self-message RPC error produces the identical safe message as a blocked-pair failure", async () => {
+  const rawError = { message: "create_direct_conversation: cannot start a conversation with yourself", code: "P0001" };
+  currentClient = {
+    auth: authUser(AUTH_USER_ID),
+    rpc: async () => ({ data: null, error: rawError }),
+  };
+  await assert.rejects(
+    () => createOrGetDirectConversation(VALID_OTHER_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "create_conversation",
+        message: "This conversation is unavailable. Please try again.",
+        cause: rawError,
+        rawFragments: ["create_direct_conversation", "yourself"],
+      })
+  );
+});
+
+test("createOrGetDirectConversation: a malformed (non-string/empty) RPC success payload also produces the safe message", async () => {
+  currentClient = {
+    auth: authUser(AUTH_USER_ID),
+    rpc: async () => ({ data: null, error: null }),
+  };
+  await assert.rejects(
+    () => createOrGetDirectConversation(VALID_OTHER_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "create_conversation",
+        message: "This conversation is unavailable. Please try again.",
+        rawFragments: ["create_direct_conversation"],
+      })
   );
 });
 
@@ -204,10 +270,20 @@ test("fetchMyConversations: an authenticated, successful, genuinely empty result
   assert.equal(calls.limit, 20, "the [] must come from a real query that actually ran, not a short-circuit");
 });
 
-test("fetchMyConversations: a Supabase query failure throws rather than becoming a fake empty list", async () => {
-  const { client } = conversationsClient({ error: { message: "connection reset" } });
+test("fetchMyConversations: a Supabase query failure throws the safe message rather than becoming a fake empty list, preserving the original error as cause", async () => {
+  const rawError = { message: "permission denied for table conversations", code: "42501" };
+  const { client } = conversationsClient({ error: rawError });
   currentClient = client;
-  await assert.rejects(() => fetchMyConversations(), /could not be loaded/);
+  await assert.rejects(
+    () => fetchMyConversations(),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "list_conversations",
+        message: "Your conversations could not be loaded. Please try again.",
+        cause: rawError,
+        rawFragments: ["permission denied", "42501"],
+      })
+  );
 });
 
 test("fetchMyConversations: limit is bounded to [1, 50] regardless of caller input", async () => {
@@ -348,10 +424,20 @@ test("fetchMessages: an authenticated, successful, genuinely empty conversation 
   assert.equal(fromCalls.length, 1, "the empty page must come from a real query that actually ran, not a short-circuit");
 });
 
-test("fetchMessages: a Supabase query failure throws rather than becoming a fake empty conversation", async () => {
-  const { client } = messagesClient({ forceError: { message: "permission denied for table messages" } });
+test("fetchMessages: a Supabase query failure throws the safe message rather than becoming a fake empty conversation, preserving the original error as cause", async () => {
+  const rawError = { message: "permission denied for table messages", code: "42501" };
+  const { client } = messagesClient({ forceError: rawError });
   currentClient = client;
-  await assert.rejects(() => fetchMessages(VALID_CONVO_ID), /could not be loaded/);
+  await assert.rejects(
+    () => fetchMessages(VALID_CONVO_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "fetch_messages",
+        message: "This conversation could not be loaded. Please try again.",
+        cause: rawError,
+        rawFragments: ["permission denied", "for table messages", "42501"],
+      })
+  );
 });
 
 test("fetchMessages: page size is bounded to [1, 50] regardless of caller input", async () => {
@@ -549,8 +635,42 @@ test("sendMessage: a successful insert returns exactly the server-confirmed row"
   assert.deepEqual(returned, serverRow);
 });
 
-test("sendMessage: an insert/RLS/block failure propagates as a thrown error, never a fabricated success", async () => {
-  const { client } = insertClient({ error: { message: "new row violates row-level security policy for table messages" } });
+test("sendMessage: an insert/RLS/block failure normalizes to the safe message, never a fabricated success and never the raw RLS/policy text, preserving the original error as cause", async () => {
+  const rawError = {
+    message: "new row violates row-level security policy for table \"messages\"",
+    code: "42501",
+    details: "Failing row contains policy messages_member_insert.",
+  };
+  const { client } = insertClient({ error: rawError });
   currentClient = client;
-  await assert.rejects(() => sendMessage(VALID_CONVO_ID, "hi"), /could not be sent/);
+  await assert.rejects(
+    () => sendMessage(VALID_CONVO_ID, "hi"),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "send_message",
+        message: "This message could not be sent. Please try again.",
+        cause: rawError,
+        rawFragments: ["row-level security", "messages_member_insert", "42501"],
+      })
+  );
+});
+
+// Confirms a block specifically (not just any RLS violation) also
+// collapses to the identical safe message — the caller gets no signal
+// distinguishing "the other party blocked you" from "any other send
+// failure", matching createOrGetDirectConversation's equivalent guarantee.
+test("sendMessage: a block-caused RLS rejection produces the identical safe message as any other insert failure", async () => {
+  const rawError = { message: "new row violates row-level security policy for table \"messages\"", code: "42501" };
+  const { client } = insertClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => sendMessage(VALID_CONVO_ID, "hi"),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "send_message",
+        message: "This message could not be sent. Please try again.",
+        cause: rawError,
+        rawFragments: ["row-level security"],
+      })
+  );
 });

@@ -122,11 +122,19 @@ test("MessageButton: navigates to the new conversation only after the RPC confir
   assert.match(document.getElementById("root").textContent, /THREAD/, "must navigate once the RPC confirms success");
 });
 
+// Phase 4 Slice C.1: the fixture uses the real safe message
+// messagingClient.ts's create_conversation normalization produces for
+// every RPC failure — including a block — (see messaging-client.test.mjs
+// for proof of that normalization) rather than a raw-looking backend
+// string; this test is about MessageButton's own error/retry contract, not
+// messagingClient's normalization. See tests/messaging-error-boundary.test.mjs
+// for the end-to-end proof that a real blocked-pair RPC error never
+// reaches the DOM in its raw form.
 test("MessageButton: an RPC failure stays visible and retryable, and never navigates", async () => {
   let attempt = 0;
   createOrGetDirectConversationImpl = async () => {
     attempt += 1;
-    if (attempt === 1) throw new Error("this conversation is not available");
+    if (attempt === 1) throw new Error("This conversation is unavailable. Please try again.");
     return CONVO_ID;
   };
   createOrGetDirectConversationCalls.length = 0;
@@ -151,7 +159,7 @@ test("MessageButton: an RPC failure stays visible and retryable, and never navig
 
   await React.act(async () => { button.click(); });
   await flush();
-  assert.match(container.textContent, /not available/);
+  assert.match(container.textContent, /This conversation is unavailable\. Please try again\./);
   assert.doesNotMatch(container.textContent, /THREAD/);
   assert.equal(button.disabled, false, "must be retryable after a failure");
 

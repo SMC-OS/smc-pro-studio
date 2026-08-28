@@ -130,17 +130,22 @@ test("authenticated: a confirmed zero-row result renders a genuine empty state",
   assert.match(container.textContent, /No conversations yet/);
 });
 
-test("authenticated: a query failure renders an error state with Retry, and Retry re-fetches", async () => {
+// Phase 4 Slice C.1: the fixture uses the real safe message
+// messagingClient.ts's list_conversations normalization produces (see
+// messaging-client.test.mjs) rather than a raw-looking backend string —
+// this test is about ConversationList's own error/Retry contract, not
+// messagingClient's normalization.
+test("authenticated: a query failure renders the safe error state with Retry, and Retry re-fetches", async () => {
   authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
   let calls = 0;
   fetchMyConversationsImpl = async () => {
     calls += 1;
-    if (calls === 1) throw new Error("connection reset");
+    if (calls === 1) throw new Error("Your conversations could not be loaded. Please try again.");
     return [];
   };
   const container = await mount();
   await flush();
-  assert.match(container.textContent, /connection reset/);
+  assert.match(container.textContent, /Your conversations could not be loaded\. Please try again\./);
   const retryButton = [...container.querySelectorAll("button")].find((b) => /try again/i.test(b.textContent));
   assert.ok(retryButton, "expected a Retry control");
   await React.act(async () => {

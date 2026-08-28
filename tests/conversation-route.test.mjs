@@ -145,17 +145,26 @@ test("loading never renders the confirmed-empty message, and a confirmed empty c
   assert.match(container.textContent, /No messages yet/);
 });
 
-test("a fetch failure renders an error state with Retry", async () => {
+// Phase 4 Slice C.1: the fixture below deliberately uses the real safe
+// message messagingClient.ts's fetch_messages normalization now produces
+// (see messaging-client.test.mjs for proof that a raw RLS/Postgres error
+// actually gets normalized to this text at the service boundary) rather
+// than a raw-looking backend string — this test is about ThreadView's own
+// error/Retry rendering contract, not messagingClient's normalization, so
+// it should exercise the same shape of message ThreadView will genuinely
+// receive in production, never a stand-in for a leak this suite exists to
+// prevent.
+test("a fetch failure renders the safe error state with Retry, and Retry re-fetches", async () => {
   authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
   let calls = 0;
   fetchMessagesImpl = async () => {
     calls += 1;
-    if (calls === 1) throw new Error("permission denied for table messages");
+    if (calls === 1) throw new Error("This conversation could not be loaded. Please try again.");
     return { messages: [msg("m1", AUTH_USER_ID, "hi", "2026-01-01T00:00:01.000Z")], nextCursor: null };
   };
   const container = await mount(`/messages/${CONVO_1}`);
   await flush();
-  assert.match(container.textContent, /permission denied/);
+  assert.match(container.textContent, /This conversation could not be loaded\. Please try again\./);
   const retry = [...container.querySelectorAll("button")].find((b) => /try again/i.test(b.textContent));
   assert.ok(retry);
   await React.act(async () => { retry.click(); });
@@ -400,7 +409,8 @@ test("a failed refresh preserves the existing messages and pagination state", as
     if (calls === 1) {
       return { messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null };
     }
-    throw new Error("refresh failed");
+    // Real safe text (see messaging-client.test.mjs), not a raw-looking stand-in — see the note above the "a fetch failure" test.
+    throw new Error("This conversation could not be loaded. Please try again.");
   };
   const container = await mount(`/messages/${CONVO_1}`);
   await flush();
@@ -409,7 +419,7 @@ test("a failed refresh preserves the existing messages and pagination state", as
   await React.act(async () => { refreshButton.click(); });
   await flush();
   assert.equal(calls, 2);
-  assert.match(container.textContent, /refresh failed/i);
+  assert.match(container.textContent, /This conversation could not be loaded\. Please try again\./);
   assert.match(container.textContent, /first/, "prior messages must remain visible after a failed refresh");
   assert.equal(
     [...container.querySelectorAll("button")].some((b) => /load older/i.test(b.textContent)),
