@@ -3,7 +3,14 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Send } from "lucide-react";
 import { EmptyState, ErrorState, LoadingState } from "../StateViews";
 import { Button } from "../ui";
-import { fetchMessages, sendMessage, type DirectMessage, type MessageCursor } from "../../services/messagingClient";
+import {
+  fetchMessages,
+  sendMessage,
+  subscribeToConversationMessages,
+  type DirectMessage,
+  type MessageCursor,
+  type MessageRealtimeConnectionState,
+} from "../../services/messagingClient";
 
 type ThreadState =
   | { status: "loading" }
@@ -73,6 +80,104 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
+
+  // ==========================================================================
+  // Phase 4 Slice D: authenticated Realtime delivery.
+  //
+  // `liveState` is purely a UI signal (see subscribeToConversationMessages's
+  // MessageRealtimeConnectionState) — it never gates sending, and a failure
+  // to connect never touches `state`, so existing messages/pagination/draft
+  // are preserved exactly as slice C already guaranteed. Realtime delivers
+  // no payload this component ever trusts directly: every signal — a real
+  // INSERT, or the post-SUBSCRIBED catch-up — funnels into
+  // runConvergenceFetch, which always re-runs the same authenticated,
+  // RLS-authoritative fetchMessages(conversationId, null) slice C already
+  // uses for the initial load and manual Refresh, then merges by id via the
+  // same mergeMessages used everywhere else in this file.
+  // ==========================================================================
+  const [liveState, setLiveState] = useState<MessageRealtimeConnectionState>("connecting");
+  const fetchInFlightRef = useRef(false);
+  const fetchQueuedRef = useRef(false);
+
+  const runConvergenceFetch = useCallback(() => {
+    if (fetchInFlightRef.current) {
+      // Requirement: signals arriving during an in-flight fetch converge
+      // afterward via exactly one further fetch — never unlimited parallel
+      // requests, and never more than one queued on top of the current one.
+      fetchQueuedRef.current = true;
+      return;
+    }
+    fetchInFlightRef.current = true;
+    const attempt = () => {
+      fetchMessages(conversationId, null)
+        .then((page) => {
+          if (!mountedRef.current) return;
+          setState((prev) =>
+            prev.status === "ready"
+              ? { status: "ready", messages: mergeMessages(prev.messages, page.messages), nextCursor: page.nextCursor }
+              : prev
+          );
+        })
+        .catch(() => {
+          // Silent by design: a Realtime-triggered convergence fetch failing
+          // must not surface a noisy banner during normal connecting/
+          // reconnecting — `liveState` already reflects unavailability, and
+          // manual Refresh (which does surface pageActionError) remains the
+          // honest recovery path.
+        })
+        .finally(() => {
+          if (!mountedRef.current) return;
+          if (fetchQueuedRef.current) {
+            fetchQueuedRef.current = false;
+            attempt();
+          } else {
+            fetchInFlightRef.current = false;
+          }
+        });
+    };
+    attempt();
+  }, [conversationId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cleanupFn: (() => void) | null = null;
+    let cancelled = false;
+
+    subscribeToConversationMessages(
+      conversationId,
+      {
+        onSignal: () => {
+          if (!cancelled) runConvergenceFetch();
+        },
+        onConnectionStateChange: (nextState) => {
+          if (!cancelled) setLiveState(nextState);
+        },
+      },
+      { signal: controller.signal }
+    )
+      .then((cleanup) => {
+        // If this effect was already cleaned up (React StrictMode's
+        // synchronous mount -> cleanup -> mount, or a fast conversation
+        // switch) by the time the authenticated-session check resolved, the
+        // channel this call just created is removed immediately rather than
+        // stored — never left running for a generation nothing references
+        // anymore.
+        if (cancelled) {
+          cleanup();
+          return;
+        }
+        cleanupFn = cleanup;
+      })
+      .catch(() => {
+        if (!cancelled) setLiveState("unavailable");
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      cleanupFn?.();
+    };
+  }, [conversationId, runConvergenceFetch]);
 
   const anyPending = sending || loadingOlder || refreshing || state.status === "loading";
 
@@ -156,8 +261,14 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
             <h1 ref={headingRef} tabIndex={-1} className="text-sm font-semibold text-[var(--smc-charcoal)] outline-none">
               Conversation
             </h1>
-            {/* Honest about the absence of live updates (Realtime is out of scope for this slice) rather than implying the thread refreshes itself. */}
-            <p className="text-xs text-[var(--smc-charcoal-faint)]">Messages update when you refresh — this thread isn't live.</p>
+            {/* Honest, non-alarming connection state — never raw Realtime/Postgres status text — and never a claim about delivery/read status. */}
+            <p role="status" className="text-xs text-[var(--smc-charcoal-faint)]">
+              {liveState === "connected"
+                ? "Live updates on"
+                : liveState === "unavailable"
+                  ? "Live updates unavailable — use Refresh"
+                  : "Connecting…"}
+            </p>
           </div>
         </div>
         <button

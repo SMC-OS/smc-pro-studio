@@ -32,6 +32,20 @@ let sendMessageImpl = async () => {
 const fetchMessagesCalls = [];
 const sendMessageCalls = [];
 
+// Phase 4 Slice D: a controllable stand-in for the real
+// subscribeToConversationMessages boundary. Each call is recorded with the
+// handlers ThreadView registered, so a test can reach in and simulate a
+// connection-state transition or an INSERT signal exactly as the real
+// boundary would deliver it (see tests/messaging-realtime-client.test.mjs
+// for unit coverage of the real boundary itself — this file is about
+// ThreadView's *reaction* to those signals, not the boundary's own
+// Supabase-facing contract). Every call's cleanup is tracked too, so a test
+// can assert React StrictMode / unmount never leaves more than one active
+// subscription per mounted ThreadView.
+let subscribeToConversationMessagesImpl = null; // set per test when a test needs to drive it; otherwise inert.
+const subscribeToConversationMessagesCalls = [];
+let activeSubscriptionCount = 0;
+
 mock.module(authUrl, {
   exports: { useAuthSession: () => authState },
 });
@@ -49,6 +63,17 @@ mock.module(messagingClientUrl, {
     },
     createOrGetDirectConversation: async () => {
       throw new Error("createOrGetDirectConversation must not be called from the thread screen");
+    },
+    subscribeToConversationMessages: async (conversationId, handlers, options) => {
+      if (subscribeToConversationMessagesImpl) return subscribeToConversationMessagesImpl(conversationId, handlers, options);
+      const call = { conversationId, handlers, options, cleanedUp: false };
+      subscribeToConversationMessagesCalls.push(call);
+      activeSubscriptionCount += 1;
+      return () => {
+        if (call.cleanedUp) return;
+        call.cleanedUp = true;
+        activeSubscriptionCount -= 1;
+      };
     },
   },
 });
@@ -438,13 +463,373 @@ test("mobile back control links to the conversation list", async () => {
   assert.equal(backLink.getAttribute("href"), "/messages");
 });
 
-test("the thread does not claim to be live", async () => {
+// ==========================================================================
+// Phase 4 Slice D: authenticated Realtime delivery — ThreadView's reaction
+// to the subscribeToConversationMessages boundary's signals/state, and the
+// honest connected/unavailable UI. The boundary's own Supabase-facing
+// contract (channel shape, filter, cleanup, StrictMode-safe abort) is
+// covered at the unit level in tests/messaging-realtime-client.test.mjs;
+// this file proves ThreadView never trusts a payload directly, coalesces
+// convergence fetches, preserves state on failure, and never leaves more
+// than one active subscription alive.
+// ==========================================================================
+
+test("the thread never claims to be live before Realtime connects, still offers Refresh, and reflects the honest connected/unavailable state once the boundary reports it", async () => {
   authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
   fetchMessagesImpl = async () => ({ messages: [], nextCursor: null });
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush(10);
+  assert.match(container.textContent, /Connecting/i, "must not claim to be live before the boundary ever reports a connected state");
+  const refreshButton = [...container.querySelectorAll("button")].find((b) => /^refresh$/i.test(b.textContent));
+  assert.ok(refreshButton, "expected an explicit Refresh control regardless of Realtime connection state");
+
+  assert.equal(subscribeToConversationMessagesCalls.length, 1);
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+  await React.act(async () => { handlers.onConnectionStateChange("connected"); });
+  assert.match(container.textContent, /Live updates on/);
+
+  await React.act(async () => { handlers.onConnectionStateChange("unavailable"); });
+  assert.match(container.textContent, /Live updates unavailable — use Refresh/);
+  assert.doesNotMatch(container.textContent, /\b(?:delivered|read|online|typing)\b/i, "no fabricated delivery/read/presence state in any connection state");
+});
+
+test("a Realtime signal triggers an authoritative re-fetch rather than trusting any payload directly", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesCalls.length = 0;
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "hello", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+
   const container = await mount(`/messages/${CONVO_1}`);
   await flush();
-  assert.match(container.textContent, /isn't live/i);
-  assert.ok(container.querySelector("button")?.textContent !== undefined);
-  const refreshButton = [...container.querySelectorAll("button")].find((b) => /refresh/i.test(b.textContent));
-  assert.ok(refreshButton, "expected an explicit Refresh control since there is no Realtime");
+  assert.equal(fetchMessagesCalls.length, 1, "the initial load must be exactly one fetch");
+
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+  fetchMessagesImpl = async () => ({
+    messages: [msg("m1", OTHER_USER_ID, "hello", "2026-01-01T00:00:01.000Z"), msg("m2", OTHER_USER_ID, "second", "2026-01-01T00:00:02.000Z")],
+    nextCursor: null,
+  });
+  await React.act(async () => { handlers.onSignal(); });
+  await flush();
+
+  assert.equal(fetchMessagesCalls.length, 2, "a bare signal must trigger exactly one authoritative re-fetch");
+  assert.match(container.textContent, /second/, "the newly signalled message must come from the authoritative re-fetch, never a trusted payload");
+});
+
+test("multiple signals arriving while a convergence fetch is already in flight coalesce into exactly one further fetch", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesCalls.length = 0;
+
+  let resolveSlow;
+  let callCount = 0;
+  fetchMessagesImpl = async () => {
+    callCount += 1;
+    if (callCount === 1) return { messages: [], nextCursor: null }; // initial load
+    if (callCount === 2) return new Promise((resolve) => { resolveSlow = () => resolve({ messages: [], nextCursor: null }); });
+    return { messages: [], nextCursor: null };
+  };
+
+  await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.equal(fetchMessagesCalls.length, 1);
+
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+  await React.act(async () => {
+    handlers.onSignal(); // starts the slow in-flight fetch (call #2)
+  });
+  await flush(5);
+  assert.equal(fetchMessagesCalls.length, 2, "the first signal must start exactly one fetch");
+
+  await React.act(async () => {
+    handlers.onSignal();
+    handlers.onSignal();
+    handlers.onSignal();
+  });
+  await flush(5);
+  assert.equal(fetchMessagesCalls.length, 2, "signals arriving while a fetch is in flight must not start additional parallel fetches");
+
+  await React.act(async () => {
+    resolveSlow();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  assert.equal(fetchMessagesCalls.length, 3, "exactly one further fetch must run after the in-flight one resolves, to converge on the latest signals");
+});
+
+test("a sender's own confirmed send plus its Realtime signal converge to exactly one message by id", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesImpl = async () => ({ messages: [], nextCursor: null });
+  sendMessageImpl = async (conversationId, body) => ({
+    id: "srv-1",
+    conversation_id: CONVO_1,
+    sender_id: AUTH_USER_ID,
+    body,
+    created_at: "2026-01-01T00:00:05.000Z",
+  });
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+
+  const textarea = container.querySelector("#message-draft");
+  const form = textarea.closest("form");
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+  await React.act(async () => {
+    nativeSetter.call(textarea, "hi there");
+    textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  await React.act(async () => {
+    form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await flush();
+
+  // The confirmed send already appended the row locally; the Realtime signal
+  // for that same insert now arrives and triggers a re-fetch that returns
+  // the identical row by id.
+  fetchMessagesImpl = async () => ({
+    messages: [{ id: "srv-1", conversation_id: CONVO_1, sender_id: AUTH_USER_ID, body: "hi there", created_at: "2026-01-01T00:00:05.000Z" }],
+    nextCursor: null,
+  });
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+  await React.act(async () => { handlers.onSignal(); });
+  await flush();
+
+  const bodies = [...container.querySelectorAll("li p.whitespace-pre-wrap")].map((el) => el.textContent);
+  assert.equal(bodies.filter((b) => b === "hi there").length, 1, "the sender's own confirmed message and its Realtime signal must converge to exactly one message");
+});
+
+test("Realtime connection failure preserves existing messages, pagination state, and an unsent draft", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+
+  const textarea = container.querySelector("#message-draft");
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+  await React.act(async () => {
+    nativeSetter.call(textarea, "an unsent draft");
+    textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+  await React.act(async () => { handlers.onConnectionStateChange("unavailable"); });
+
+  assert.match(container.textContent, /Live updates unavailable — use Refresh/);
+  assert.match(container.textContent, /first/, "existing messages must survive a Realtime connection failure");
+  assert.equal(textarea.value, "an unsent draft", "the draft must survive a Realtime connection failure");
+
+  // Manual Refresh must still work while Realtime is unavailable.
+  fetchMessagesImpl = async () => ({
+    messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z"), msg("m2", OTHER_USER_ID, "second", "2026-01-01T00:00:02.000Z")],
+    nextCursor: null,
+  });
+  const refreshButton = [...container.querySelectorAll("button")].find((b) => /^refresh$/i.test(b.textContent));
+  await React.act(async () => { refreshButton.click(); });
+  await flush();
+  assert.match(container.textContent, /second/, "manual Refresh must still fetch successfully when Realtime is unavailable");
+});
+
+test("the same mounted subscription recovers after the underlying channel reports SUBSCRIBED again — no remount, no second subscription, existing state preserved, and a message sent during the outage arrives via a fresh authoritative catch-up fetch", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesCalls.length = 0;
+
+  const olderCursor = { createdAt: "2026-01-01T00:00:02.000Z", id: "m2" };
+  fetchMessagesImpl = async (conversationId, cursor) => {
+    if (!cursor) return { messages: [msg("m2", OTHER_USER_ID, "second", "2026-01-01T00:00:02.000Z")], nextCursor: olderCursor };
+    return { messages: [msg("m1", AUTH_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null };
+  };
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.equal(fetchMessagesCalls.length, 1, "initial load");
+
+  // Load the older page before the outage, so recovery is proven to leave
+  // already-merged pagination state (not just a single fresh page) intact.
+  const loadOlder = [...container.querySelectorAll("button")].find((b) => /load older/i.test(b.textContent));
+  await React.act(async () => { loadOlder.click(); });
+  await flush();
+  assert.equal(fetchMessagesCalls.length, 2);
+  assert.deepEqual([...container.querySelectorAll("li p.whitespace-pre-wrap")].map((el) => el.textContent), ["first", "second"]);
+
+  const textarea = container.querySelector("#message-draft");
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+  await React.act(async () => {
+    nativeSetter.call(textarea, "draft surviving the outage/recovery cycle");
+    textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+
+  assert.equal(subscribeToConversationMessagesCalls.length, 1, "exactly one subscription must exist before the outage even starts");
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+
+  // 1. The mounted thread begins connected.
+  await React.act(async () => { handlers.onConnectionStateChange("connected"); });
+  assert.match(container.textContent, /Live updates on/);
+
+  // 2. The existing (same, still-mounted) subscription reports unavailable.
+  await React.act(async () => { handlers.onConnectionStateChange("unavailable"); });
+  assert.match(container.textContent, /Live updates unavailable — use Refresh/);
+
+  // 3. Existing messages, the already-loaded older page, pagination, and the
+  // draft all remain unchanged by the outage — no fetch was triggered by a
+  // bare connection-state transition.
+  assert.equal(fetchMessagesCalls.length, 2, "a connection-state change alone must never trigger a fetch");
+  assert.deepEqual([...container.querySelectorAll("li p.whitespace-pre-wrap")].map((el) => el.textContent), ["first", "second"]);
+  assert.equal(textarea.value, "draft surviving the outage/recovery cycle");
+
+  // A message arrives (e.g. from the other participant) while unavailable —
+  // the next authoritative fetch will surface it.
+  fetchMessagesImpl = async () => ({
+    messages: [
+      msg("m1", AUTH_USER_ID, "first", "2026-01-01T00:00:01.000Z"),
+      msg("m2", OTHER_USER_ID, "second", "2026-01-01T00:00:02.000Z"),
+      msg("m3", OTHER_USER_ID, "sent during the outage", "2026-01-01T00:00:03.000Z"),
+    ],
+    nextCursor: null,
+  });
+
+  // 4/5. The SAME subscription later reports connected/SUBSCRIBED — exactly
+  // as the real boundary's persistent .subscribe() callback does on a real
+  // rejoin (onConnectionStateChange("connected") immediately followed by
+  // onSignal(), see messagingClient.ts) — never a new subscribeToConversationMessages
+  // call, never a second channel.
+  await React.act(async () => {
+    handlers.onConnectionStateChange("connected");
+    handlers.onSignal();
+  });
+  await flush();
+
+  assert.equal(subscribeToConversationMessagesCalls.length, 1, "recovery must never create a second subscription/channel — the existing one just reports SUBSCRIBED again");
+  assert.equal(fetchMessagesCalls.length, 3, "the later SUBSCRIBED transition must trigger exactly one new authoritative catch-up fetch");
+  assert.match(container.textContent, /Live updates on/, "the thread must reflect the recovered connected state");
+
+  // 6/7. The message inserted during the outage appears, and everything
+  // remains deduplicated and chronological.
+  assert.deepEqual(
+    [...container.querySelectorAll("li p.whitespace-pre-wrap")].map((el) => el.textContent),
+    ["first", "second", "sent during the outage"],
+    "the message sent during the outage must appear after the post-recovery catch-up fetch, in chronological order with no duplicates"
+  );
+
+  // The draft survived the entire outage/recovery cycle untouched.
+  assert.equal(textarea.value, "draft surviving the outage/recovery cycle");
+
+  // 9. Manual Refresh continues to work after recovery.
+  fetchMessagesImpl = async () => ({
+    messages: [
+      msg("m1", AUTH_USER_ID, "first", "2026-01-01T00:00:01.000Z"),
+      msg("m2", OTHER_USER_ID, "second", "2026-01-01T00:00:02.000Z"),
+      msg("m3", OTHER_USER_ID, "sent during the outage", "2026-01-01T00:00:03.000Z"),
+      msg("m4", OTHER_USER_ID, "after recovery via refresh", "2026-01-01T00:00:04.000Z"),
+    ],
+    nextCursor: null,
+  });
+  const refreshButton = [...container.querySelectorAll("button")].find((b) => /^refresh$/i.test(b.textContent));
+  await React.act(async () => { refreshButton.click(); });
+  await flush();
+  assert.match(container.textContent, /after recovery via refresh/, "manual Refresh must still work after the recovery cycle");
+
+  // 10. No raw channel/socket/Postgres detail ever reached the DOM at any
+  // point in this outage/recovery cycle.
+  assert.doesNotMatch(
+    container.textContent,
+    /SUBSCRIBED|CHANNEL_ERROR|TIMED_OUT|CLOSED|postgres_changes|realtime|websocket|socket/i,
+    "no raw Realtime/Postgres/channel detail may ever reach the DOM"
+  );
+
+  // 8. No navigation or remount was used anywhere in this test — the entire
+  // outage/recovery cycle above was driven through the one subscription's
+  // own handlers.
+});
+
+test("navigating to a different conversation ignores a stale signal from the previous one's (now unmounted) subscription", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesCalls.length = 0;
+  fetchMessagesImpl = async (conversationId) =>
+    conversationId === CONVO_1
+      ? { messages: [msg("m1", AUTH_USER_ID, "from convo 1", "2026-01-01T00:00:01.000Z")], nextCursor: null }
+      : { messages: [{ id: "m2", conversation_id: CONVO_2, sender_id: AUTH_USER_ID, body: "from convo 2", created_at: "2026-01-01T00:00:02.000Z" }], nextCursor: null };
+
+  function SwitchConversation() {
+    const navigate = useNavigate();
+    return React.createElement("button", { type: "button", onClick: () => navigate(`/messages/${CONVO_2}`) }, "Switch conversation");
+  }
+
+  const root = freshRoot();
+  currentRoot = root;
+  await React.act(async () => {
+    root.render(
+      React.createElement(
+        MemoryRouter,
+        { initialEntries: [`/messages/${CONVO_1}`] },
+        React.createElement(
+          Routes,
+          null,
+          React.createElement(Route, {
+            path: "/messages/:conversationId",
+            element: React.createElement(React.Fragment, null, React.createElement(SwitchConversation), React.createElement(ConversationRoute)),
+          })
+        )
+      )
+    );
+  });
+  await flush();
+  assert.equal(subscribeToConversationMessagesCalls.length, 1);
+  const convo1Handlers = subscribeToConversationMessagesCalls[0].handlers;
+  assert.ok(subscribeToConversationMessagesCalls[0].cleanedUp === false);
+
+  const switchButton = [...document.getElementById("root").querySelectorAll("button")].find((b) => b.textContent === "Switch conversation");
+  await React.act(async () => { switchButton.click(); });
+  await flush();
+  assert.equal(subscribeToConversationMessagesCalls[0].cleanedUp, true, "navigating away must clean up the previous conversation's subscription");
+  assert.equal(subscribeToConversationMessagesCalls.length, 2, "the new conversation must get its own fresh subscription");
+
+  const fetchCountAfterSwitch = fetchMessagesCalls.length;
+  await React.act(async () => { convo1Handlers.onSignal(); });
+  await flush();
+  assert.equal(fetchMessagesCalls.length, fetchCountAfterSwitch, "a signal from the previous (unmounted) conversation's subscription must be ignored, not trigger a fetch");
+  assert.doesNotMatch(document.getElementById("root").textContent, /from convo 1/);
+});
+
+test("React StrictMode's synchronous mount -> cleanup -> mount never leaves more than one active Realtime subscription", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  activeSubscriptionCount = 0;
+  fetchMessagesImpl = async () => ({ messages: [], nextCursor: null });
+
+  const root = freshRoot();
+  currentRoot = root;
+  await React.act(async () => {
+    root.render(
+      React.createElement(
+        React.StrictMode,
+        null,
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: [`/messages/${CONVO_1}`] },
+          React.createElement(Routes, null, React.createElement(Route, { path: "/messages/:conversationId", element: React.createElement(ConversationRoute) }))
+        )
+      )
+    );
+  });
+  await flush();
+
+  assert.ok(activeSubscriptionCount <= 1, "at most one active subscription may exist at any point, even under StrictMode's double-invoked effect");
+  assert.equal(activeSubscriptionCount, 1, "exactly one subscription must remain active once mounted");
+
+  await React.act(async () => { currentRoot.unmount(); });
+  currentRoot = null;
+  assert.equal(activeSubscriptionCount, 0, "unmounting must clean up the remaining active subscription");
 });
