@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(85);
+select plan(89);
 
 -- ==========================================================================
 -- Phase 4 Slice A: direct-messaging schema and RLS foundation
@@ -621,6 +621,36 @@ select throws_ok(
   '23505', null,
   'conversations_direct_pair_unique rejects a second row for an already-canonicalized pair — the exact race the unique_violation handler resolves'
 );
+
+-- ==========================================================================
+-- Phase 4 Slice D: enable_messages_realtime migration
+-- (20260828174637_enable_messages_realtime.sql).
+--
+-- Proves exactly the three things that migration is allowed to change: (1)
+-- public.messages — and only public.messages — is now a member of the
+-- pre-existing supabase_realtime publication, and (2)/(3) messages' RLS
+-- remains enabled with the identical policy set as verified structurally
+-- above, i.e. enabling Realtime granted no new authorization path of its
+-- own — Postgres Changes delivery still rides entirely on
+-- messages_member_read.
+-- ==========================================================================
+
+select results_eq(
+  $$select count(*)::bigint from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'$$,
+  array[1::bigint], 'public.messages is a member of the supabase_realtime publication'
+);
+select results_eq(
+  $$select count(*)::bigint from pg_publication_tables where pubname = 'supabase_realtime'$$,
+  array[1::bigint],
+  'supabase_realtime publishes exactly one table — no unrelated table (conversations, conversation_members, profiles, blocks, etc.) was added by this slice'
+);
+select results_eq(
+  $$select relrowsecurity from pg_class where oid = 'public.messages'::regclass$$,
+  array[true], 'RLS remains enabled on messages after enabling Realtime'
+);
+select policies_are('public', 'messages', array['messages_member_insert', 'messages_member_read'],
+  'messages still exposes only member-read and member-insert after Phase 4 Slice D — enabling Realtime grants no new authorization path');
 
 select * from finish();
 rollback;
