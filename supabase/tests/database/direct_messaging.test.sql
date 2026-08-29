@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(89);
+select plan(162);
 
 -- ==========================================================================
 -- Phase 4 Slice A: direct-messaging schema and RLS foundation
@@ -651,6 +651,584 @@ select results_eq(
 );
 select policies_are('public', 'messages', array['messages_member_insert', 'messages_member_read'],
   'messages still exposes only member-read and member-insert after Phase 4 Slice D — enabling Realtime grants no new authorization path');
+
+-- ==========================================================================
+-- Phase 4 Slice E: message_read_state, mark_conversation_read(),
+-- get_unread_message_counts() (20260829172436_message_read_state.sql).
+--
+-- Structural: table/columns/constraints/RLS/grants, then both functions'
+-- signature/security/volatility/language/search_path/grants.
+-- ==========================================================================
+
+select has_table('public', 'message_read_state', 'message_read_state exists');
+select col_is_pk('public', 'message_read_state', array['conversation_id', 'user_id'],
+  'message_read_state is keyed by the (conversation_id, user_id) pair — at most one read-state row per member per conversation');
+select has_pk('public', 'message_read_state', 'message_read_state has a primary key');
+
+select results_eq(
+  $$select pg_catalog.format_type(a.atttypid, a.atttypmod)
+    from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'message_read_state' and a.attname = 'conversation_id'
+      and a.attnum > 0 and not a.attisdropped$$,
+  array['uuid'], 'message_read_state.conversation_id is typed uuid'
+);
+select col_not_null('public', 'message_read_state', 'conversation_id', 'message_read_state.conversation_id is not null');
+select results_eq(
+  $$select pg_catalog.format_type(a.atttypid, a.atttypmod)
+    from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'message_read_state' and a.attname = 'user_id'
+      and a.attnum > 0 and not a.attisdropped$$,
+  array['uuid'], 'message_read_state.user_id is typed uuid'
+);
+select col_not_null('public', 'message_read_state', 'user_id', 'message_read_state.user_id is not null');
+select has_column('public', 'message_read_state', 'last_read_message_id', 'message_read_state.last_read_message_id exists');
+select results_eq(
+  $$select pg_catalog.format_type(a.atttypid, a.atttypmod)
+    from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'message_read_state' and a.attname = 'last_read_message_id'
+      and a.attnum > 0 and not a.attisdropped$$,
+  array['uuid'], 'message_read_state.last_read_message_id is typed uuid'
+);
+select has_column('public', 'message_read_state', 'last_read_message_created_at',
+  'message_read_state.last_read_message_created_at exists');
+select results_eq(
+  $$select pg_catalog.format_type(a.atttypid, a.atttypmod)
+    from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'message_read_state' and a.attname = 'last_read_message_created_at'
+      and a.attnum > 0 and not a.attisdropped$$,
+  array['timestamp with time zone'], 'message_read_state.last_read_message_created_at is typed timestamptz'
+);
+select col_not_null('public', 'message_read_state', 'updated_at', 'message_read_state.updated_at is not null');
+
+-- "The user must genuinely be a member of that conversation" — enforced
+-- declaratively by this FK, not only checked once at RPC call time.
+select results_eq(
+  $$select count(*)::bigint from pg_constraint
+    where conrelid = 'public.message_read_state'::regclass and contype = 'f' and conname = 'message_read_state_member_fk'$$,
+  array[1::bigint], 'message_read_state_member_fk exists: (conversation_id, user_id) references conversation_members'
+);
+select results_eq(
+  $$select confdeltype::text from pg_constraint
+    where conrelid = 'public.message_read_state'::regclass and conname = 'message_read_state_member_fk'$$,
+  array['c'], 'message_read_state_member_fk cascades on delete — a removed membership can never leave an orphaned read-state row'
+);
+
+-- "A stored message cursor must be the real, current row for this
+-- conversation" — enforced declaratively against
+-- messages_conversation_id_created_at_id_key below as the complete
+-- (conversation_id, created_at, id) tuple, not the id alone.
+select results_eq(
+  $$select count(*)::bigint from pg_constraint
+    where conrelid = 'public.message_read_state'::regclass and contype = 'f' and conname = 'message_read_state_cursor_fk'$$,
+  array[1::bigint], 'message_read_state_cursor_fk exists: (conversation_id, last_read_message_created_at, last_read_message_id) references messages'
+);
+select results_eq(
+  $$select pg_get_constraintdef(c.oid) ~ '\(conversation_id, last_read_message_created_at, last_read_message_id\)'
+      and pg_get_constraintdef(c.oid) ~ 'REFERENCES (public\.)?messages\(conversation_id, created_at, id\)'
+    from pg_constraint c
+    where c.conrelid = 'public.message_read_state'::regclass and c.conname = 'message_read_state_cursor_fk'$$,
+  array[true],
+  'message_read_state_cursor_fk covers the complete three-column cursor — (conversation_id, last_read_message_created_at, last_read_message_id) — in that exact order, referencing messages(conversation_id, created_at, id) in the same order, not just the id'
+);
+select results_eq(
+  $$select confdeltype::text from pg_constraint
+    where conrelid = 'public.message_read_state'::regclass and conname = 'message_read_state_cursor_fk'$$,
+  array['a'], 'message_read_state_cursor_fk takes no delete action — messages are append-only/undeletable in this schema, and NO ACTION is the defensive choice if that ever changes'
+);
+select results_eq(
+  $$select count(*)::bigint from pg_constraint
+    where conrelid = 'public.messages'::regclass and contype = 'u' and conname = 'messages_conversation_id_created_at_id_key'$$,
+  array[1::bigint], 'messages_conversation_id_created_at_id_key unique constraint exists — the complete tuple the cursor FK above requires'
+);
+select results_eq(
+  $$select pg_get_constraintdef(c.oid) ~ '\(conversation_id, created_at, id\)'
+    from pg_constraint c
+    where c.conrelid = 'public.messages'::regclass and c.conname = 'messages_conversation_id_created_at_id_key' and c.contype = 'u'$$,
+  array[true],
+  'messages_conversation_id_created_at_id_key is unique on the complete (conversation_id, created_at, id) tuple, in that order — the exact order the cursor FK above references'
+);
+select results_eq(
+  $$select count(*)::bigint from pg_constraint
+    where conrelid = 'public.message_read_state'::regclass and contype = 'c' and conname = 'message_read_state_cursor_consistent'$$,
+  array[1::bigint], 'message_read_state_cursor_consistent CHECK exists — cursor id/timestamp can never be a partial null combination'
+);
+
+select results_eq(
+  $$select relrowsecurity from pg_class where oid = 'public.message_read_state'::regclass$$,
+  array[true], 'RLS is enabled on message_read_state'
+);
+select policies_are('public', 'message_read_state', array['message_read_state_owner_read'],
+  'message_read_state exposes only an owner-read policy — no other member, and no client insert/update/delete, is ever possible');
+
+select results_eq(
+  $$select count(*)::bigint from information_schema.table_privileges
+    where table_schema = 'public' and table_name = 'message_read_state' and grantee = 'anon'$$,
+  array[0::bigint], 'anon has no privileges on message_read_state'
+);
+select results_eq(
+  $$select count(*)::bigint from information_schema.table_privileges
+    where table_schema = 'public' and table_name = 'message_read_state' and grantee = 'authenticated' and privilege_type = 'SELECT'$$,
+  array[1::bigint], 'authenticated may select message_read_state (RLS narrows this to their own row)'
+);
+select results_eq(
+  $$select count(*)::bigint from information_schema.table_privileges
+    where table_schema = 'public' and table_name = 'message_read_state' and grantee = 'authenticated'
+      and privilege_type in ('INSERT', 'UPDATE', 'DELETE')$$,
+  array[0::bigint], 'authenticated has no table-level insert/update/delete on message_read_state — mark_conversation_read() is the only write path'
+);
+select results_eq(
+  $$select count(*)::bigint from information_schema.column_privileges
+    where table_schema = 'public' and table_name = 'message_read_state' and grantee = 'authenticated'
+      and privilege_type in ('INSERT', 'UPDATE', 'DELETE')$$,
+  array[0::bigint], 'authenticated has no column-level insert/update/delete on message_read_state either'
+);
+
+-- mark_conversation_read(uuid, uuid): SECURITY DEFINER, fixed empty
+-- search_path, plpgsql, volatile (it writes), authenticated-only execute, no
+-- p_user_id-style overload of any arity that could target another user.
+select has_function('public', 'mark_conversation_read', array['uuid', 'uuid'],
+  'mark_conversation_read exists with the expected two-argument signature (conversation id, message id — no caller-suppliable user id)');
+select hasnt_function('public', 'mark_conversation_read', array['uuid', 'uuid', 'uuid'],
+  'mark_conversation_read has no three-argument overload that could accept a caller-supplied user id');
+select results_eq(
+  $$select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'mark_conversation_read'$$,
+  array[true], 'mark_conversation_read runs as SECURITY DEFINER (the table it writes grants clients no direct insert/update at all)'
+);
+select results_eq(
+  $$select exists (
+      select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      cross join lateral unnest(p.proconfig) as cfg(setting)
+      where n.nspname = 'public' and p.proname = 'mark_conversation_read' and cfg.setting = 'search_path=""'
+    )$$,
+  array[true], 'mark_conversation_read has a fixed empty search_path'
+);
+select is(
+  (select l.lanname::text from pg_proc p join pg_language l on l.oid = p.prolang
+    where p.oid = 'public.mark_conversation_read(uuid, uuid)'::regprocedure),
+  'plpgsql', 'mark_conversation_read is written in plpgsql'
+);
+select results_eq(
+  $$select p.provolatile::text from pg_proc p
+    where p.oid = 'public.mark_conversation_read(uuid, uuid)'::regprocedure$$,
+  array['v'], 'mark_conversation_read is volatile (it writes message_read_state)'
+);
+select function_privs_are('public', 'mark_conversation_read', array['uuid', 'uuid'],
+  'authenticated', array['EXECUTE'], 'authenticated may call mark_conversation_read');
+select results_eq(
+  $$select count(*)::bigint from information_schema.routine_privileges
+    where routine_schema = 'public' and routine_name = 'mark_conversation_read' and grantee in ('anon', 'PUBLIC')$$,
+  array[0::bigint], 'mark_conversation_read grants no execute privilege to anon or PUBLIC'
+);
+
+-- get_unread_message_counts(): SECURITY INVOKER (every table it reads is
+-- already correctly scoped to the caller by existing RLS), fixed empty
+-- search_path, sql, stable (read-only), authenticated-only execute, zero
+-- parameters (no probing surface for another user/conversation).
+select has_function('public', 'get_unread_message_counts', array[]::text[],
+  'get_unread_message_counts exists with zero parameters — no argument could ever target another user or conversation');
+select results_eq(
+  $$select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'get_unread_message_counts'$$,
+  array[false], 'get_unread_message_counts runs as SECURITY INVOKER — every table it joins is already correctly RLS-scoped to the caller'
+);
+select results_eq(
+  $$select exists (
+      select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      cross join lateral unnest(p.proconfig) as cfg(setting)
+      where n.nspname = 'public' and p.proname = 'get_unread_message_counts' and cfg.setting = 'search_path=""'
+    )$$,
+  array[true], 'get_unread_message_counts has a fixed empty search_path'
+);
+select is(
+  (select l.lanname::text from pg_proc p join pg_language l on l.oid = p.prolang
+    where p.oid = 'public.get_unread_message_counts()'::regprocedure),
+  'sql', 'get_unread_message_counts is written in sql'
+);
+select results_eq(
+  $$select p.provolatile::text from pg_proc p
+    where p.oid = 'public.get_unread_message_counts()'::regprocedure$$,
+  array['s'], 'get_unread_message_counts is stable (read-only within one evaluation)'
+);
+select function_privs_are('public', 'get_unread_message_counts', array[]::text[],
+  'authenticated', array['EXECUTE'], 'authenticated may call get_unread_message_counts');
+select results_eq(
+  $$select count(*)::bigint from information_schema.routine_privileges
+    where routine_schema = 'public' and routine_name = 'get_unread_message_counts' and grantee in ('anon', 'PUBLIC')$$,
+  array[0::bigint], 'get_unread_message_counts grants no execute privilege to anon or PUBLIC'
+);
+
+-- ==========================================================================
+-- Behavioural coverage.
+--
+-- Deliberately fresh fixtures (H/I/J/K/L) rather than reusing A-G above:
+-- this keeps every ordering/monotonicity assertion below independent of
+-- whatever state the Slice A-D sections already left in ab_conversation_id,
+-- and lets every message here use an explicit, caller-chosen id (public.
+-- messages grants authenticated INSERT on the id column itself — see
+-- 20260824090000_direct_messaging_foundation.sql) rather than a random
+-- gen_random_uuid() one. That control matters specifically because this
+-- whole file runs inside one outer BEGIN — Postgres's now() is frozen for
+-- the entire transaction, so messages inserted moments apart here still get
+-- an *identical* created_at; only an explicit, deliberately-ordered id makes
+-- the (created_at, id) tuple ordering these tests exercise unambiguous.
+-- ==========================================================================
+
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data, aud, role, encrypted_password, email_confirmed_at, created_at, updated_at)
+values
+  ('d0000000-0000-0000-0000-000000000008', 'dm-henry@fixture.test', jsonb_build_object('display_name', 'Henry ReadState Fixture'), '{}'::jsonb, 'authenticated', 'authenticated', 'not-a-real-password', now(), now(), now()),
+  ('d0000000-0000-0000-0000-000000000009', 'dm-ivy@fixture.test', jsonb_build_object('display_name', 'Ivy ReadState Fixture'), '{}'::jsonb, 'authenticated', 'authenticated', 'not-a-real-password', now(), now(), now()),
+  ('d0000000-0000-0000-0000-00000000000a', 'dm-judy@fixture.test', jsonb_build_object('display_name', 'Judy Unrelated ReadState Fixture'), '{}'::jsonb, 'authenticated', 'authenticated', 'not-a-real-password', now(), now(), now()),
+  ('d0000000-0000-0000-0000-00000000000b', 'dm-kara@fixture.test', jsonb_build_object('display_name', 'Kara ReadState Fixture'), '{}'::jsonb, 'authenticated', 'authenticated', 'not-a-real-password', now(), now(), now()),
+  ('d0000000-0000-0000-0000-00000000000c', 'dm-leo@fixture.test', jsonb_build_object('display_name', 'Leo ReadState Fixture'), '{}'::jsonb, 'authenticated', 'authenticated', 'not-a-real-password', now(), now(), now());
+
+-- H <-> I: the main conversation these tests mark/read against.
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000008';
+select public.create_direct_conversation('d0000000-0000-0000-0000-000000000009'::uuid) as hi_conversation_id \gset
+insert into public.messages (id, conversation_id, sender_id, body)
+  values ('e1000000-0000-0000-0000-000000000001'::uuid, :'hi_conversation_id'::uuid, 'd0000000-0000-0000-0000-000000000008', 'Hi Ivy — message one.');
+insert into public.messages (id, conversation_id, sender_id, body)
+  values ('e1000000-0000-0000-0000-000000000002'::uuid, :'hi_conversation_id'::uuid, 'd0000000-0000-0000-0000-000000000008', 'Hi Ivy — message two.');
+reset role;
+reset request.jwt.claim.sub;
+
+-- J <-> C (reusing the already-fixtured, unrelated Carol): a wholly separate
+-- conversation, used only to prove a cursor from the wrong conversation is
+-- rejected.
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000a';
+select public.create_direct_conversation('d0000000-0000-0000-0000-000000000003'::uuid) as jc_conversation_id \gset
+insert into public.messages (id, conversation_id, sender_id, body)
+  values ('e1000000-0000-0000-0000-000000000003'::uuid, :'jc_conversation_id'::uuid, 'd0000000-0000-0000-0000-00000000000a', 'Unrelated conversation message.');
+reset role;
+reset request.jwt.claim.sub;
+
+-- K <-> L: used only for the "messages before membership" scenario below.
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000b';
+select public.create_direct_conversation('d0000000-0000-0000-0000-00000000000c'::uuid) as kl_conversation_id \gset
+insert into public.messages (id, conversation_id, sender_id, body)
+  values ('e1000000-0000-0000-0000-000000000004'::uuid, :'kl_conversation_id'::uuid, 'd0000000-0000-0000-0000-00000000000b', 'Kara to Leo, before Leo (re)joins.');
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- First-use / no-state contract, before anyone ever marks anything ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000009';
+select results_eq(
+  format($$select count(*)::bigint from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000009'::uuid$$, :'hi_conversation_id'),
+  array[0::bigint], 'no message_read_state row exists yet for Ivy — first-use is row absence, not a null-valued row'
+);
+select set_eq(
+  $$select conversation_id, unread_count from public.get_unread_message_counts()$$,
+  format($$values (%L::uuid, 2::bigint)$$, :'hi_conversation_id'),
+  'first-use contract: with no read-state row at all, everything sent since joining counts as unread (both of Henry''s messages, for Ivy)'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- Sender's own messages are never unread to the sender ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000008';
+select set_eq(
+  $$select conversation_id, unread_count from public.get_unread_message_counts()$$,
+  format($$values (%L::uuid, 0::bigint)$$, :'hi_conversation_id'),
+  'Henry (the sender of both messages) has zero unread in his own conversation'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- Unauthenticated mark-read rejected ----
+set local role anon;
+select throws_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000001'::uuid)$$, :'hi_conversation_id'),
+  '42501', null, 'anonymous cannot call mark_conversation_read'
+);
+reset role;
+
+-- ---- Non-member mark-read rejected ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000a';
+select throws_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000001'::uuid)$$, :'hi_conversation_id'),
+  'P0001', 'mark_conversation_read: not a member of this conversation',
+  'a non-member (Judy) cannot mark a conversation she does not belong to as read'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- Nonexistent message rejected ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000008';
+select throws_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'ffffffff-0000-0000-0000-000000000099'::uuid)$$, :'hi_conversation_id'),
+  'P0001', 'mark_conversation_read: message not found in this conversation',
+  'a nonexistent message id is rejected'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- A cursor from a different conversation is rejected identically to a
+-- nonexistent one — never distinguishable, and never confirms the other
+-- conversation's message to a real member of this one. ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000008';
+select throws_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000003'::uuid)$$, :'hi_conversation_id'),
+  'P0001', 'mark_conversation_read: message not found in this conversation',
+  'a message belonging to a different conversation (jc_conversation_id) is rejected the same way as a nonexistent one'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- The complete three-column cursor FK proves the stored timestamp
+-- against the real message row, not just the id: a genuine
+-- conversation_id/message_id pair with a falsified
+-- last_read_message_created_at is rejected outright, never silently
+-- accepted or corrected. Run as the connecting superuser role (bypasses
+-- grants, exactly like every other unrestricted verification query in this
+-- file — see the Role discipline note above) so this proves the database
+-- constraint itself, independent of the RPC's own (already-correct)
+-- lookup. ----
+select throws_ok(
+  format($$insert into public.message_read_state
+      (conversation_id, user_id, last_read_message_id, last_read_message_created_at)
+    values (%L::uuid, 'd0000000-0000-0000-0000-00000000000a'::uuid,
+      'e1000000-0000-0000-0000-000000000003'::uuid, '2000-01-01T00:00:00+00'::timestamptz)$$,
+    :'jc_conversation_id'),
+  '23503', null,
+  'a read-state row with a genuine conversation_id and message_id but a falsified last_read_message_created_at is rejected by message_read_state_cursor_fk'
+);
+
+-- ---- The same FK also rejects a cursor whose id and timestamp are both
+-- entirely real — but for a different conversation — proving the check is
+-- against the exact (conversation_id, created_at, id) tuple, not merely
+-- that the timestamp happens to match some message somewhere ----
+select throws_ok(
+  format($$insert into public.message_read_state
+      (conversation_id, user_id, last_read_message_id, last_read_message_created_at)
+    values (%L::uuid, 'd0000000-0000-0000-0000-000000000008'::uuid,
+      'e1000000-0000-0000-0000-000000000003'::uuid,
+      (select created_at from public.messages where id = 'e1000000-0000-0000-0000-000000000003'::uuid))$$,
+    :'hi_conversation_id'),
+  '23503', null,
+  'a read-state row whose message id/timestamp genuinely belong to a different conversation (jc_conversation_id) is rejected when claimed under hi_conversation_id'
+);
+
+-- ---- A real member can mark a message in their own conversation ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000009';
+select lives_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000001'::uuid)$$, :'hi_conversation_id'),
+  'Ivy, a real member, can mark the first message read'
+);
+select results_eq(
+  format($$select last_read_message_id from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000009'::uuid$$, :'hi_conversation_id'),
+  array['e1000000-0000-0000-0000-000000000001'::uuid], 'Ivy''s stored cursor is now message one'
+);
+select results_eq(
+  format($$select rs.last_read_message_created_at = m.created_at
+    from public.message_read_state rs, public.messages m
+    where rs.conversation_id = %L::uuid and rs.user_id = 'd0000000-0000-0000-0000-000000000009'::uuid
+      and m.id = 'e1000000-0000-0000-0000-000000000001'::uuid$$, :'hi_conversation_id'),
+  array[true],
+  'mark_conversation_read stores message one''s actual confirmed created_at — the RPC has no caller-suppliable timestamp parameter at all'
+);
+select set_eq(
+  $$select conversation_id, unread_count from public.get_unread_message_counts()$$,
+  format($$values (%L::uuid, 1::bigint)$$, :'hi_conversation_id'),
+  'after marking message one read, message two (newer, still unread) is the only one counted — messages at/before the cursor are not counted'
+);
+
+-- ---- A newer cursor advances the stored state ----
+select lives_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000002'::uuid)$$, :'hi_conversation_id'),
+  'Ivy marks the newer message two as read'
+);
+select results_eq(
+  format($$select last_read_message_id from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000009'::uuid$$, :'hi_conversation_id'),
+  array['e1000000-0000-0000-0000-000000000002'::uuid], 'Ivy''s cursor advanced to message two'
+);
+select results_eq(
+  format($$select rs.last_read_message_created_at = m.created_at
+    from public.message_read_state rs, public.messages m
+    where rs.conversation_id = %L::uuid and rs.user_id = 'd0000000-0000-0000-0000-000000000009'::uuid
+      and m.id = 'e1000000-0000-0000-0000-000000000002'::uuid$$, :'hi_conversation_id'),
+  array[true],
+  'the advanced cursor also stores message two''s actual confirmed created_at, not a value carried over or derived any other way'
+);
+select set_eq(
+  $$select conversation_id, unread_count from public.get_unread_message_counts()$$,
+  format($$values (%L::uuid, 0::bigint)$$, :'hi_conversation_id'),
+  'nothing remains unread for Ivy once she has read the newest message'
+);
+
+-- ---- An older cursor arriving after a newer one is a safe no-op — the
+-- cursor never moves backwards ----
+select lives_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000001'::uuid)$$, :'hi_conversation_id'),
+  're-marking the older message one (after message two was already marked) does not error'
+);
+select results_eq(
+  format($$select last_read_message_id from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000009'::uuid$$, :'hi_conversation_id'),
+  array['e1000000-0000-0000-0000-000000000002'::uuid],
+  'Ivy''s cursor is still message two — the older resubmission never moved it backwards'
+);
+
+-- ---- An equal cursor is idempotent ----
+select lives_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000002'::uuid)$$, :'hi_conversation_id'),
+  're-marking the same already-current message two does not error'
+);
+select results_eq(
+  format($$select last_read_message_id from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000009'::uuid$$, :'hi_conversation_id'),
+  array['e1000000-0000-0000-0000-000000000002'::uuid],
+  'Ivy''s cursor is unchanged — marking the identical already-current message is a safe no-op'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- Genuine two-session concurrency (the same message marked repeatedly,
+-- an older request literally racing a newer one, two tabs marking different
+-- messages at once) cannot be reproduced inside this file's single
+-- transaction — every call above necessarily runs sequentially. What *is*
+-- provable here, directly, is the exact predicate mark_conversation_read's
+-- `on conflict ... do update ... where (excluded.last_read_message_created_at,
+-- excluded.last_read_message_id) > (message_read_state.last_read_message_created_at,
+-- message_read_state.last_read_message_id)` relies on: that Postgres's own
+-- row-constructor comparison orders message two strictly after message one,
+-- and never the reverse, for the exact two rows every sequential test above
+-- already exercised. Because ON CONFLICT DO UPDATE takes the row's lock
+-- before evaluating that WHERE clause, any two real concurrent callers for
+-- the same (conversation_id, user_id) serialize on this exact comparison —
+-- the second to commit re-evaluates it against the first's already-committed
+-- row — so this predicate being correct is what makes the sequential
+-- evidence above generalize to true concurrent races, not just to the
+-- ordering this transaction happened to run them in.
+select results_eq(
+  $$select (m2.created_at, m2.id) > (m1.created_at, m1.id)
+    from public.messages m1, public.messages m2
+    where m1.id = 'e1000000-0000-0000-0000-000000000001'::uuid
+      and m2.id = 'e1000000-0000-0000-0000-000000000002'::uuid$$,
+  array[true],
+  'the monotonicity predicate correctly orders message two as strictly newer than message one'
+);
+select results_eq(
+  $$select (m1.created_at, m1.id) > (m2.created_at, m2.id)
+    from public.messages m1, public.messages m2
+    where m1.id = 'e1000000-0000-0000-0000-000000000001'::uuid
+      and m2.id = 'e1000000-0000-0000-0000-000000000002'::uuid$$,
+  array[false],
+  'and never the reverse — message one is never newer than message two'
+);
+
+-- ---- The caller can only ever write their own row — Henry (the other real
+-- member) calling mark_conversation_read never touches Ivy's row, and ends
+-- up with an independent row of his own ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000008';
+select lives_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000002'::uuid)$$, :'hi_conversation_id'),
+  'Henry (sender of both messages) may also call mark_conversation_read for his own conversation'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000009';
+select results_eq(
+  format($$select last_read_message_id from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000009'::uuid$$, :'hi_conversation_id'),
+  array['e1000000-0000-0000-0000-000000000002'::uuid],
+  'Ivy''s own row is untouched by Henry''s call — there is no parameter through which a caller can ever write another user''s state'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000008';
+select results_eq(
+  format($$select last_read_message_id from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000008'::uuid$$, :'hi_conversation_id'),
+  array['e1000000-0000-0000-0000-000000000002'::uuid],
+  'Henry has his own independent read-state row, separate from Ivy''s'
+);
+
+-- ---- One member cannot read or infer another member's cursor ----
+select results_eq(
+  format($$select count(*)::bigint from public.message_read_state
+    where conversation_id = %L::uuid and user_id = 'd0000000-0000-0000-0000-000000000009'::uuid$$, :'hi_conversation_id'),
+  array[0::bigint], 'Henry cannot select Ivy''s read-state row at all — RLS scopes select to the owner only'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- Non-members receive no unread data for conversations they don't
+-- belong to (Judy belongs only to jc_conversation_id) ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000a';
+select results_eq(
+  format($$select count(*)::bigint from public.get_unread_message_counts()
+    where conversation_id in (%L::uuid, %L::uuid)$$, :'hi_conversation_id', :'kl_conversation_id'),
+  array[0::bigint], 'Judy (a non-member of both) gets no unread data for hi_conversation_id or kl_conversation_id'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- Blocked status does not fabricate read access or bypass membership:
+-- reusing the already-blocked Frank/Grace pair and fg_conversation_id from
+-- the Slice A section above. A message is inserted directly as the
+-- unrestricted connecting role (the same fixture-setup convention used
+-- throughout this file) rather than through Grace's own now-blocked send
+-- path, purely so there is something real for the still-genuine membership
+-- to read. ----
+insert into public.messages (id, conversation_id, sender_id, body)
+  values ('e1000000-0000-0000-0000-000000000005'::uuid, :'fg_conversation_id'::uuid, 'd0000000-0000-0000-0000-000000000007', 'Grace to Frank, after the block.');
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-000000000006';
+select set_eq(
+  $$select conversation_id, unread_count from public.get_unread_message_counts()$$,
+  format($$values (%L::uuid, 1::bigint)$$, :'fg_conversation_id'),
+  'the block between Frank and Grace does not hide Frank''s genuinely unread message — membership, not block status, governs read access'
+);
+select lives_ok(
+  format($$select public.mark_conversation_read(%L::uuid, 'e1000000-0000-0000-0000-000000000005'::uuid)$$, :'fg_conversation_id'),
+  'Frank, though blocked from sending, can still mark his own conversation as read — the block never revokes his membership'
+);
+select set_eq(
+  $$select conversation_id, unread_count from public.get_unread_message_counts()$$,
+  format($$values (%L::uuid, 0::bigint)$$, :'fg_conversation_id'),
+  'and the count correctly drops to zero afterward, identical to an unblocked conversation'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- Messages predating the caller's membership are never counted, even
+-- though the message itself is otherwise unread — simulated by moving
+-- Leo's own joined_at after Kara's message, since no membership path in
+-- this schema currently allows joining a conversation after messages
+-- already exist; this defends a future membership model where that becomes
+-- possible ----
+update public.conversation_members
+set joined_at = now() + interval '1 hour'
+where conversation_id = :'kl_conversation_id'::uuid and user_id = 'd0000000-0000-0000-0000-00000000000c'::uuid;
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000c';
+select set_eq(
+  $$select conversation_id, unread_count from public.get_unread_message_counts()$$,
+  format($$values (%L::uuid, 0::bigint)$$, :'kl_conversation_id'),
+  'Kara''s message, sent before Leo''s (adjusted) membership began, is never counted as unread for Leo'
+);
+reset role;
+reset request.jwt.claim.sub;
 
 select * from finish();
 rollback;
