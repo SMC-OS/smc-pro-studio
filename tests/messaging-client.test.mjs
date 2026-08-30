@@ -35,6 +35,10 @@ const {
   sendMessage,
   fetchUnreadMessageCounts,
   markConversationRead,
+  fetchConversationCounterpart,
+  fetchMyBlockState,
+  blockUser,
+  unblockUser,
   MessagingOperationError,
 } = await import(new URL("../src/social/services/messagingClient.ts", import.meta.url).href);
 
@@ -989,6 +993,534 @@ test("markConversationRead: an RPC failure (membership/RLS/network) throws the s
         message: "Your read status could not be updated. Please try again.",
         cause: rawError,
         rawFragments: ["mark_conversation_read", "not a member", "P0001"],
+      })
+  );
+});
+
+// ==========================================================================
+// Phase 4 Slice G: fetchConversationCounterpart
+// ==========================================================================
+
+// Deliberately no `.limit()` on this mock: fetchConversationCounterpart no
+// longer limits the query — see its own comment on why capping to one row
+// would silently mis-identify the "other" participant of a future
+// non-'direct' conversation kind instead of surfacing that its "exactly one
+// counterpart" assumption no longer holds.
+function counterpartClient({ userId = AUTH_USER_ID, data = [], error = null } = {}) {
+  const calls = { eq: [], neq: [] };
+  const builder = {
+    select: () => builder,
+    eq: (field, value) => {
+      calls.eq.push([field, value]);
+      return builder;
+    },
+    neq: (field, value) => {
+      calls.neq.push([field, value]);
+      return builder;
+    },
+    then: (resolve, reject) => Promise.resolve(error ? { data: null, error } : { data, error: null }).then(resolve, reject),
+  };
+  return {
+    calls,
+    client: {
+      auth: authUser(userId),
+      from: (table) => {
+        assert.equal(table, "conversation_members");
+        return builder;
+      },
+    },
+  };
+}
+
+test("fetchConversationCounterpart: fails before any query when not authenticated", async () => {
+  const { client } = counterpartClient({ userId: null });
+  currentClient = client;
+  await assert.rejects(() => fetchConversationCounterpart(VALID_CONVO_ID), /Sign in/);
+});
+
+test("fetchConversationCounterpart: rejects a malformed conversation id before any query", async () => {
+  currentClient = { auth: authUser(AUTH_USER_ID), from: () => { throw new Error("from() must not be called"); } };
+  await assert.rejects(() => fetchConversationCounterpart("not-a-uuid"), /valid ID/);
+});
+
+test("fetchConversationCounterpart: filters to this conversation and excludes the caller's own row", async () => {
+  const { client, calls } = counterpartClient({ data: [{ user_id: VALID_OTHER_ID }] });
+  currentClient = client;
+  await fetchConversationCounterpart(VALID_CONVO_ID);
+  assert.deepEqual(calls.eq, [["conversation_id", VALID_CONVO_ID]]);
+  assert.deepEqual(calls.neq, [["user_id", AUTH_USER_ID]]);
+});
+
+test("fetchConversationCounterpart: returns the other member's id when found", async () => {
+  const { client } = counterpartClient({ data: [{ user_id: VALID_OTHER_ID }] });
+  currentClient = client;
+  assert.equal(await fetchConversationCounterpart(VALID_CONVO_ID), VALID_OTHER_ID);
+});
+
+test("fetchConversationCounterpart: returns null, never fabricating an id, when no other member is found", async () => {
+  const { client } = counterpartClient({ data: [] });
+  currentClient = client;
+  assert.equal(await fetchConversationCounterpart(VALID_CONVO_ID), null);
+});
+
+test("fetchConversationCounterpart: a query failure throws the safe message rather than returning null", async () => {
+  const rawError = { message: "permission denied for table conversation_members", code: "42501" };
+  const { client } = counterpartClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => fetchConversationCounterpart(VALID_CONVO_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "fetch_conversation_counterpart",
+        message: "This conversation could not be loaded. Please try again.",
+        cause: rawError,
+        rawFragments: ["permission denied", "42501"],
+      })
+  );
+});
+
+// A non-member of this conversation_id is not rejected/errored by RLS — the
+// select silently returns zero rows for them (conversation_members_member_read
+// is `using (private.is_conversation_member(conversation_id))`, so a
+// non-member's own query never matches any row of a conversation they don't
+// belong to). This is the exact same shape as "genuinely no counterpart", so
+// a non-member calling this (which the real UI never does, since it is only
+// ever invoked with a conversation id the caller is already viewing as a
+// member) learns nothing about who is actually in that conversation — no
+// row, no identity, just null.
+test("fetchConversationCounterpart: a non-member of this conversation receives no participant identity — an empty RLS-filtered result reads as null, never an error or a guess", async () => {
+  const { client } = counterpartClient({ data: [] });
+  currentClient = client;
+  assert.equal(await fetchConversationCounterpart(VALID_CONVO_ID), null);
+});
+
+// This function never reads, filters on, or is conditioned by public.blocks
+// in any way — it only ever answers "who is the other member of a
+// conversation I already belong to", identity the caller already legitimately
+// knows from having that conversation open. A block (in either direction)
+// changes nothing about this result: conversation_members_member_read is
+// unconditioned on private.has_blocked(), unlike messages_member_insert.
+// Confirmed live against a running local instance as well (see this
+// function's own module comment) — this test pins that as a permanent
+// contract at the unit level: an active block must never turn this query
+// into an error or into null, since either would be new, uninvited
+// information about the block itself.
+test("fetchConversationCounterpart: a resolvable counterpart is returned regardless of any block between the two members — this function is not conditioned on public.blocks at all", async () => {
+  const { client, calls } = counterpartClient({ data: [{ user_id: VALID_OTHER_ID }] });
+  currentClient = client;
+  const result = await fetchConversationCounterpart(VALID_CONVO_ID);
+  assert.equal(result, VALID_OTHER_ID);
+  assert.deepEqual(calls.eq, [["conversation_id", VALID_CONVO_ID]]);
+});
+
+// conversation_kind is a single-value enum ('direct' only) today, so this is
+// structurally impossible against the real schema — but exactly like every
+// other "should be impossible, verify anyway" result in this file (see
+// unblockUser's own multi-row check), a second matching row must fail loudly
+// rather than this function arbitrarily picking one and silently
+// mis-identifying the counterpart of some future non-direct conversation kind.
+test("fetchConversationCounterpart: more than one other member (a future non-direct conversation kind) is a contract failure, never an arbitrary pick", async () => {
+  const { client } = counterpartClient({ data: [{ user_id: VALID_OTHER_ID }, { user_id: "d0000000-0000-0000-0000-000000000003" }] });
+  currentClient = client;
+  await assert.rejects(() => fetchConversationCounterpart(VALID_CONVO_ID), /This conversation could not be loaded/);
+});
+
+test("fetchConversationCounterpart: a malformed single row (missing/non-UUID user_id) is a contract failure, never silently treated as 'no counterpart'", async () => {
+  const { client } = counterpartClient({ data: [{ user_id: "not-a-uuid" }] });
+  currentClient = client;
+  await assert.rejects(() => fetchConversationCounterpart(VALID_CONVO_ID), /This conversation could not be loaded/);
+});
+
+// ==========================================================================
+// Phase 4 Slice G: fetchMyBlockState / blockUser / unblockUser
+// ==========================================================================
+
+const TARGET_ID = VALID_OTHER_ID;
+
+function blockStateClient({ userId = AUTH_USER_ID, row = null, error = null } = {}) {
+  const calls = { eq: [] };
+  const builder = {
+    select: () => builder,
+    eq: (field, value) => {
+      calls.eq.push([field, value]);
+      return builder;
+    },
+    maybeSingle: async () => (error ? { data: null, error } : { data: row, error: null }),
+  };
+  return {
+    calls,
+    client: {
+      auth: authUser(userId),
+      from: (table) => {
+        assert.equal(table, "blocks");
+        return builder;
+      },
+    },
+  };
+}
+
+test("fetchMyBlockState: fails before any query when not authenticated", async () => {
+  const { client, calls } = blockStateClient({ userId: null });
+  currentClient = client;
+  await assert.rejects(() => fetchMyBlockState(TARGET_ID), /Sign in/);
+  assert.equal(calls.eq.length, 0);
+});
+
+test("fetchMyBlockState: a genuine auth.getUser() failure throws SocialUnavailableError, not the sign-in message, before any query", async () => {
+  currentClient = {
+    auth: authUserError(AUTH_VERIFICATION_ERROR),
+    from: () => {
+      throw new Error("from() must not be called when session verification itself fails");
+    },
+  };
+  await assert.rejects(
+    () => fetchMyBlockState(TARGET_ID),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      assert.doesNotMatch(err.message, /Sign in/);
+      assert.equal(err.cause, AUTH_VERIFICATION_ERROR);
+      return true;
+    }
+  );
+});
+
+test("fetchMyBlockState: rejects a malformed target UUID before authentication or any query", async () => {
+  currentClient = {
+    auth: authUser(AUTH_USER_ID),
+    from: () => {
+      throw new Error("from() must not be called for a malformed target id");
+    },
+  };
+  await assert.rejects(() => fetchMyBlockState("not-a-uuid"), /valid ID/);
+});
+
+test("fetchMyBlockState: queries using both the caller's own id and the target id as exact equality filters", async () => {
+  const { client, calls } = blockStateClient({ row: null });
+  currentClient = client;
+  await fetchMyBlockState(TARGET_ID);
+  assert.deepEqual(calls.eq, [
+    ["blocker_id", AUTH_USER_ID],
+    ["blocked_id", TARGET_ID],
+  ]);
+});
+
+test("fetchMyBlockState: a genuinely absent row returns confirmed not-blocked (false), not an error", async () => {
+  const { client } = blockStateClient({ row: null });
+  currentClient = client;
+  assert.equal(await fetchMyBlockState(TARGET_ID), false);
+});
+
+test("fetchMyBlockState: a genuine own-block row returns confirmed blocked (true)", async () => {
+  const { client } = blockStateClient({ row: { blocker_id: AUTH_USER_ID } });
+  currentClient = client;
+  assert.equal(await fetchMyBlockState(TARGET_ID), true);
+});
+
+test("fetchMyBlockState: a query failure throws the safe message rather than becoming a false 'not blocked' result, preserving the original error as cause", async () => {
+  const rawError = { message: "permission denied for table blocks", code: "42501" };
+  const { client } = blockStateClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => fetchMyBlockState(TARGET_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "fetch_block_state",
+        message: "Your block status could not be checked. Please try again.",
+        cause: rawError,
+        rawFragments: ["permission denied", "42501"],
+      })
+  );
+});
+
+test("messagingClient.ts exposes no helper that answers the reverse direction (whether the target has blocked the caller)", async () => {
+  const moduleExports = await import(new URL("../src/social/services/messagingClient.ts", import.meta.url).href);
+  const blockRelatedRuntimeExports = Object.keys(moduleExports).filter((name) => /block/i.test(name));
+  assert.deepEqual(blockRelatedRuntimeExports.sort(), ["blockUser", "fetchMyBlockState", "unblockUser"]);
+});
+
+// blocks' own grants (20260819120000_social_core.sql) are
+// `select, insert, delete` — deliberately no `update` — so blockUser()
+// cannot use `.upsert()` (which compiles to `INSERT ... ON CONFLICT DO
+// UPDATE`, confirmed against a live local instance to fail with
+// `permission denied for table blocks` for a role with no UPDATE grant,
+// before RLS is even reached). It instead does a plain `.insert()` and,
+// only on a `23505` unique-violation (the caller already blocks this
+// target), falls back to a `.select()` of the existing row — which
+// blocks_owner_read's SELECT grant does allow. This mock's `from("blocks")`
+// therefore exposes both `.insert()` (for the primary attempt) and
+// `.select()` (for the conflict-fallback read) on the same object, matching
+// the two independent `client.from("blocks")` call sites in the real
+// implementation.
+function blockMutationClient({ userId = AUTH_USER_ID, insertData = null, insertError = null, existingData = null, existingError = null } = {}) {
+  const calls = { insertPayload: null, existingEq: [] };
+  const insertResultBuilder = {
+    select: () => insertResultBuilder,
+    single: async () => (insertError ? { data: null, error: insertError } : { data: insertData, error: null }),
+  };
+  const existingResultBuilder = {
+    eq: (field, value) => {
+      calls.existingEq.push([field, value]);
+      return existingResultBuilder;
+    },
+    single: async () => (existingError ? { data: null, error: existingError } : { data: existingData, error: null }),
+  };
+  return {
+    calls,
+    client: {
+      auth: authUser(userId),
+      from: (table) => {
+        assert.equal(table, "blocks");
+        return {
+          insert: (payload) => {
+            calls.insertPayload = payload;
+            return insertResultBuilder;
+          },
+          select: () => existingResultBuilder,
+        };
+      },
+    },
+  };
+}
+
+function validBlockRow(overrides = {}) {
+  return { blocker_id: AUTH_USER_ID, blocked_id: TARGET_ID, created_at: "2026-01-01T00:00:00.000Z", ...overrides };
+}
+
+const UNIQUE_VIOLATION_ERROR = { message: 'duplicate key value violates unique constraint "blocks_pkey"', code: "23505" };
+
+test("blockUser: fails before any write when not authenticated", async () => {
+  const { client, calls } = blockMutationClient({ userId: null });
+  currentClient = client;
+  await assert.rejects(() => blockUser(TARGET_ID), /Sign in/);
+  assert.equal(calls.insertPayload, null);
+});
+
+test("blockUser: a genuine auth.getUser() failure throws SocialUnavailableError before any write", async () => {
+  currentClient = {
+    auth: authUserError(AUTH_VERIFICATION_ERROR),
+    from: () => {
+      throw new Error("from() must not be called when session verification itself fails");
+    },
+  };
+  await assert.rejects(
+    () => blockUser(TARGET_ID),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      assert.doesNotMatch(err.message, /Sign in/);
+      assert.equal(err.cause, AUTH_VERIFICATION_ERROR);
+      return true;
+    }
+  );
+});
+
+test("blockUser: rejects a malformed target UUID before authentication or any write", async () => {
+  currentClient = {
+    auth: authUser(AUTH_USER_ID),
+    from: () => {
+      throw new Error("from() must not be called for a malformed target id");
+    },
+  };
+  await assert.rejects(() => blockUser("not-a-uuid"), /valid ID/);
+});
+
+test("blockUser: rejects self-targeting before any write", async () => {
+  const { client, calls } = blockMutationClient({});
+  currentClient = client;
+  await assert.rejects(() => blockUser(AUTH_USER_ID), /block yourself/);
+  assert.equal(calls.insertPayload, null);
+});
+
+test("blockUser: the insert payload contains exactly the authenticated blocker id and the requested target id — there is no parameter through which a caller could supply/spoof a different blocker id", async () => {
+  const { client, calls } = blockMutationClient({ insertData: validBlockRow() });
+  currentClient = client;
+  await blockUser(TARGET_ID);
+  assert.deepEqual(calls.insertPayload, { blocker_id: AUTH_USER_ID, blocked_id: TARGET_ID });
+  assert.deepEqual(Object.keys(calls.insertPayload).sort(), ["blocked_id", "blocker_id"]);
+});
+
+test("blockUser: a successful block returns exactly the server-confirmed row", async () => {
+  const row = validBlockRow();
+  const { client } = blockMutationClient({ insertData: row });
+  currentClient = client;
+  const result = await blockUser(TARGET_ID);
+  assert.deepEqual(result, { blockerId: row.blocker_id, blockedId: row.blocked_id, createdAt: row.created_at });
+});
+
+test("blockUser: idempotency is explicit — a second block request that hits the unique-constraint conflict falls back to reading the existing confirmed row (same created_at), never fabricating a new success and never attempting an UPDATE", async () => {
+  const row = validBlockRow({ created_at: "2025-06-01T00:00:00.000Z" });
+  const { client: freshClient } = blockMutationClient({ insertData: row });
+  currentClient = freshClient;
+  const first = await blockUser(TARGET_ID);
+
+  const { client: conflictClient, calls } = blockMutationClient({ insertError: UNIQUE_VIOLATION_ERROR, existingData: row });
+  currentClient = conflictClient;
+  const second = await blockUser(TARGET_ID);
+
+  assert.deepEqual(first, second);
+  assert.equal(second.createdAt, "2025-06-01T00:00:00.000Z");
+  assert.deepEqual(calls.existingEq, [
+    ["blocker_id", AUTH_USER_ID],
+    ["blocked_id", TARGET_ID],
+  ]);
+});
+
+test("blockUser: a malformed successful result (returned ids not matching the request) is treated as a contract failure, not a fabricated success", async () => {
+  const { client } = blockMutationClient({ insertData: validBlockRow({ blocked_id: "c9999999-0000-0000-0000-000000000099" }) });
+  currentClient = client;
+  await assert.rejects(() => blockUser(TARGET_ID), /This person could not be blocked/);
+});
+
+test("blockUser: a malformed row returned by the conflict-fallback read is also treated as a contract failure", async () => {
+  const { client } = blockMutationClient({
+    insertError: UNIQUE_VIOLATION_ERROR,
+    existingData: validBlockRow({ blocked_id: "c9999999-0000-0000-0000-000000000099" }),
+  });
+  currentClient = client;
+  await assert.rejects(() => blockUser(TARGET_ID), /This person could not be blocked/);
+});
+
+test("blockUser: a failure of the conflict-fallback read itself propagates the safe message, preserving the original error as cause", async () => {
+  const rawError = { message: "permission denied for table blocks", code: "42501" };
+  const { client } = blockMutationClient({ insertError: UNIQUE_VIOLATION_ERROR, existingError: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => blockUser(TARGET_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "block_user",
+        message: "This person could not be blocked right now. Please try again.",
+        cause: rawError,
+        rawFragments: ["permission denied", "42501"],
+      })
+  );
+});
+
+test("blockUser: an RLS/network failure propagates the safe message, preserving the original error as cause", async () => {
+  const rawError = { message: 'new row violates row-level security policy for table "blocks"', code: "42501" };
+  const { client } = blockMutationClient({ insertError: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => blockUser(TARGET_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "block_user",
+        message: "This person could not be blocked right now. Please try again.",
+        cause: rawError,
+        rawFragments: ["row-level security", "42501"],
+      })
+  );
+});
+
+function unblockMutationClient({ userId = AUTH_USER_ID, data = [], error = null } = {}) {
+  const calls = { eq: [] };
+  const builder = {
+    eq: (field, value) => {
+      calls.eq.push([field, value]);
+      return builder;
+    },
+    select: () => builder,
+    then: (resolve, reject) => Promise.resolve(error ? { data: null, error } : { data, error: null }).then(resolve, reject),
+  };
+  return {
+    calls,
+    client: {
+      auth: authUser(userId),
+      from: (table) => {
+        assert.equal(table, "blocks");
+        return { delete: () => builder };
+      },
+    },
+  };
+}
+
+test("unblockUser: fails before any write when not authenticated", async () => {
+  const { client, calls } = unblockMutationClient({ userId: null });
+  currentClient = client;
+  await assert.rejects(() => unblockUser(TARGET_ID), /Sign in/);
+  assert.equal(calls.eq.length, 0);
+});
+
+test("unblockUser: a genuine auth.getUser() failure throws SocialUnavailableError before any write", async () => {
+  currentClient = {
+    auth: authUserError(AUTH_VERIFICATION_ERROR),
+    from: () => {
+      throw new Error("from() must not be called when session verification itself fails");
+    },
+  };
+  await assert.rejects(
+    () => unblockUser(TARGET_ID),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      assert.doesNotMatch(err.message, /Sign in/);
+      assert.equal(err.cause, AUTH_VERIFICATION_ERROR);
+      return true;
+    }
+  );
+});
+
+test("unblockUser: rejects a malformed target UUID before authentication or any write", async () => {
+  currentClient = {
+    auth: authUser(AUTH_USER_ID),
+    from: () => {
+      throw new Error("from() must not be called for a malformed target id");
+    },
+  };
+  await assert.rejects(() => unblockUser("not-a-uuid"), /valid ID/);
+});
+
+test("unblockUser: the delete is scoped to exactly the authenticated caller as blocker and the requested target as blocked", async () => {
+  const { client, calls } = unblockMutationClient({ data: [{ blocker_id: AUTH_USER_ID, blocked_id: TARGET_ID }] });
+  currentClient = client;
+  await unblockUser(TARGET_ID);
+  assert.deepEqual(calls.eq, [
+    ["blocker_id", AUTH_USER_ID],
+    ["blocked_id", TARGET_ID],
+  ]);
+});
+
+test("unblockUser: a genuine deletion returns removed: true with the confirmed row identity", async () => {
+  const { client } = unblockMutationClient({ data: [{ blocker_id: AUTH_USER_ID, blocked_id: TARGET_ID }] });
+  currentClient = client;
+  const result = await unblockUser(TARGET_ID);
+  assert.deepEqual(result, { blockerId: AUTH_USER_ID, blockedId: TARGET_ID, removed: true });
+});
+
+test("unblockUser: deleting a non-existent block row is an explicit, confirmed idempotent no-op (removed: false), never an error and never conflated with a genuine deletion", async () => {
+  const { client } = unblockMutationClient({ data: [] });
+  currentClient = client;
+  const result = await unblockUser(TARGET_ID);
+  assert.deepEqual(result, { blockerId: AUTH_USER_ID, blockedId: TARGET_ID, removed: false });
+});
+
+test("unblockUser: more than one returned row is treated as a contract failure — structurally impossible given the primary key, but never trusted blindly", async () => {
+  const { client } = unblockMutationClient({
+    data: [
+      { blocker_id: AUTH_USER_ID, blocked_id: TARGET_ID },
+      { blocker_id: AUTH_USER_ID, blocked_id: TARGET_ID },
+    ],
+  });
+  currentClient = client;
+  await assert.rejects(() => unblockUser(TARGET_ID), /This person could not be unblocked/);
+});
+
+test("unblockUser: a malformed returned row (ids not matching the request) is treated as a contract failure", async () => {
+  const { client } = unblockMutationClient({ data: [{ blocker_id: AUTH_USER_ID, blocked_id: "c9999999-0000-0000-0000-000000000099" }] });
+  currentClient = client;
+  await assert.rejects(() => unblockUser(TARGET_ID), /This person could not be unblocked/);
+});
+
+test("unblockUser: an RLS/network failure propagates the safe message, preserving the original error as cause", async () => {
+  const rawError = { message: "permission denied for table blocks", code: "42501" };
+  const { client } = unblockMutationClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => unblockUser(TARGET_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "unblock_user",
+        message: "This person could not be unblocked right now. Please try again.",
+        cause: rawError,
+        rawFragments: ["permission denied", "42501"],
       })
   );
 });

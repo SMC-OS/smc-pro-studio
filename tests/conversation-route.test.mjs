@@ -52,6 +52,17 @@ let markConversationReadImpl = null;
 const markConversationReadCalls = [];
 const knownMessageTimestamps = new Map();
 
+// Phase 4 Slice G: ThreadView's own-block-state lookup for its counterpart.
+// Defaults resolve to the fixed OTHER_USER_ID (already the implicit
+// counterpart in every message fixture below) and "not blocked", so every
+// pre-existing test's composer stays enabled exactly as before; a test
+// exercising the block banner/composer-gating overrides these explicitly
+// and resets them afterward.
+let fetchConversationCounterpartImpl = async () => OTHER_USER_ID;
+let fetchMyBlockStateImpl = async () => false;
+const fetchConversationCounterpartCalls = [];
+const fetchMyBlockStateCalls = [];
+
 // Phase 4 Slice D: a controllable stand-in for the real
 // subscribeToConversationMessages boundary. Each call is recorded with the
 // handlers ThreadView registered, so a test can reach in and simulate a
@@ -114,6 +125,18 @@ mock.module(messagingClientUrl, {
     },
     createOrGetDirectConversation: async () => {
       throw new Error("createOrGetDirectConversation must not be called from the thread screen");
+    },
+    // Phase 4 Slice G: ThreadView's own read-only block-state lookup for its
+    // counterpart. Defaults keep every pre-existing test in this file
+    // exactly as before (a resolvable counterpart, never blocked); a test
+    // exercising the block-state banner overrides these explicitly.
+    fetchConversationCounterpart: async (...args) => {
+      fetchConversationCounterpartCalls.push(args);
+      return fetchConversationCounterpartImpl(...args);
+    },
+    fetchMyBlockState: async (...args) => {
+      fetchMyBlockStateCalls.push(args);
+      return fetchMyBlockStateImpl(...args);
     },
     subscribeToConversationMessages: async (conversationId, handlers, options) => {
       if (subscribeToConversationMessagesImpl) return subscribeToConversationMessagesImpl(conversationId, handlers, options);
@@ -899,6 +922,10 @@ function resetReadState() {
   fetchUnreadMessageCountsImpl = null;
   markConversationReadImpl = null;
   markConversationReadCalls.length = 0;
+  fetchConversationCounterpartImpl = async () => OTHER_USER_ID;
+  fetchMyBlockStateImpl = async () => false;
+  fetchConversationCounterpartCalls.length = 0;
+  fetchMyBlockStateCalls.length = 0;
 }
 
 test("a malformed conversation id never calls markConversationRead", async () => {
@@ -1221,4 +1248,54 @@ test("a confirmed mark-read success clears only the selected conversation's badg
   };
   assert.equal(badgeFor(CONVO_1), null, "convo 1's badge is cleared once its mark-read is confirmed");
   assert.equal(badgeFor(CONVO_2), "2", "convo 2's badge — a different conversation — must be completely unaffected");
+});
+
+// ==========================================================================
+// Phase 4 Slice G: ThreadView's own read-only block-state banner/gating.
+// ==========================================================================
+
+test("a confirmed own-block state disables composing and shows a neutral own-action banner — never a claim about the other participant", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  fetchConversationCounterpartImpl = async () => OTHER_USER_ID;
+  fetchMyBlockStateImpl = async () => true;
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+
+  assert.deepEqual(fetchConversationCounterpartCalls, [[CONVO_1]], "the counterpart lookup must be scoped to this exact conversation");
+  assert.deepEqual(fetchMyBlockStateCalls, [[OTHER_USER_ID]], "the block-state lookup must target the resolved counterpart, not a raw conversation id");
+  assert.match(container.textContent, /You've blocked this person\. Messages can't be sent until you unblock them from their profile\./);
+  assert.doesNotMatch(container.textContent, /blocked you|they blocked|they've blocked/i, "must never claim the other participant did anything");
+
+  const textarea = container.querySelector("#message-draft");
+  assert.equal(textarea.disabled, true, "the composer textarea must be disabled while confirmed blocked");
+
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+  await React.act(async () => {
+    nativeSetter.call(textarea, "should not be sendable");
+    textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  const sendButton = [...container.querySelectorAll("button[type=submit]")].find((b) => /send/i.test(b.textContent));
+  assert.equal(sendButton.disabled, true, "Send must stay disabled even with draft text present while confirmed blocked");
+
+  // Existing messages remain fully visible — a block never hides prior history.
+  assert.match(container.textContent, /first/);
+});
+
+test("an own-block-state lookup failure stays silent — no banner, composing remains available, nothing surfaces as a thread-level error", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  fetchConversationCounterpartImpl = async () => {
+    throw new Error("boom");
+  };
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+
+  assert.doesNotMatch(container.textContent, /blocked/i, "an unknown own-block state must never render the block banner or any 'blocked' text");
+  const textarea = container.querySelector("#message-draft");
+  assert.equal(textarea.disabled, false, "composing must remain available when own-block state is merely unknown, not confirmed blocked");
 });

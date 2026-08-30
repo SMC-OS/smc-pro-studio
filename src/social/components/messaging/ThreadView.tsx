@@ -4,7 +4,9 @@ import { ArrowLeft, Send } from "lucide-react";
 import { EmptyState, ErrorState, LoadingState } from "../StateViews";
 import { Button } from "../ui";
 import {
+  fetchConversationCounterpart,
   fetchMessages,
+  fetchMyBlockState,
   markConversationRead,
   sendMessage,
   subscribeToConversationMessages,
@@ -171,6 +173,43 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
     const latest = latestMessage(state.messages);
     if (latest) attemptMarkRead(latest, { force: true });
   }
+
+  // ==========================================================================
+  // Phase 4 Slice G: the caller's own block state for this conversation's
+  // counterpart. `fetchConversationCounterpart` reads conversation_members —
+  // a table this caller is already entitled to read as a genuine member of
+  // this exact conversation (the same table ConversationList's own
+  // enrichConversations() already reads via fetchMyConversations' embedded
+  // `members`) — not a new database contract. `fetchMyBlockState` then
+  // answers only "did I block them", never the reverse; there is no
+  // thread-level Block control here (see BlockButton.tsx on the profile
+  // route for the real action) — this is read-only, neutral, own-action
+  // status only. A failure at either step is silent by design (same
+  // discipline as runConvergenceFetch's own catch below): it leaves
+  // `ownBlockState` at "unknown", which only ever affects whether the
+  // banner below renders — it never turns into a thread-level error and
+  // never disables sending on anything but a *confirmed* block.
+  // ==========================================================================
+  type OwnBlockState = { status: "unknown" } | { status: "blocked" } | { status: "not_blocked" };
+  const [ownBlockState, setOwnBlockState] = useState<OwnBlockState>({ status: "unknown" });
+  const blockGenerationRef = useRef(0);
+
+  useEffect(() => {
+    const generation = ++blockGenerationRef.current;
+    fetchConversationCounterpart(conversationId)
+      .then((counterpartId) => (counterpartId ? fetchMyBlockState(counterpartId) : null))
+      .then((blocked) => {
+        if (blockGenerationRef.current !== generation) return;
+        if (blocked === null) return; // no counterpart resolved — stay "unknown", never fabricate a state
+        setOwnBlockState(blocked ? { status: "blocked" } : { status: "not_blocked" });
+      })
+      .catch(() => {
+        // Silent — see comment above.
+      });
+    return () => {
+      blockGenerationRef.current += 1;
+    };
+  }, [conversationId]);
 
   const loadInitial = useCallback(() => {
     const generation = ++initialLoadGenerationRef.current;
@@ -372,7 +411,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
     }
   }
 
-  const canCompose = state.status === "ready";
+  const canCompose = state.status === "ready" && ownBlockState.status !== "blocked";
 
   return (
     <div className="flex flex-col gap-3">
@@ -428,6 +467,17 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
           >
             Retry
           </button>
+        </div>
+      )}
+
+      {/* Own-action framing only — never a claim about the other participant's
+          own block state (that direction is structurally unreadable to this
+          caller, see fetchMyBlockState). Existing conversation/messages are
+          never deleted or hidden because of this; sending is simply disabled
+          (canCompose above) until the caller unblocks them from their profile. */}
+      {ownBlockState.status === "blocked" && (
+        <div role="status" className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] px-3 py-2 text-xs text-[var(--smc-charcoal-soft)]">
+          You've blocked this person. Messages can't be sent until you unblock them from their profile.
         </div>
       )}
 

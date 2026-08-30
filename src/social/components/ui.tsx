@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
 
 /**
  * Shared visual primitives for the Phase 3 social shell. Nothing here
@@ -43,19 +43,21 @@ export function Card({
 
 type ButtonVariant = "primary" | "secondary" | "ghost";
 
-export function Button({
-  variant = "primary",
-  className = "",
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }) {
-  const base = "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[var(--smc-radius-pill)] px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-  const variants: Record<ButtonVariant, string> = {
-    primary: "bg-[var(--smc-charcoal)] text-[var(--smc-ivory)] hover:bg-[var(--smc-charcoal-soft)]",
-    secondary: "border border-[var(--smc-border-strong)] text-[var(--smc-charcoal)] hover:bg-[var(--smc-limestone)]",
-    ghost: "text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-limestone)]",
-  };
-  return <button className={`${base} ${variants[variant]} ${className}`} {...props} />;
-}
+// forwardRef so callers that need to manage focus programmatically (e.g. a
+// confirmation dialog's initial-focus/focus-restore contract) can do so
+// without duplicating this component's markup/styling — purely additive,
+// every existing caller that never passes a ref is unaffected.
+export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant }>(
+  function Button({ variant = "primary", className = "", ...props }, ref) {
+    const base = "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[var(--smc-radius-pill)] px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+    const variants: Record<ButtonVariant, string> = {
+      primary: "bg-[var(--smc-charcoal)] text-[var(--smc-ivory)] hover:bg-[var(--smc-charcoal-soft)]",
+      secondary: "border border-[var(--smc-border-strong)] text-[var(--smc-charcoal)] hover:bg-[var(--smc-limestone)]",
+      ghost: "text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-limestone)]",
+    };
+    return <button ref={ref} className={`${base} ${variants[variant]} ${className}`} {...props} />;
+  }
+);
 
 export function Avatar({
   name,

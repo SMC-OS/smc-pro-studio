@@ -26,6 +26,17 @@ const CONVO_ID = "c0000000-0000-0000-0000-000000000001";
 let authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
 let createOrGetDirectConversationImpl = async () => CONVO_ID;
 const createOrGetDirectConversationCalls = [];
+// Phase 4 Slice G: PublicProfileRoute's own block-state lookup. Defaults to
+// "not blocked" so every pre-existing test here (none of which care about
+// blocking) sees Message enabled exactly as before; the dedicated
+// block/unblock test file covers the gating itself in depth.
+let fetchMyBlockStateImpl = async () => false;
+let blockUserImpl = async () => {
+  throw new Error("blockUser not exercised in this file");
+};
+let unblockUserImpl = async () => {
+  throw new Error("unblockUser not exercised in this file");
+};
 
 mock.module(authUrl, {
   exports: { useAuthSession: () => authState },
@@ -42,6 +53,9 @@ mock.module(messagingClientUrl, {
       createOrGetDirectConversationCalls.push(args);
       return createOrGetDirectConversationImpl(...args);
     },
+    fetchMyBlockState: async (...args) => fetchMyBlockStateImpl(...args),
+    blockUser: async (...args) => blockUserImpl(...args),
+    unblockUser: async (...args) => unblockUserImpl(...args),
   },
 });
 
@@ -103,7 +117,7 @@ test("MessageButton: navigates to the new conversation only after the RPC confir
         React.createElement(
           Routes,
           null,
-          React.createElement(Route, { path: "/profile/other", element: React.createElement(MessageButton, { userId: OTHER_USER_ID }) }),
+          React.createElement(Route, { path: "/profile/other", element: React.createElement(MessageButton, { userId: OTHER_USER_ID, blocked: false }) }),
           React.createElement(Route, { path: "/messages/:conversationId", element: React.createElement("div", null, "THREAD") })
         )
       )
@@ -148,7 +162,7 @@ test("MessageButton: an RPC failure stays visible and retryable, and never navig
         React.createElement(
           Routes,
           null,
-          React.createElement(Route, { path: "/profile/other", element: React.createElement(MessageButton, { userId: OTHER_USER_ID }) }),
+          React.createElement(Route, { path: "/profile/other", element: React.createElement(MessageButton, { userId: OTHER_USER_ID, blocked: false }) }),
           React.createElement(Route, { path: "/messages/:conversationId", element: React.createElement("div", null, "THREAD") })
         )
       )
