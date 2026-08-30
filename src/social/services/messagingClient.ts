@@ -83,7 +83,11 @@ export type MessagingOperation =
   | "fetch_messages"
   | "send_message"
   | "fetch_unread_counts"
-  | "mark_read";
+  | "mark_read"
+  | "fetch_conversation_counterpart"
+  | "fetch_block_state"
+  | "block_user"
+  | "unblock_user";
 
 export class MessagingOperationError extends Error {
   readonly operation: MessagingOperation;
@@ -592,4 +596,290 @@ export async function markConversationRead(conversationId: string, messageId: st
     lastReadMessageCreatedAt: record.last_read_message_created_at,
     updatedAt: record.updated_at,
   };
+}
+
+// ==========================================================================
+// Phase 4 Slice G: the other member of an existing direct conversation.
+//
+// Reads public.conversation_members — the exact same table/RLS
+// (conversation_members_member_read: "a member may read every membership
+// row of any conversation they themselves belong to", gated only by
+// private.is_conversation_member(), 20260824090000_direct_messaging_foundation.sql)
+// ConversationList's own enrichConversations() already relies on to resolve
+// a counterpart's display name from fetchMyConversations()'s embedded
+// `members`. This is not a new grant or a new database contract — only a
+// query this file did not previously need.
+//
+// Safe to call from a genuinely fresh mount (no cached component state) even
+// once the caller has blocked the other member: membership rows are never
+// removed or hidden by a block — conversation_members_member_read,
+// messages_member_read, and message_read_state's own owner-scoped read
+// policy are all conditioned purely on conversation membership /
+// ownership, never on private.has_blocked(). Only messages_member_insert
+// (sending) is block-gated, via private.conversation_has_blocked_participant().
+// This was re-verified live against a running local instance rather than
+// assumed from the migration alone: with an existing conversation and an
+// active block from A to B, a genuinely fresh full-page load of A's thread
+// (fetch instrumented before the app's own data effects ran, so every
+// request was captured) returned exactly this: conversation_members GET
+// 200, messages GET 200 (prior history intact), conversations GET 200,
+// blocks GET 200, rpc/get_unread_message_counts POST 200,
+// rpc/mark_conversation_read POST 200, and the Realtime channel reached
+// SUBSCRIBED ("Live updates on") — zero RLS rejections anywhere on the read
+// side. The corresponding pgTAP suite (supabase/tests/database/) is
+// unmodified and still exercises conversation_members/messages RLS
+// directly against the schema.
+// ==========================================================================
+
+const FETCH_COUNTERPART_ERROR = "This conversation could not be loaded. Please try again.";
+
+/**
+ * Returns the other member's user id for a direct conversation the caller
+ * already belongs to, or null if none can be determined (a caller that gets
+ * null simply has nothing further to show — the same "unknown for an
+ * honest reason" discipline used throughout this file).
+ *
+ * Deliberately does not `.limit(1)`: public.conversation_kind is currently
+ * a single-value enum (`'direct'` only, 20260824090000_direct_messaging_foundation.sql)
+ * so every real row today has exactly one other member — but that enum's
+ * own comment explicitly anticipates a future non-direct kind, and
+ * `.limit(1)` would silently hand back an arbitrary member of some future
+ * multi-member conversation instead of surfacing that this function's
+ * "exactly one counterpart" assumption no longer holds. Fetching every
+ * matching row and rejecting more than one as a contract failure — the same
+ * "structurally impossible today, never trusted blindly" idiom
+ * unblockUser() already uses for blocks' own primary key — means a future
+ * project/group conversation kind fails loudly here rather than this
+ * function quietly mis-identifying the "other" participant.
+ */
+export async function fetchConversationCounterpart(conversationId: string): Promise<string | null> {
+  requireUuid(conversationId, "The conversation ID");
+  const { client, userId } = await requireAuthenticatedClient("Sign in to view your messages.");
+  const { data, error } = await client.from("conversation_members").select("user_id").eq("conversation_id", conversationId).neq("user_id", userId);
+  if (error) {
+    throw new MessagingOperationError("fetch_conversation_counterpart", FETCH_COUNTERPART_ERROR, { cause: error });
+  }
+  if (!Array.isArray(data)) {
+    throw new MessagingOperationError("fetch_conversation_counterpart", FETCH_COUNTERPART_ERROR);
+  }
+  // Zero rows is a genuine, honest outcome — no other member exists to
+  // report (a caller's own-only degenerate conversation reduces to this
+  // same case, since `.neq("user_id", userId)` above already excludes the
+  // caller's own row from ever matching). More than one is not: today it is
+  // structurally impossible (conversation_kind is 'direct'-only, see this
+  // function's own comment), so it is a contract failure, never an
+  // arbitrary pick.
+  if (data.length === 0) return null;
+  if (data.length > 1) {
+    throw new MessagingOperationError("fetch_conversation_counterpart", FETCH_COUNTERPART_ERROR);
+  }
+  // A single row is expected to be well-formed; a malformed one (missing or
+  // non-string user_id) is a contract failure to surface loudly, not a
+  // silent null — null is reserved for the genuine "no counterpart" case
+  // above, never conflated with a corrupted response.
+  const row = data[0];
+  const userIdValue = row && typeof row === "object" ? (row as Record<string, unknown>).user_id : undefined;
+  try {
+    return requireUuid(userIdValue, "user_id");
+  } catch (parseError) {
+    throw new MessagingOperationError("fetch_conversation_counterpart", FETCH_COUNTERPART_ERROR, { cause: parseError });
+  }
+}
+
+// ==========================================================================
+// Phase 4 Slice G: block/unblock — wraps public.blocks exactly as it already
+// exists (20260819120000_social_core.sql). No schema/RLS/grant change of any
+// kind: blocks_owner_read/blocks_owner_insert/blocks_owner_delete already
+// restrict every operation on this table to `auth.uid() = blocker_id`, and
+// the blocks_no_self CHECK constraint already rejects self-blocking at the
+// database level regardless of anything this file does. Bidirectional
+// messaging enforcement (private.has_blocked(), checked both directions by
+// create_direct_conversation() and messages_member_insert) is completely
+// untouched and unaffected — this file never reads, infers, or exposes the
+// reverse direction (whether the target has blocked the caller) at all,
+// because blocks_owner_read makes that row structurally unreadable to
+// anyone but its own blocker; there is no query this file could even write
+// that would surface it.
+// ==========================================================================
+
+export interface BlockConfirmation {
+  blockerId: string;
+  blockedId: string;
+  createdAt: string;
+}
+
+export interface UnblockResult {
+  blockerId: string;
+  blockedId: string;
+  /**
+   * True if a block row was actually deleted; false if the caller already
+   * did not block the target — an explicit, confirmed idempotent no-op,
+   * never a fabricated success. Both outcomes mean the same true
+   * post-condition: the caller does not block the target.
+   */
+  removed: boolean;
+}
+
+const BLOCK_STATE_ERROR = "Your block status could not be checked. Please try again.";
+const BLOCK_ERROR = "This person could not be blocked right now. Please try again.";
+const UNBLOCK_ERROR = "This person could not be unblocked right now. Please try again.";
+
+/**
+ * Whether the authenticated caller has personally blocked targetUserId —
+ * never whether targetUserId has blocked the caller. There is deliberately
+ * no function anywhere in this file that answers "has either side
+ * blocked?" — blocks_owner_read RLS already makes the reverse row
+ * unreadable to this caller, so exposing that distinction is not a matter
+ * of this function choosing not to ask; the database itself would return
+ * nothing for that row regardless of how the query were written.
+ *
+ * `.maybeSingle()` relies on blocks' own primary key `(blocker_id,
+ * blocked_id)` to guarantee at most one row could ever match both filters;
+ * PostgREST/supabase-js surface a genuine multi-row result (which should be
+ * structurally impossible here) as `error`, not as extra rows silently
+ * ignored — so an unexpected shape fails safely rather than picking one row
+ * arbitrarily.
+ */
+export async function fetchMyBlockState(targetUserId: string): Promise<boolean> {
+  requireUuid(targetUserId, "The target user ID");
+  const { client, userId } = await requireAuthenticatedClient("Sign in to view this profile's block status.");
+  const { data, error } = await client
+    .from("blocks")
+    .select("blocker_id")
+    .eq("blocker_id", userId)
+    .eq("blocked_id", targetUserId)
+    .maybeSingle();
+  if (error) {
+    throw new MessagingOperationError("fetch_block_state", BLOCK_STATE_ERROR, { cause: error });
+  }
+  return data !== null;
+}
+
+/**
+ * Blocks targetUserId as the authenticated caller. Self-targeting is
+ * rejected here before any write is attempted (the blocks_no_self CHECK
+ * constraint would also reject it, but this avoids a round trip and a raw
+ * constraint-violation error reaching a caller for a case this file can
+ * already recognize locally).
+ *
+ * Uses a plain `.insert()`, not `.upsert()`: blocks' own grants
+ * (`grant select, insert, delete on public.blocks to authenticated` —
+ * 20260819120000_social_core.sql) deliberately omit UPDATE, and
+ * `.upsert(..., { onConflict })` compiles to `INSERT ... ON CONFLICT DO
+ * UPDATE`, which Postgres refuses to plan for a role with no UPDATE
+ * privilege at all — confirmed against a live local instance, where that
+ * statement fails with `permission denied for table blocks` before RLS is
+ * even reached (`GRANT UPDATE` is exactly the fix the error's own HINT
+ * suggests, but this file changes no grants). A caller who already blocks
+ * this target instead gets a `23505` unique-violation from the plain
+ * insert, which is then treated as the same idempotent success by
+ * re-fetching the existing row with `fetchMyBlockState`'s own `.select()`
+ * shape — read access blocks_owner_read already grants — rather than
+ * fabricating a result locally. Only `blocker_id`/`blocked_id` are ever
+ * written, so a repeat block never resets the row's original `created_at`;
+ * idempotent and explicit, never a locally-fabricated "success" — the
+ * returned row is always the database's own confirmation, and its
+ * blocker_id/blocked_id are re-validated below to equal the exact request
+ * before this ever returns.
+ */
+export async function blockUser(targetUserId: string): Promise<BlockConfirmation> {
+  requireUuid(targetUserId, "The target user ID");
+  const { client, userId } = await requireAuthenticatedClient("Sign in to block this person.");
+  if (targetUserId === userId) {
+    throw new MessagingOperationError("block_user", "You can't block yourself.");
+  }
+  const insertResult = await client
+    .from("blocks")
+    .insert({ blocker_id: userId, blocked_id: targetUserId })
+    .select("blocker_id, blocked_id, created_at")
+    .single();
+  let data = insertResult.data;
+  if (insertResult.error) {
+    // 23505 = unique_violation on (blocker_id, blocked_id): the caller
+    // already blocks this target. That is this operation's success
+    // condition too, so fetch the existing row rather than treat it as a
+    // failure — never assume the shape of the pre-existing row locally.
+    if (insertResult.error.code !== "23505") {
+      throw new MessagingOperationError("block_user", BLOCK_ERROR, { cause: insertResult.error });
+    }
+    const existing = await client
+      .from("blocks")
+      .select("blocker_id, blocked_id, created_at")
+      .eq("blocker_id", userId)
+      .eq("blocked_id", targetUserId)
+      .single();
+    if (existing.error) {
+      throw new MessagingOperationError("block_user", BLOCK_ERROR, { cause: existing.error });
+    }
+    data = existing.data;
+  }
+  if (!data || typeof data !== "object") {
+    throw new MessagingOperationError("block_user", BLOCK_ERROR);
+  }
+  const record = data as Record<string, unknown>;
+  let blockerId: string;
+  let blockedId: string;
+  try {
+    blockerId = requireUuid(record.blocker_id, "blocker_id");
+    blockedId = requireUuid(record.blocked_id, "blocked_id");
+  } catch (parseError) {
+    throw new MessagingOperationError("block_user", BLOCK_ERROR, { cause: parseError });
+  }
+  if (typeof record.created_at !== "string") {
+    throw new MessagingOperationError("block_user", BLOCK_ERROR);
+  }
+  if (blockerId !== userId || blockedId !== targetUserId) {
+    throw new MessagingOperationError("block_user", BLOCK_ERROR);
+  }
+  return { blockerId, blockedId, createdAt: record.created_at };
+}
+
+/**
+ * Unblocks targetUserId as the authenticated caller. Scoped to the caller's
+ * own row by both an explicit `.eq("blocker_id", userId)` filter and
+ * blocks_owner_delete RLS (redundant with each other by design, the same
+ * "never rely on RLS alone to express intent" convention every other
+ * mutation in this file already follows) — this can never delete another
+ * user's block row, even in principle.
+ *
+ * Explicit idempotency: deleting a row that doesn't exist is not an error
+ * (Postgres/PostgREST report 0 affected rows, not a failure) and is treated
+ * as a genuine, confirmed "already not blocked" outcome (`removed: false`)
+ * rather than being conflated with a real deletion (`removed: true`) or
+ * with a query failure (which still throws below). More than one returned
+ * row is structurally impossible given blocks' primary key, but is treated
+ * as a contract failure rather than silently taking the first row, exactly
+ * like every other multi-row-shaped result in this file.
+ */
+export async function unblockUser(targetUserId: string): Promise<UnblockResult> {
+  requireUuid(targetUserId, "The target user ID");
+  const { client, userId } = await requireAuthenticatedClient("Sign in to manage blocked users.");
+  const { data, error } = await client
+    .from("blocks")
+    .delete()
+    .eq("blocker_id", userId)
+    .eq("blocked_id", targetUserId)
+    .select("blocker_id, blocked_id");
+  if (error) {
+    throw new MessagingOperationError("unblock_user", UNBLOCK_ERROR, { cause: error });
+  }
+  if (!Array.isArray(data) || data.length > 1) {
+    throw new MessagingOperationError("unblock_user", UNBLOCK_ERROR);
+  }
+  if (data.length === 0) {
+    return { blockerId: userId, blockedId: targetUserId, removed: false };
+  }
+  const record = data[0] as Record<string, unknown>;
+  let blockerId: string;
+  let blockedId: string;
+  try {
+    blockerId = requireUuid(record.blocker_id, "blocker_id");
+    blockedId = requireUuid(record.blocked_id, "blocked_id");
+  } catch (parseError) {
+    throw new MessagingOperationError("unblock_user", UNBLOCK_ERROR, { cause: parseError });
+  }
+  if (blockerId !== userId || blockedId !== targetUserId) {
+    throw new MessagingOperationError("unblock_user", UNBLOCK_ERROR);
+  }
+  return { blockerId, blockedId, removed: true };
 }

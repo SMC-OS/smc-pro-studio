@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { Globe, MapPin } from "lucide-react";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Avatar, Card, EditorialHeading } from "../components/ui";
+import { BlockButton } from "../components/BlockButton";
 import { ConnectButton } from "../components/ConnectButton";
 import { FollowButton } from "../components/FollowButton";
 import { MessageButton } from "../components/MessageButton";
@@ -15,6 +16,7 @@ import {
   type FeedPost,
   type PublicProfileFull,
 } from "../services/socialClient";
+import { fetchMyBlockState } from "../services/messagingClient";
 import { useAuthSession } from "../services/useAuthSession";
 
 type LoadState =
@@ -28,6 +30,18 @@ type ActivityState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; posts: FeedPost[] };
+
+/**
+ * Phase 4 Slice G: the caller's own block state for this profile — loaded
+ * independently of the rest of the profile card (same "one section's
+ * failure never hides another" discipline as `ActivityState` above) since
+ * this is the one piece of state that must never show an incorrect
+ * Block/Unblock label even momentarily. `ready.blocked` is the only value
+ * MessageButton is ever allowed to treat as "safe to message" — loading and
+ * error both gate messaging exactly like a confirmed block would (see
+ * MessageButton.tsx).
+ */
+type BlockState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; blocked: boolean };
 
 const VERIFICATION_LABELS: Record<string, string> = {
   not_verified: "Not verified yet",
@@ -103,6 +117,43 @@ export default function PublicProfileRoute() {
     loadActivity();
   }, [loadActivity]);
 
+  // Phase 4 Slice G: the caller's own block state, loaded independently
+  // (see BlockState's own comment for why) and generation-guarded exactly
+  // like ConversationList's own list load — a slower-resolving response for
+  // a *previous* userId/auth combination must never overwrite a newer one
+  // for the profile actually being viewed now.
+  const [blockState, setBlockState] = useState<BlockState>({ status: "loading" });
+  const blockGenerationRef = useRef(0);
+
+  const loadBlockState = useCallback(() => {
+    if (!userId || isOwnProfile) return;
+    const generation = ++blockGenerationRef.current;
+    if (auth.status !== "authenticated") {
+      // Guests never query block state at all — BlockButton/MessageButton
+      // are never rendered in the guest branch below regardless, so this is
+      // an inert terminal value, not a real fetch.
+      setBlockState({ status: "ready", blocked: false });
+      return;
+    }
+    setBlockState({ status: "loading" });
+    fetchMyBlockState(userId)
+      .then((blocked) => {
+        if (blockGenerationRef.current !== generation) return;
+        setBlockState({ status: "ready", blocked });
+      })
+      .catch((error: unknown) => {
+        if (blockGenerationRef.current !== generation) return;
+        setBlockState({ status: "error", message: error instanceof Error ? error.message : "Your block status could not be checked." });
+      });
+  }, [userId, isOwnProfile, auth.status]);
+
+  useEffect(() => {
+    loadBlockState();
+    return () => {
+      blockGenerationRef.current += 1;
+    };
+  }, [loadBlockState]);
+
   if (!userId) return <ErrorState message="No profile was specified." />;
   if (isOwnProfile) return <Navigate to="/profile" replace />;
   if (auth.status === "loading" || state.status === "loading") return <LoadingState label="Loading profile" />;
@@ -144,10 +195,37 @@ export default function PublicProfileRoute() {
         )}
 
         {canActOnRelationship ? (
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap items-start gap-2">
             <FollowButton userId={userId} initiallyFollowing={state.following} />
             <ConnectButton userId={userId} initialState={state.connection.state} initialConnectionId={state.connection.connectionId} />
-            <MessageButton userId={userId} />
+            <MessageButton userId={userId} blocked={blockState.status === "ready" ? blockState.blocked : null} />
+            {blockState.status === "ready" && (
+              <BlockButton
+                userId={userId}
+                displayName={profile.display_name}
+                blocked={blockState.blocked}
+                onChange={(blocked) => setBlockState({ status: "ready", blocked })}
+              />
+            )}
+            {blockState.status === "loading" && (
+              <span role="status" className="inline-flex min-h-[44px] items-center px-2 text-xs text-[var(--smc-charcoal-faint)]">
+                Checking block status…
+              </span>
+            )}
+            {blockState.status === "error" && (
+              <div className="flex items-center gap-2">
+                <span role="alert" className="text-xs font-medium text-[var(--smc-mineral-clay)]">
+                  {blockState.message}
+                </span>
+                <button
+                  type="button"
+                  onClick={loadBlockState}
+                  className="min-h-[44px] rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-3 text-xs font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)] focus-visible:ring-offset-1"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <p className="mt-4 text-sm text-[var(--smc-charcoal-faint)]">

@@ -113,7 +113,7 @@ test("MessageButton (real service layer): a blocked-pair RPC error renders only 
         React.createElement(
           Routes,
           null,
-          React.createElement(Route, { path: "/profile/other", element: React.createElement(MessageButton, { userId: OTHER_USER_ID }) }),
+          React.createElement(Route, { path: "/profile/other", element: React.createElement(MessageButton, { userId: OTHER_USER_ID, blocked: false }) }),
           React.createElement(Route, { path: "/messages/:conversationId", element: React.createElement("div", null, "THREAD") })
         )
       )
@@ -136,10 +136,31 @@ test("MessageButton (real service layer): a blocked-pair RPC error renders only 
 // ThreadView — fetchMessages' real normalization on the initial load.
 // ==========================================================================
 
+// Phase 4 Slice G: ThreadView also queries `conversation_members` (its own
+// read-only block-state lookup for the counterpart — see
+// fetchConversationCounterpart in messagingClient.ts) alongside `messages`.
+// Returning a genuinely empty result for it here resolves to "no
+// counterpart found", which fetchMyBlockState is then never even called
+// for — exactly the same "unknown, stay silent" outcome as any other
+// own-block-state lookup failure, and irrelevant to what these two tests
+// are actually proving (fetchMessages'/sendMessage's own normalization).
+function emptyBuilder() {
+  const builder = {
+    select: () => builder,
+    eq: () => builder,
+    neq: () => builder,
+    order: () => builder,
+    limit: () => builder,
+    then: (resolve, reject) => Promise.resolve({ data: [], error: null }).then(resolve, reject),
+  };
+  return builder;
+}
+
 function messagesSelectClient({ error }) {
   return {
     auth: authUser(),
     from: (table) => {
+      if (table === "conversation_members") return emptyBuilder();
       assert.equal(table, "messages");
       const builder = {
         select: () => builder,
@@ -191,6 +212,7 @@ function blockedSendClient() {
     client: {
       auth: authUser(),
       from: (table) => {
+        if (table === "conversation_members") return emptyBuilder();
         assert.equal(table, "messages");
         const selectBuilder = {
           select: () => selectBuilder,
