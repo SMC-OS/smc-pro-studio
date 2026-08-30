@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Send } from "lucide-react";
 import { EmptyState, ErrorState, LoadingState } from "../StateViews";
 import { Button } from "../ui";
+import { ReportDialog } from "../ReportDialog";
 import {
   fetchConversationCounterpart,
   fetchMessages,
@@ -505,7 +506,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
             {sortChronological(state.messages).map((message) => {
               const own = message.sender_id === authUserId;
               return (
-                <li key={message.id} className={`flex ${own ? "justify-end" : "justify-start"}`}>
+                <li key={message.id} className={`flex flex-col gap-1 ${own ? "items-end" : "items-start"}`}>
                   <div
                     className={`max-w-[80%] break-words rounded-[var(--smc-radius-card)] px-3 py-2 text-sm ${
                       own ? "bg-[var(--smc-charcoal)] text-[var(--smc-ivory)]" : "bg-[var(--smc-limestone)] text-[var(--smc-charcoal)]"
@@ -516,6 +517,31 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
                       {own ? "You" : "Them"} · {new Date(message.created_at).toLocaleString()}
                     </p>
                   </div>
+                  {/* Phase 4 Slice I: only ever rendered for the other
+                      participant's own confirmed message — `message` here is
+                      always a real row from fetchMessages/Realtime
+                      convergence, never a draft or optimistic entry (see
+                      ThreadView's own module comment: this component never
+                      renders anything but a server-confirmed DirectMessage).
+                      Bound only to message.id — no sender/conversation id is
+                      ever passed to the reporting service (see
+                      reportingClient.ts's submitMessageReport, which derives
+                      both server-side). `key` includes authUserId so a stale
+                      in-progress report never survives an authenticated-
+                      identity change within the same mounted thread; a
+                      conversation switch already forces a full ThreadView
+                      remount via its own key={conversationId} at the call
+                      site (see ConversationRoute.tsx), which discards this
+                      too. Never gated on ownBlockState — reporting a message
+                      from an already-blocked sender must remain available. */}
+                  {!own && (
+                    <ReportDialog
+                      key={`${message.id}:${authUserId}`}
+                      target={{ kind: "message", messageId: message.id }}
+                      triggerLabel="Report message"
+                      triggerClassName="px-2 text-[11px]"
+                    />
+                  )}
                 </li>
               );
             })}
