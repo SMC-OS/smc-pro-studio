@@ -67,6 +67,7 @@ export function ReportDialog({
   const submittingRef = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const titleId = useId();
@@ -154,6 +155,26 @@ export function ReportDialog({
       }
     };
   }, [open]);
+
+  // Moves focus to the success view's own Close control on the transition
+  // into confirmed success, while the dialog is still open. Separate from
+  // the open-effect above (its own `[succeeded, open]` dependency array
+  // never re-runs on an `open` toggle alone, so it never disturbs that
+  // effect's own initial Cancel focus when the dialog first opens) and
+  // deliberately a no-op whenever `succeeded` is false — `handleSubmit`
+  // below only ever sets `succeeded` true after a real, server-confirmed
+  // receipt, so this can never fire before that boundary, and it never
+  // fires for an unmounted/identity-changed instance because handleSubmit's
+  // own `mountedRef` guard already prevents `succeeded` from ever becoming
+  // true after unmount in the first place (checked again here defensively).
+  // The Cancel button that may have had focus at submit time is removed
+  // from the DOM in this same transition (the form is swapped for the
+  // success view), which is exactly the "focus stranded on a removed
+  // element" bug this effect corrects.
+  useEffect(() => {
+    if (!open || !succeeded || !mountedRef.current) return;
+    closeRef.current?.focus();
+  }, [succeeded, open]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -247,7 +268,7 @@ export function ReportDialog({
                   <Button
                     type="button"
                     variant="secondary"
-                    ref={cancelRef}
+                    ref={closeRef}
                     onClick={() => {
                       resetForm();
                       setOpen(false);
@@ -298,7 +319,17 @@ export function ReportDialog({
                     onChange={(event) => setDetails(event.target.value)}
                     disabled={submitting}
                     rows={3}
-                    maxLength={REPORT_DETAILS_MAX_LENGTH}
+                    // Deliberately no native `maxLength` — it counts raw
+                    // characters, but the authoritative limit (here and in
+                    // reportingClient.ts's own prepareDetails) is 1000
+                    // *trimmed* characters. A native cap would silently
+                    // block otherwise-valid input that merely has
+                    // leading/trailing whitespace pushing its raw length
+                    // over 1000 while its trimmed length stays within the
+                    // limit. The trimmed-length check in handleSubmit below
+                    // (and the identical one server-side) remains the real
+                    // enforcement — never silently truncated, always
+                    // rejected with a visible, correctable message instead.
                     aria-describedby={detailsCountId}
                     className="min-h-[44px] resize-none rounded-[var(--smc-radius-card)] border border-[var(--smc-border-strong)] bg-[var(--smc-surface)] px-3 py-2 text-sm text-[var(--smc-charcoal)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)] disabled:cursor-not-allowed disabled:opacity-50"
                   />

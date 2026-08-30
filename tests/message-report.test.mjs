@@ -441,6 +441,63 @@ test("success is shown only after a confirmed receipt and never exposes the rece
   assert.doesNotMatch(finalText, /remov|delet|banned|suspend|block(ed)?|resolved/i);
 });
 
+// Copilot finding (Issue 1, merged Slice I) — see profile-report.test.mjs's
+// identical test for the full rationale. Proven here too since ReportDialog
+// is mounted fresh per message inside ThreadView, with its own distinct
+// trigger; this confirms the fix holds through the message-reporting route
+// as well, not only the profile route.
+test("focus moves to the success view's Close button only after a confirmed RPC receipt, never before, and closing restores focus to the Report message trigger", async () => {
+  resetAll();
+  let resolveSubmit;
+  submitMessageReportImpl = () => new Promise((resolve) => { resolveSubmit = () => resolve({ id: RECEIPT_ID, targetKind: "message", category: "spam", createdAt: "2026-01-01T00:00:00.000Z" }); });
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "text", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+  const container = await mountThread();
+  await flush();
+  const trigger = reportButtonsIn(container)[0];
+  await React.act(async () => {
+    trigger.focus();
+    trigger.click();
+  });
+  const select = container.querySelector('[role="dialog"] select');
+  await React.act(async () => {
+    select.value = "spam";
+    select.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const submitButton = container.querySelector('[role="dialog"] button[type="submit"]');
+  await React.act(async () => {
+    submitButton.focus();
+    submitButton.click();
+  });
+  await flush(10);
+
+  assert.doesNotMatch(document.getElementById("root").textContent, /Report received/, "success must not appear before the RPC resolves");
+  assert.equal(
+    [...document.getElementById("root").querySelectorAll("button")].find((b) => b.textContent.trim() === "Close"),
+    undefined,
+    "no Close control can exist before a confirmed receipt"
+  );
+  assert.ok(document.activeElement === submitButton, "focus must still be on the submit control while the RPC is pending — never moved early");
+
+  await React.act(async () => {
+    resolveSubmit();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  const rootAfterSuccess = document.getElementById("root");
+  assert.match(rootAfterSuccess.textContent, /Report received/, "sanity: the success view is now showing");
+  const closeButton = [...rootAfterSuccess.querySelectorAll("button")].find((b) => b.textContent.trim() === "Close");
+  assert.ok(closeButton, "expected the success view's own Close button");
+  assert.ok(document.activeElement === closeButton, "focus must move to the confirmed-success Close button, not be stranded on the removed submit button");
+
+  await React.act(async () => {
+    closeButton.click();
+  });
+  await flush(10);
+  const rootAfterClose = document.getElementById("root");
+  assert.equal(rootAfterClose.querySelector('[role="dialog"]'), null, "dialog must close");
+  assert.ok(document.activeElement === trigger, "focus must be restored to the original Report message trigger after Close");
+});
+
 test("a failed report submission preserves the chosen category and details", async () => {
   resetAll();
   submitMessageReportImpl = async () => {

@@ -308,6 +308,71 @@ test("success is shown only after the RPC genuinely resolves — never before, n
   assert.doesNotMatch(document.getElementById("root").textContent, new RegExp(RECEIPT_ID), "the receipt's own id must never be exposed in the UI");
 });
 
+// Copilot finding (Issue 1, merged Slice I): the success view's Close
+// button previously reused the form view's own `cancelRef`. Since the two
+// views are mutually exclusive renders, the transition into `succeeded`
+// unmounts whatever had focus in the form (here, the just-clicked Submit
+// report button) and mounts a *different* DOM node under the same ref —
+// React does not auto-focus a newly-mounted element just because a ref now
+// points to it, so focus was silently stranded on a removed node (falling
+// back to document.body). This reproduces that exact scenario — the submit
+// button is explicitly focused before clicking (jsdom's own `.click()`,
+// unlike a real browser's, does not itself move focus — see
+// block-button.test.mjs's identical note) — and proves the dedicated
+// `closeRef` + confirmed-success effect in ReportDialog.tsx now moves focus
+// correctly, only after a genuine RPC resolution, and that Close still
+// restores focus to the original trigger afterward.
+test("focus moves to the success view's Close button only after a confirmed RPC receipt, never before, and closing restores focus to the Report profile trigger", async () => {
+  resetAll();
+  let resolveSubmit;
+  submitProfileReportImpl = () => new Promise((resolve) => { resolveSubmit = () => resolve({ id: RECEIPT_ID, targetKind: "profile", category: "spam", createdAt: "2026-01-01T00:00:00.000Z" }); });
+  const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
+  await flush();
+  const trigger = findButton(container, "Report profile");
+  await React.act(async () => {
+    trigger.focus();
+    trigger.click();
+  });
+  const categorySelect = container.querySelector("select");
+  await React.act(async () => {
+    categorySelect.value = "spam";
+    categorySelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const submitButton = [...container.querySelectorAll('[role="dialog"] button[type="submit"]')][0];
+  await React.act(async () => {
+    submitButton.focus();
+    submitButton.click();
+  });
+  await flush(10);
+
+  // Before resolution: success is absent, and focus has not jumped to any
+  // Close control — there isn't one yet (the form view has no button named
+  // "Close"), and the currently-focused element is still the real, attached
+  // submit button, not a stranded/removed node.
+  assert.doesNotMatch(container.textContent, /Report received/, "success must not appear before the RPC resolves");
+  assert.equal(findButton(container, "Close"), undefined, "no Close control can exist before a confirmed receipt");
+  assert.ok(document.activeElement === submitButton, "focus must still be on the submit control while the RPC is pending — never moved early");
+
+  await React.act(async () => {
+    resolveSubmit();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  const rootAfterSuccess = document.getElementById("root");
+  assert.match(rootAfterSuccess.textContent, /Report received/, "sanity: the success view is now showing");
+  const closeButton = findButton(rootAfterSuccess, "Close");
+  assert.ok(closeButton, "expected the success view's own Close button");
+  assert.ok(document.activeElement === closeButton, "focus must move to the confirmed-success Close button, not be stranded on the removed submit button");
+
+  await React.act(async () => {
+    closeButton.click();
+  });
+  await flush(10);
+  const rootAfterClose = document.getElementById("root");
+  assert.equal(rootAfterClose.querySelector('[role="dialog"]'), null, "dialog must close");
+  assert.ok(document.activeElement === trigger, "focus must be restored to the original Report profile trigger after Close");
+});
+
 test("success copy is neutral — never claims punishment, removal, blocking, or resolution against the reported person", async () => {
   resetAll();
   const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
@@ -459,6 +524,122 @@ test("whitespace-only details are rejected before any RPC call", async () => {
   await flush(10);
   assert.match(container.textContent, /can't be just spaces/);
   assert.equal(submitProfileReportCalls.length, 0);
+});
+
+// ==========================================================================
+// Copilot finding (Issue 2, merged Slice I): the details textarea carried a
+// native `maxLength={REPORT_DETAILS_MAX_LENGTH}`, which counts *raw*
+// characters — but the actual authoritative limit, both here (handleSubmit)
+// and in reportingClient.ts's own prepareDetails, is 1000 *trimmed*
+// characters. A native cap silently blocked otherwise-valid input whose raw
+// length exceeded 1000 only because of leading/trailing whitespace, even
+// though its trimmed length was well within the limit. `maxLength` has been
+// removed from the textarea; these tests prove the trimmed-length contract
+// now holds consistently end to end — enterable, correctly counted,
+// correctly enforced, and never silently truncated.
+// ==========================================================================
+
+test("details whose raw length exceeds 1000 only via leading/trailing whitespace can be entered in full, and the visible counter reflects the trimmed length", async () => {
+  resetAll();
+  const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
+  await flush();
+  await openReportDialog(container);
+  const categorySelect = container.querySelector("select");
+  await React.act(async () => {
+    categorySelect.value = "spam";
+    categorySelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const detailsField = container.querySelector("textarea");
+  // The decisive proof: the rendered textarea must carry no native
+  // `maxlength` restriction at all (jsdom's own IDL default for an absent
+  // attribute is exactly -1, confirmed against a bare textarea; the
+  // previous, buggy markup rendered `maxLength={1000}`, which this would
+  // have caught directly as `.maxLength === 1000`). Setting `.value`
+  // programmatically (via `typeInto`, this file's usual native-setter
+  // convention) is not itself restricted by `maxlength` in any browser —
+  // that attribute only ever restricts interactive keyboard/paste input —
+  // so this assertion is checked on the live DOM node, not inferred from
+  // whether the subsequent value-assignment below "worked".
+  assert.equal(detailsField.maxLength, -1, "the textarea must carry no native maxLength restriction — the authoritative limit is enforced by validation logic, not a raw-character HTML attribute");
+  const meaningful = "x".repeat(1000);
+  const padded = `  ${meaningful}  `; // 1004 raw characters, 1000 trimmed
+  await React.act(async () => {
+    typeInto(detailsField, padded);
+  });
+  assert.equal(detailsField.value, padded, "the full padded value, including its whitespace, is held exactly as entered — never truncated by this component's own logic");
+  assert.equal(detailsField.value.length, 1004, "raw length is 1004 — over 1000 if the limit were (wrongly) counted raw");
+  assert.match(container.textContent, /1000 \/ 1000/, "the visible counter must reflect the trimmed length (1000), not the raw length (1004)");
+});
+
+test("a trimmed details value of exactly 1000 characters submits successfully, and the RPC receives exactly that trimmed value", async () => {
+  resetAll();
+  const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
+  await flush();
+  await openReportDialog(container);
+  const categorySelect = container.querySelector("select");
+  await React.act(async () => {
+    categorySelect.value = "spam";
+    categorySelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const detailsField = container.querySelector("textarea");
+  const meaningful = "y".repeat(1000);
+  const padded = `\n  ${meaningful}\t  `; // assorted whitespace around exactly 1000 meaningful characters
+  await React.act(async () => {
+    typeInto(detailsField, padded);
+  });
+  await React.act(async () => {
+    [...container.querySelectorAll('[role="dialog"] button[type="submit"]')][0].click();
+  });
+  await flush();
+  assert.equal(submitProfileReportCalls.length, 1, "submission must succeed — exactly 1000 trimmed characters is within the limit, never rejected");
+  assert.equal(submitProfileReportCalls[0][2], meaningful, "the RPC must receive exactly the trimmed 1000-character value, with no surrounding whitespace");
+  assert.match(document.getElementById("root").textContent, /Report received/);
+});
+
+test("1001 meaningful trimmed characters are rejected before any RPC call, and the input remains in the dialog for correction", async () => {
+  resetAll();
+  const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
+  await flush();
+  await openReportDialog(container);
+  const categorySelect = container.querySelector("select");
+  await React.act(async () => {
+    categorySelect.value = "spam";
+    categorySelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const detailsField = container.querySelector("textarea");
+  const tooLong = "z".repeat(1001);
+  await React.act(async () => {
+    typeInto(detailsField, tooLong);
+  });
+  await React.act(async () => {
+    [...container.querySelectorAll('[role="dialog"] button[type="submit"]')][0].click();
+  });
+  await flush(10);
+  assert.equal(submitProfileReportCalls.length, 0, "the RPC must never be called for details over the 1000-trimmed-character limit");
+  assert.match(container.textContent, /1000 characters or fewer/);
+  assert.equal(container.querySelector("textarea").value, tooLong, "the rejected input must remain in the dialog for correction, not cleared or truncated");
+});
+
+test("whitespace-only details (tabs and newlines, not just spaces) remain rejected before any RPC call", async () => {
+  resetAll();
+  const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
+  await flush();
+  await openReportDialog(container);
+  const categorySelect = container.querySelector("select");
+  await React.act(async () => {
+    categorySelect.value = "spam";
+    categorySelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  const detailsField = container.querySelector("textarea");
+  await React.act(async () => {
+    typeInto(detailsField, "\n\t   \n");
+  });
+  await React.act(async () => {
+    [...container.querySelectorAll('[role="dialog"] button[type="submit"]')][0].click();
+  });
+  await flush(10);
+  assert.equal(submitProfileReportCalls.length, 0);
+  assert.match(container.textContent, /can't be just spaces/);
 });
 
 // ==========================================================================
