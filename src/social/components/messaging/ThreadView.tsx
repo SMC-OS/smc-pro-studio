@@ -5,12 +5,15 @@ import { EmptyState, ErrorState, LoadingState } from "../StateViews";
 import { Button } from "../ui";
 import {
   fetchMessages,
+  markConversationRead,
   sendMessage,
   subscribeToConversationMessages,
   type DirectMessage,
   type MessageCursor,
+  type MessageReadCursor,
   type MessageRealtimeConnectionState,
 } from "../../services/messagingClient";
+import { emitConversationRead } from "../../services/readStateEvents";
 
 type ThreadState =
   | { status: "loading" }
@@ -31,6 +34,30 @@ function sortChronological(messages: DirectMessage[]): DirectMessage[] {
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
 }
+
+/** The single newest message by the same (created_at, id) ordering used everywhere else in this file — never a raw array-order assumption. */
+function latestMessage(messages: DirectMessage[]): DirectMessage | null {
+  let latest: DirectMessage | null = null;
+  for (const message of messages) {
+    if (!latest || message.created_at > latest.created_at || (message.created_at === latest.created_at && message.id > latest.id)) {
+      latest = message;
+    }
+  }
+  return latest;
+}
+
+/** True when `candidate` is strictly newer than `confirmed` by the same tuple ordering — used to refuse to regress a cursor that's already ahead. */
+function isNewerThan(candidate: DirectMessage, confirmed: { id: string; createdAt: string }): boolean {
+  if (candidate.created_at !== confirmed.createdAt) return candidate.created_at > confirmed.createdAt;
+  return candidate.id > confirmed.id;
+}
+
+/** Read-state UI never claims anything about another participant — only the caller's own confirmed cursor. */
+type ReadMarkStatus =
+  | { kind: "idle" }
+  | { kind: "pending"; messageId: string }
+  | { kind: "confirmed"; messageId: string }
+  | { kind: "failed"; messageId: string; message: string };
 
 /**
  * One conversation's thread: distinct loading/empty/error states, keyset
@@ -62,6 +89,89 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
     };
   }, []);
 
+  // ==========================================================================
+  // Phase 4 Slice F: mark-read lifecycle.
+  //
+  // Every call site below (loadInitial, handleRefresh, runConvergenceFetch,
+  // handleSend) only ever hands attemptMarkRead a message that just came
+  // back from a real, successful, authoritative fetchMessages/sendMessage
+  // call — never a raw Realtime INSERT payload, and never before that call
+  // has actually resolved. attemptMarkRead itself is the single choke point
+  // that then: dedupes an identical repeat target, refuses to regress
+  // behind an already-confirmed cursor, serializes overlapping attempts
+  // (queuing only the single latest target, mirroring runConvergenceFetch's
+  // own in-flight/queued coalescing below), and never assumes success before
+  // markConversationRead's promise actually resolves. The database RPC's own
+  // monotonic ON CONFLICT ... WHERE remains the authoritative guarantee
+  // against a genuine race (e.g. two tabs); everything here only reduces how
+  // often a redundant call is even attempted.
+  // ==========================================================================
+  const [readMarkStatus, setReadMarkStatus] = useState<ReadMarkStatus>({ kind: "idle" });
+  const markReadInFlightRef = useRef(false);
+  const markReadQueuedTargetRef = useRef<DirectMessage | null>(null);
+  const lastConfirmedReadRef = useRef<{ id: string; createdAt: string } | null>(null);
+  const lastAttemptedReadIdRef = useRef<string | null>(null);
+
+  const attemptMarkRead = useCallback(
+    (target: DirectMessage, options?: { force?: boolean }) => {
+      const force = options?.force ?? false;
+      if (!force) {
+        if (lastAttemptedReadIdRef.current === target.id) return;
+        if (lastConfirmedReadRef.current && !isNewerThan(target, lastConfirmedReadRef.current)) return;
+      }
+      if (markReadInFlightRef.current) {
+        markReadQueuedTargetRef.current = target;
+        return;
+      }
+      const run = (current: DirectMessage) => {
+        markReadInFlightRef.current = true;
+        lastAttemptedReadIdRef.current = current.id;
+        if (mountedRef.current) setReadMarkStatus({ kind: "pending", messageId: current.id });
+        markConversationRead(conversationId, current.id)
+          .then((cursor: MessageReadCursor) => {
+            lastConfirmedReadRef.current = { id: cursor.lastReadMessageId, createdAt: cursor.lastReadMessageCreatedAt };
+            if (mountedRef.current) setReadMarkStatus({ kind: "confirmed", messageId: cursor.lastReadMessageId });
+            // cursor.userId is the RPC's own validated acting-user id (markConversationRead
+            // already proved it equals the session that made this call) — never the
+            // component's own authUserId prop, which could theoretically be stale by the
+            // time this async callback runs.
+            emitConversationRead({
+              conversationId,
+              userId: cursor.userId,
+              lastReadMessageId: cursor.lastReadMessageId,
+              lastReadMessageCreatedAt: cursor.lastReadMessageCreatedAt,
+            });
+          })
+          .catch((error: unknown) => {
+            if (!mountedRef.current) return;
+            setReadMarkStatus({
+              kind: "failed",
+              messageId: current.id,
+              message: error instanceof Error ? error.message : "Your read status could not be updated. Please try again.",
+            });
+          })
+          .finally(() => {
+            const queued = markReadQueuedTargetRef.current;
+            markReadQueuedTargetRef.current = null;
+            if (!mountedRef.current) {
+              markReadInFlightRef.current = false;
+              return;
+            }
+            if (queued) run(queued);
+            else markReadInFlightRef.current = false;
+          });
+      };
+      run(target);
+    },
+    [conversationId]
+  );
+
+  function handleRetryMarkRead() {
+    if (state.status !== "ready") return;
+    const latest = latestMessage(state.messages);
+    if (latest) attemptMarkRead(latest, { force: true });
+  }
+
   const loadInitial = useCallback(() => {
     const generation = ++initialLoadGenerationRef.current;
     setState({ status: "loading" });
@@ -70,12 +180,17 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
       .then((page) => {
         if (!mountedRef.current || initialLoadGenerationRef.current !== generation) return;
         setState({ status: "ready", messages: page.messages, nextCursor: page.nextCursor });
+        // Only a genuinely non-empty, successful fetch ever marks anything —
+        // an empty conversation has no confirmed message to mark, and a
+        // failed fetch (the .catch below) never reaches this line at all.
+        const latest = latestMessage(page.messages);
+        if (latest) attemptMarkRead(latest);
       })
       .catch((error: unknown) => {
         if (!mountedRef.current || initialLoadGenerationRef.current !== generation) return;
         setState({ status: "error", message: error instanceof Error ? error.message : "Messages could not be loaded." });
       });
-  }, [conversationId]);
+  }, [conversationId, attemptMarkRead]);
 
   useEffect(() => {
     loadInitial();
@@ -117,6 +232,12 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
               ? { status: "ready", messages: mergeMessages(prev.messages, page.messages), nextCursor: page.nextCursor }
               : prev
           );
+          // Realtime never hands this component a payload to trust — this
+          // marks whatever the authoritative fetch above just confirmed as
+          // the newest page, exactly the same rule loadInitial/handleRefresh
+          // follow, never the raw INSERT notification that triggered onSignal.
+          const latest = latestMessage(page.messages);
+          if (latest) attemptMarkRead(latest);
         })
         .catch(() => {
           // Silent by design: a Realtime-triggered convergence fetch failing
@@ -136,7 +257,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
         });
     };
     attempt();
-  }, [conversationId]);
+  }, [conversationId, attemptMarkRead]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -189,6 +310,8 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
       const page = await fetchMessages(conversationId, null);
       if (!mountedRef.current) return;
       setState((prev) => (prev.status === "ready" ? { status: "ready", messages: mergeMessages(prev.messages, page.messages), nextCursor: page.nextCursor } : prev));
+      const latest = latestMessage(page.messages);
+      if (latest) attemptMarkRead(latest);
     } catch (error) {
       if (!mountedRef.current) return;
       setPageActionError(error instanceof Error ? error.message : "Refresh failed. Please try again.");
@@ -228,6 +351,11 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
           : { status: "ready", messages: [confirmed], nextCursor: null }
       );
       setDraft("");
+      // Only the server-confirmed row from sendMessage's own response is
+      // ever used here — never an optimistic local draft — so this can
+      // never advance the cursor past a message that doesn't genuinely
+      // exist yet.
+      attemptMarkRead(confirmed);
     } catch (error) {
       // Draft is deliberately left untouched on failure — see requirement.
       if (!mountedRef.current) return;
@@ -280,6 +408,28 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+
+      {/* Non-blocking: only ever informs the caller about their own read
+          cursor, never another participant's — see the requirement that
+          this must never claim anyone has "seen" or "read" anything. Never
+          rendered before a real failure; a pending/confirmed mark-read stays
+          silent (the ConversationList badge is the visible success signal). */}
+      {readMarkStatus.kind === "failed" && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] px-3 py-2 text-xs text-[var(--smc-charcoal-soft)]"
+        >
+          <span>{readMarkStatus.message}</span>
+          <button
+            type="button"
+            onClick={handleRetryMarkRead}
+            className="min-h-[44px] min-w-[44px] shrink-0 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-3 text-xs font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)] focus-visible:ring-offset-1"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {state.status === "loading" && <LoadingState label="Loading messages" />}
       {state.status === "error" && <ErrorState message={state.message} onRetry={loadInitial} />}

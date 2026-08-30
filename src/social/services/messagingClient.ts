@@ -77,7 +77,13 @@ export interface MessagePage {
  * type: `message` is always one of the four caller-supplied constants
  * below, authored by this file, never derived from `error.message`.
  */
-export type MessagingOperation = "create_conversation" | "list_conversations" | "fetch_messages" | "send_message";
+export type MessagingOperation =
+  | "create_conversation"
+  | "list_conversations"
+  | "fetch_messages"
+  | "send_message"
+  | "fetch_unread_counts"
+  | "mark_read";
 
 export class MessagingOperationError extends Error {
   readonly operation: MessagingOperation;
@@ -91,8 +97,15 @@ export class MessagingOperationError extends Error {
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Rejects a malformed ID client-side, before it ever reaches a query or RPC call. */
-function requireUuid(value: string, label: string): string {
+/**
+ * Rejects a malformed ID client-side, before it ever reaches a query or RPC
+ * call. Accepts `unknown` (not just `string`) so this same guard can also
+ * validate an untyped RPC response field (see fetchUnreadMessageCounts/
+ * markConversationRead below) without a caller needing an unsafe cast first
+ * — the runtime `typeof` check below is what actually does the rejecting
+ * either way.
+ */
+function requireUuid(value: unknown, label: string): string {
   if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
     throw new Error(`${label} must be a valid ID.`);
   }
@@ -399,4 +412,184 @@ export async function sendMessage(conversationId: string, body: string): Promise
     throw new MessagingOperationError("send_message", "This message could not be sent. Please try again.", { cause: error });
   }
   return data as unknown as DirectMessage;
+}
+
+// ==========================================================================
+// Phase 4 Slice F: read-state — wraps 20260829172436_message_read_state.sql
+// (public.message_read_state, mark_conversation_read(), get_unread_message_
+// counts()) exactly as merged. No schema/RLS/grant/RPC change of any kind
+// happens here; this is a service-layer client only.
+// ==========================================================================
+
+/** Mirrors one row of public.mark_conversation_read()'s SETOF public.message_read_state result. */
+export interface MessageReadCursor {
+  conversationId: string;
+  userId: string;
+  lastReadMessageId: string;
+  lastReadMessageCreatedAt: string;
+  updatedAt: string;
+}
+
+/** One row of public.get_unread_message_counts()'s result, before being folded into the map callers actually use. */
+export interface UnreadConversationCount {
+  conversationId: string;
+  unreadCount: number;
+}
+
+/**
+ * What ConversationList actually consumes: an O(1)-lookup map keyed by
+ * conversation id, built only after every row has been validated and no
+ * conversation id repeats (see fetchUnreadMessageCounts) — so, unlike a raw
+ * array, a caller holding this type can trust `.size` already equals the
+ * number of distinct conversations the RPC reported, with no silent
+ * dedup/overwrite having happened on the way here.
+ */
+export type UnreadCountsByConversation = Map<string, number>;
+
+const UNREAD_COUNTS_ERROR = "Your unread counts could not be loaded. Please try again.";
+const MARK_READ_ERROR = "Your read status could not be updated. Please try again.";
+
+/**
+ * public.get_unread_message_counts() returns `unread_count` as Postgres
+ * `bigint`. PostgREST/Postgres's JSON serialization emits that as a bare
+ * numeric literal (not a quoted string), which means by the time
+ * supabase-js hands back `data`, the response body has already been
+ * through the Fetch API's own `JSON.parse` — so a value exceeding
+ * `Number.MAX_SAFE_INTEGER` has *already* silently lost precision at the
+ * network layer, before any code in this file runs. There is no way to
+ * recover exactness after that point, so this rejects outright rather than
+ * accepting a value it cannot vouch for; it never rounds, truncates, or
+ * otherwise coerces an out-of-range or malformed value into something
+ * that merely looks like a valid count. A real per-conversation unread
+ * count (bounded by how many messages actually exist in one conversation)
+ * has no legitimate reason to approach that range — a value that does is
+ * a contract violation to surface, not a capacity case to silently
+ * accommodate. Also accepts a numeric string defensively, since some
+ * PostgREST/driver configurations do quote `bigint` as a string
+ * specifically to avoid this precision loss; either representation is
+ * validated to the same standard before being trusted.
+ */
+function parseUnreadCount(raw: unknown): number {
+  if (typeof raw === "number") {
+    if (Number.isFinite(raw) && Number.isSafeInteger(raw) && raw >= 0) return raw;
+    throw new Error("unread_count is not a finite, non-negative safe integer.");
+  }
+  if (typeof raw === "string" && /^\d+$/.test(raw)) {
+    const parsed = Number(raw);
+    // The round-trip check (`String(parsed) === raw`) guards against a
+    // digit string so long that converting it to a JS number already
+    // rounds it to a different value than what was received — silently
+    // accepting that would be exactly the coercion this function must
+    // never perform.
+    if (Number.isSafeInteger(parsed) && String(parsed) === raw) return parsed;
+  }
+  throw new Error("unread_count is malformed.");
+}
+
+/**
+ * Calls the merged, zero-argument public.get_unread_message_counts() RPC —
+ * no arguments are ever sent, matching its signature exactly; there is no
+ * parameter through which a caller could ask about anyone else's counts.
+ * Every returned row is validated (a real UUID conversation id, a genuine
+ * non-negative safe-integer count) before being trusted, and a repeated
+ * conversation id anywhere in the result is treated as a malformed
+ * response — the caller could otherwise silently see whichever of the two
+ * counts happened to overwrite the other. An RPC failure or a
+ * malformed/duplicate row throws the safe UNREAD_COUNTS_ERROR (original
+ * cause preserved for logging); it is never reinterpreted as "zero unread"
+ * — only a genuinely empty, successful result produces an empty map.
+ */
+export async function fetchUnreadMessageCounts(): Promise<UnreadCountsByConversation> {
+  const { client } = await requireAuthenticatedClient("Sign in to view your unread messages.");
+  const { data, error } = await client.rpc("get_unread_message_counts");
+  if (error) {
+    throw new MessagingOperationError("fetch_unread_counts", UNREAD_COUNTS_ERROR, { cause: error });
+  }
+  if (!Array.isArray(data)) {
+    throw new MessagingOperationError("fetch_unread_counts", UNREAD_COUNTS_ERROR);
+  }
+  const result: UnreadCountsByConversation = new Map();
+  for (const row of data) {
+    if (!row || typeof row !== "object") {
+      throw new MessagingOperationError("fetch_unread_counts", UNREAD_COUNTS_ERROR);
+    }
+    const record = row as Record<string, unknown>;
+    let conversationId: string;
+    let unreadCount: number;
+    try {
+      conversationId = requireUuid(record.conversation_id, "conversation_id");
+      unreadCount = parseUnreadCount(record.unread_count);
+    } catch (parseError) {
+      throw new MessagingOperationError("fetch_unread_counts", UNREAD_COUNTS_ERROR, { cause: parseError });
+    }
+    if (result.has(conversationId)) {
+      throw new MessagingOperationError("fetch_unread_counts", UNREAD_COUNTS_ERROR);
+    }
+    result.set(conversationId, unreadCount);
+  }
+  return result;
+}
+
+/**
+ * Calls public.mark_conversation_read(p_conversation_id, p_message_id) —
+ * the exact merged parameter names, and no others (there is no
+ * caller-suppliable user id parameter to fabricate; the RPC binds to
+ * auth.uid() internally). Both ids are validated before the authenticated-
+ * client check even runs, matching fetchMessages'/sendMessage's existing
+ * "validate shape before auth" ordering.
+ *
+ * The RPC's own contract is `returns setof public.message_read_state`, so
+ * a well-formed call always returns exactly one row (the caller's own,
+ * upserted) or throws — never zero, never more than one. This function
+ * additionally proves the returned row is genuinely the row this call
+ * asked for: its conversation_id and last_read_message_id must match the
+ * request, and its user_id must match the session's own authenticated id
+ * (never merely "some row", and never another user's). Any RPC failure —
+ * membership/RLS rejection or a genuine network/database problem — and any
+ * shape/identity mismatch in a "successful" response both collapse to the
+ * same safe MARK_READ_ERROR; only a row that passes every one of these
+ * checks is ever returned, so there is no optimistic/assumed-success path.
+ */
+export async function markConversationRead(conversationId: string, messageId: string): Promise<MessageReadCursor> {
+  requireUuid(conversationId, "The conversation ID");
+  requireUuid(messageId, "The message ID");
+  const { client, userId } = await requireAuthenticatedClient("Sign in to update your read status.");
+  const { data, error } = await client.rpc("mark_conversation_read", {
+    p_conversation_id: conversationId,
+    p_message_id: messageId,
+  });
+  if (error) {
+    throw new MessagingOperationError("mark_read", MARK_READ_ERROR, { cause: error });
+  }
+  if (!Array.isArray(data) || data.length !== 1) {
+    throw new MessagingOperationError("mark_read", MARK_READ_ERROR);
+  }
+  const row = data[0];
+  if (!row || typeof row !== "object") {
+    throw new MessagingOperationError("mark_read", MARK_READ_ERROR);
+  }
+  const record = row as Record<string, unknown>;
+  let validConversationId: string;
+  let validUserId: string;
+  let validMessageId: string;
+  try {
+    validConversationId = requireUuid(record.conversation_id, "conversation_id");
+    validUserId = requireUuid(record.user_id, "user_id");
+    validMessageId = requireUuid(record.last_read_message_id, "last_read_message_id");
+  } catch (parseError) {
+    throw new MessagingOperationError("mark_read", MARK_READ_ERROR, { cause: parseError });
+  }
+  if (typeof record.last_read_message_created_at !== "string" || typeof record.updated_at !== "string") {
+    throw new MessagingOperationError("mark_read", MARK_READ_ERROR);
+  }
+  if (validConversationId !== conversationId || validMessageId !== messageId || validUserId !== userId) {
+    throw new MessagingOperationError("mark_read", MARK_READ_ERROR);
+  }
+  return {
+    conversationId: validConversationId,
+    userId: validUserId,
+    lastReadMessageId: validMessageId,
+    lastReadMessageCreatedAt: record.last_read_message_created_at,
+    updatedAt: record.updated_at,
+  };
 }

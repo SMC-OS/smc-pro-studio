@@ -29,11 +29,12 @@ mock.module(supabaseClientUrl, {
   },
 });
 
-const { fetchMyConversations, fetchMessages } = await import(
+const { fetchMyConversations, fetchMessages, fetchUnreadMessageCounts, markConversationRead } = await import(
   new URL("../src/social/services/messagingClient.ts", import.meta.url).href
 );
 
 const VALID_CONVO_ID = "c0000000-0000-0000-0000-000000000001";
+const VALID_MESSAGE_ID = "e1000000-0000-0000-0000-000000000001";
 
 test("fetchMyConversations: an unconfigured Supabase client throws SocialUnavailableError before any query", async () => {
   await assert.rejects(
@@ -48,6 +49,26 @@ test("fetchMyConversations: an unconfigured Supabase client throws SocialUnavail
 test("fetchMessages: an unconfigured Supabase client throws SocialUnavailableError before any query", async () => {
   await assert.rejects(
     () => fetchMessages(VALID_CONVO_ID),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      return true;
+    }
+  );
+});
+
+test("fetchUnreadMessageCounts: an unconfigured Supabase client throws SocialUnavailableError before any RPC call", async () => {
+  await assert.rejects(
+    () => fetchUnreadMessageCounts(),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      return true;
+    }
+  );
+});
+
+test("markConversationRead: an unconfigured Supabase client throws SocialUnavailableError before any RPC call", async () => {
+  await assert.rejects(
+    () => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID),
     (err) => {
       assert.equal(err.name, "SocialUnavailableError");
       return true;
