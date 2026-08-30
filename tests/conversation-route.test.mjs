@@ -32,6 +32,26 @@ let sendMessageImpl = async () => {
 const fetchMessagesCalls = [];
 const sendMessageCalls = [];
 
+// Phase 4 Slice F: this screen also mounts ConversationList (in the left
+// pane — hidden on mobile via CSS, not unmounted, so it still fetches).
+// Controllable the same way as messages-route.test.mjs's own list mocks
+// (default: empty list / empty counts, which every pre-existing Slice C/D
+// test here is happy with); a test exercising the cross-component
+// "mark-read clears only that one badge" behavior sets these explicitly.
+let fetchMyConversationsImpl = async () => [];
+let fetchUnreadMessageCountsImpl = null;
+let currentConversationsPromise = Promise.resolve([]);
+
+// Phase 4 Slice F: ThreadView's mark-read lifecycle. `markConversationReadImpl`
+// defaults to a benign, request-matching success so every pre-existing
+// Slice C/D test in this file (none of which care about read state) sees no
+// failed-read-status banner and no unexpected console noise; a test that
+// specifically exercises mark-read sets this explicitly and resets it
+// afterward.
+let markConversationReadImpl = null;
+const markConversationReadCalls = [];
+const knownMessageTimestamps = new Map();
+
 // Phase 4 Slice D: a controllable stand-in for the real
 // subscribeToConversationMessages boundary. Each call is recorded with the
 // handlers ThreadView registered, so a test can reach in and simulate a
@@ -52,14 +72,45 @@ mock.module(authUrl, {
 
 mock.module(messagingClientUrl, {
   exports: {
-    fetchMyConversations: async () => [],
+    fetchMyConversations: async (...args) => {
+      currentConversationsPromise = Promise.resolve(fetchMyConversationsImpl(...args));
+      return currentConversationsPromise;
+    },
+    fetchUnreadMessageCounts: async () => {
+      if (fetchUnreadMessageCountsImpl) return fetchUnreadMessageCountsImpl();
+      const rows = await currentConversationsPromise;
+      return new Map((rows ?? []).map((row) => [row.id, 0]));
+    },
     fetchMessages: async (...args) => {
       fetchMessagesCalls.push(args);
-      return fetchMessagesImpl(...args);
+      const page = await fetchMessagesImpl(...args);
+      // Phase 4 Slice F: remembers each fixture message's real created_at by
+      // id, so the default markConversationRead mock below can echo back a
+      // genuinely chronologically-correct cursor (mirroring the real RPC,
+      // which reads the message's actual created_at server-side) instead of
+      // a fabricated wall-clock timestamp that would falsely appear "newer"
+      // than every 2026-dated fixture message and silently break the
+      // isNewerThan monotonicity check ThreadView relies on.
+      for (const message of page?.messages ?? []) knownMessageTimestamps.set(message.id, message.created_at);
+      return page;
     },
     sendMessage: async (...args) => {
       sendMessageCalls.push(args);
-      return sendMessageImpl(...args);
+      const confirmed = await sendMessageImpl(...args);
+      if (confirmed) knownMessageTimestamps.set(confirmed.id, confirmed.created_at);
+      return confirmed;
+    },
+    markConversationRead: async (conversationId, messageId) => {
+      markConversationReadCalls.push([conversationId, messageId]);
+      if (markConversationReadImpl) return markConversationReadImpl(conversationId, messageId);
+      const createdAt = knownMessageTimestamps.get(messageId) ?? new Date().toISOString();
+      return {
+        conversationId,
+        userId: AUTH_USER_ID,
+        lastReadMessageId: messageId,
+        lastReadMessageCreatedAt: createdAt,
+        updatedAt: createdAt,
+      };
     },
     createOrGetDirectConversation: async () => {
       throw new Error("createOrGetDirectConversation must not be called from the thread screen");
@@ -89,6 +140,7 @@ const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { MemoryRouter, Routes, Route, useNavigate } = await import("react-router-dom");
 const { default: ConversationRoute } = await import(new URL("../src/social/routes/ConversationRoute.tsx", import.meta.url).href);
+const { onConversationRead } = await import(new URL("../src/social/services/readStateEvents.ts", import.meta.url).href);
 
 let currentRoot = null;
 
@@ -832,4 +884,341 @@ test("React StrictMode's synchronous mount -> cleanup -> mount never leaves more
   await React.act(async () => { currentRoot.unmount(); });
   currentRoot = null;
   assert.equal(activeSubscriptionCount, 0, "unmounting must clean up the remaining active subscription");
+});
+
+// ==========================================================================
+// Phase 4 Slice F: the mark-read lifecycle — wraps public.mark_conversation_read
+// exactly as merged (20260829172436_message_read_state.sql). ThreadView must
+// only ever mark the newest message from an already-successful, authoritative
+// fetch, never a raw Realtime payload, never regress behind an older page,
+// and never leak read-receipt language about another participant.
+// ==========================================================================
+
+function resetReadState() {
+  fetchMyConversationsImpl = async () => [];
+  fetchUnreadMessageCountsImpl = null;
+  markConversationReadImpl = null;
+  markConversationReadCalls.length = 0;
+}
+
+test("a malformed conversation id never calls markConversationRead", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  await mount("/messages/not-a-uuid");
+  await flush();
+  assert.equal(markConversationReadCalls.length, 0);
+});
+
+test("a guest never calls markConversationRead", async () => {
+  authState = { status: "guest" };
+  resetReadState();
+  await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.equal(markConversationReadCalls.length, 0);
+});
+
+test("a failed initial fetch never calls markConversationRead; a subsequent successful Retry does, for the newest message it returns", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  let calls = 0;
+  fetchMessagesImpl = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("This conversation could not be loaded. Please try again.");
+    return { messages: [msg("m1", OTHER_USER_ID, "hi", "2026-01-01T00:00:01.000Z")], nextCursor: null };
+  };
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.equal(markConversationReadCalls.length, 0, "a failed fetch has nothing confirmed to mark");
+
+  const retry = [...container.querySelectorAll("button")].find((b) => /try again/i.test(b.textContent));
+  await React.act(async () => { retry.click(); });
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"]], "the retried, now-successful fetch's only message is marked");
+});
+
+test("a genuinely empty conversation never calls markConversationRead", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  fetchMessagesImpl = async () => ({ messages: [], nextCursor: null });
+  await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.equal(markConversationReadCalls.length, 0, "there is no confirmed message to mark in a genuinely empty conversation");
+});
+
+test("a non-empty initial load marks the newest confirmed message by (created_at, id), not array/fetch order", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  fetchMessagesImpl = async () => ({
+    messages: [
+      msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z"),
+      msg("m3", OTHER_USER_ID, "third — newest", "2026-01-01T00:00:03.000Z"),
+      msg("m2", OTHER_USER_ID, "second", "2026-01-01T00:00:02.000Z"),
+    ],
+    nextCursor: null,
+  });
+  await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m3"]], "only the genuinely newest message (m3) is ever marked, regardless of fetch-returned order");
+});
+
+test("loading an older page never regresses the cursor — no markConversationRead call for the older page", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  const cursor = { createdAt: "2026-01-01T00:00:02.000Z", id: "m2" };
+  fetchMessagesImpl = async (conversationId, passedCursor) => {
+    if (!passedCursor) return { messages: [msg("m2", OTHER_USER_ID, "second", "2026-01-01T00:00:02.000Z")], nextCursor: cursor };
+    return { messages: [msg("m1", OTHER_USER_ID, "first — older", "2026-01-01T00:00:01.000Z")], nextCursor: null };
+  };
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m2"]], "the initial (newer) page marks m2");
+
+  const loadOlder = [...container.querySelectorAll("button")].find((b) => /load older/i.test(b.textContent));
+  await React.act(async () => { loadOlder.click(); });
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m2"]], "loading the older page must never call markConversationRead at all — the cursor never regresses to m1");
+});
+
+test("Refresh marks a newer confirmed message once one appears", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"]]);
+
+  fetchMessagesImpl = async () => ({
+    messages: [
+      msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z"),
+      msg("m2", OTHER_USER_ID, "second — newer", "2026-01-01T00:00:02.000Z"),
+    ],
+    nextCursor: null,
+  });
+  const refreshButton = [...container.querySelectorAll("button")].find((b) => /^refresh$/i.test(b.textContent));
+  await React.act(async () => { refreshButton.click(); });
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"], [CONVO_1, "m2"]], "Refresh marks the newer message only after the authoritative fetch confirms it");
+});
+
+test("a Realtime catch-up fetch marks the newer confirmed message, never the raw signal/payload itself", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+  await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"]]);
+
+  fetchMessagesImpl = async () => ({
+    messages: [
+      msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z"),
+      msg("m2", OTHER_USER_ID, "second — newer", "2026-01-01T00:00:02.000Z"),
+    ],
+    nextCursor: null,
+  });
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+  // onSignal takes no arguments — see subscribeToConversationMessages's own
+  // contract — so there is no payload for ThreadView to ever trust directly.
+  await React.act(async () => { handlers.onSignal(); });
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"], [CONVO_1, "m2"]], "the catch-up fetch's confirmed newest message is marked, sourced only from the authoritative re-fetch");
+});
+
+test("switching conversations before a stale fetch resolves never marks the stale (previous conversation, previous message) pair", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  let resolveConvo1;
+  fetchMessagesImpl = async (conversationId) => {
+    if (conversationId === CONVO_1) {
+      return new Promise((resolve) => { resolveConvo1 = () => resolve({ messages: [msg("stale", AUTH_USER_ID, "from convo 1", "2026-01-01T00:00:01.000Z")], nextCursor: null }); });
+    }
+    return { messages: [{ id: "fresh", conversation_id: CONVO_2, sender_id: OTHER_USER_ID, body: "from convo 2", created_at: "2026-01-01T00:00:02.000Z" }], nextCursor: null };
+  };
+
+  function SwitchConversation() {
+    const navigate = useNavigate();
+    return React.createElement("button", { type: "button", onClick: () => navigate(`/messages/${CONVO_2}`) }, "Switch conversation");
+  }
+
+  const root = freshRoot();
+  currentRoot = root;
+  await React.act(async () => {
+    root.render(
+      React.createElement(
+        MemoryRouter,
+        { initialEntries: [`/messages/${CONVO_1}`] },
+        React.createElement(
+          Routes,
+          null,
+          React.createElement(Route, {
+            path: "/messages/:conversationId",
+            element: React.createElement(React.Fragment, null, React.createElement(SwitchConversation), React.createElement(ConversationRoute)),
+          })
+        )
+      )
+    );
+  });
+  await flush(10); // convo 1's fetch is pending; nothing has been marked yet
+
+  const switchButton = [...document.getElementById("root").querySelectorAll("button")].find((button) => button.textContent === "Switch conversation");
+  await React.act(async () => { switchButton.click(); });
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_2, "fresh"]], "only convo 2's genuinely confirmed message is ever marked");
+
+  resolveConvo1?.();
+  await flush();
+  assert.deepEqual(
+    markConversationReadCalls,
+    [[CONVO_2, "fresh"]],
+    "convo 1's stale, now-remounted-away-from fetch must never trigger a markConversationRead call for the stale (conversationId, messageId) pair"
+  );
+});
+
+test("repeated signals resolving to the identical already-attempted message stay bounded — no redundant markConversationRead calls", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+  await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"]]);
+
+  const { handlers } = subscribeToConversationMessagesCalls[0];
+  await React.act(async () => {
+    handlers.onSignal();
+    handlers.onSignal();
+    handlers.onSignal();
+  });
+  await flush();
+  assert.deepEqual(
+    markConversationReadCalls,
+    [[CONVO_1, "m1"]],
+    "every signal still resolves to the same already-confirmed newest message — none of them should trigger a further markConversationRead call"
+  );
+});
+
+test("a mark-read failure shows a non-blocking, accessible status with Retry, and messaging remains fully usable — no read-receipt language or raw infrastructure text ever appears", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  markConversationReadImpl = async () => {
+    throw new Error("Your read status could not be updated. Please try again.");
+  };
+  sendMessageImpl = async (conversationId, body) => ({
+    id: "srv-1",
+    conversation_id: CONVO_1,
+    sender_id: AUTH_USER_ID,
+    body,
+    created_at: "2026-01-01T00:00:05.000Z",
+  });
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+
+  const emittedReadEvents = [];
+  const unsubscribe = onConversationRead((event) => emittedReadEvents.push(event));
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+
+  assert.equal(emittedReadEvents.length, 0, "a failed markConversationRead must never emit a successful-read event onto the shared bus");
+  assert.match(container.textContent, /Your read status could not be updated\. Please try again\./);
+  const region = container.querySelector('[role="status"]');
+  assert.ok(region, "expected an accessible status/live region for the read-state failure");
+  assert.match(container.textContent, /Your read status could not be updated\. Please try again\./);
+  assert.doesNotMatch(container.textContent, /\bseen\b|\bdelivered\b|read receipt|has read|was read by/i, "must never claim another participant has seen/read anything");
+  assert.doesNotMatch(container.textContent, /SQLSTATE|row-level security|policy|P0001|mark_conversation_read/i, "must never leak raw backend/function detail");
+
+  // Messaging itself remains fully usable despite the mark-read failure.
+  const textarea = container.querySelector("#message-draft");
+  const form = textarea.closest("form");
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+  await React.act(async () => {
+    nativeSetter.call(textarea, "still usable");
+    textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+  });
+  await React.act(async () => {
+    form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await flush();
+  assert.match(container.textContent, /still usable/, "sending must remain usable after a mark-read failure");
+
+  const retryButton = [...container.querySelectorAll("button")].find((b) => b.textContent.trim() === "Retry");
+  assert.ok(retryButton, "expected an accessible Retry control for the read-state failure");
+  const minHeight = retryButton.className.includes("min-h-[44px]") && retryButton.className.includes("min-w-[44px]");
+  assert.ok(minHeight, "the Retry control must meet the 44px minimum touch target");
+
+  assert.equal(emittedReadEvents.length, 0, "still no successful-read event after the failure — nothing here ever confirmed a read");
+  unsubscribe();
+});
+
+test("Retry always targets the newest currently confirmed message, not a stale failed target", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  subscribeToConversationMessagesImpl = null;
+  subscribeToConversationMessagesCalls.length = 0;
+  let markAttempts = 0;
+  markConversationReadImpl = async (conversationId, messageId) => {
+    markAttempts += 1;
+    // Every attempt so far fails, up to and including the automatic one
+    // Refresh triggers for m2 — only the eventual manual Retry (attempt #3)
+    // succeeds, proving Retry recomputed the target rather than reusing m1.
+    if (markAttempts < 3) throw new Error("Your read status could not be updated. Please try again.");
+    return {
+      conversationId,
+      userId: AUTH_USER_ID,
+      lastReadMessageId: messageId,
+      lastReadMessageCreatedAt: "2026-01-01T00:00:02.000Z",
+      updatedAt: "2026-01-01T00:00:02.000Z",
+    };
+  };
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"]], "the first (failing) attempt targets m1");
+
+  fetchMessagesImpl = async () => ({
+    messages: [
+      msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z"),
+      msg("m2", OTHER_USER_ID, "second — newer", "2026-01-01T00:00:02.000Z"),
+    ],
+    nextCursor: null,
+  });
+  const refreshButton = [...container.querySelectorAll("button")].find((b) => /^refresh$/i.test(b.textContent));
+  await React.act(async () => { refreshButton.click(); });
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"], [CONVO_1, "m2"]], "the automatic post-refresh attempt targets the now-newest m2, and also fails");
+
+  const retryButton = [...container.querySelectorAll("button")].find((b) => b.textContent.trim() === "Retry");
+  assert.ok(retryButton);
+  await React.act(async () => { retryButton.click(); });
+  await flush();
+  assert.deepEqual(
+    markConversationReadCalls,
+    [[CONVO_1, "m1"], [CONVO_1, "m2"], [CONVO_1, "m2"]],
+    "Retry recomputes and targets the newest currently confirmed message (m2), never the original stale m1 target"
+  );
+  assert.doesNotMatch(container.textContent, /Your read status could not be updated/, "a successful Retry clears the failure banner");
+});
+
+test("a confirmed mark-read success clears only the selected conversation's badge in the sibling ConversationList pane, and never a different conversation's", async () => {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  resetReadState();
+  fetchMyConversationsImpl = async () => [
+    { id: CONVO_1, kind: "direct", created_at: "2026-01-01T00:00:00.000Z", members: [] },
+    { id: CONVO_2, kind: "direct", created_at: "2026-01-01T00:00:00.000Z", members: [] },
+  ];
+  fetchUnreadMessageCountsImpl = async () => new Map([[CONVO_1, 4], [CONVO_2, 2]]);
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "first", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+
+  const container = await mount(`/messages/${CONVO_1}`);
+  await flush();
+  assert.deepEqual(markConversationReadCalls, [[CONVO_1, "m1"]], "opening the thread marks convo 1's newest message");
+
+  const badgeFor = (conversationId) => {
+    const link = container.querySelector(`a[href="/messages/${conversationId}"]`);
+    const hiddenSpans = link ? [...link.querySelectorAll('span[aria-hidden="true"]')] : [];
+    return hiddenSpans.length >= 2 ? hiddenSpans[hiddenSpans.length - 1].textContent : null;
+  };
+  assert.equal(badgeFor(CONVO_1), null, "convo 1's badge is cleared once its mark-read is confirmed");
+  assert.equal(badgeFor(CONVO_2), "2", "convo 2's badge — a different conversation — must be completely unaffected");
 });

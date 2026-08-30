@@ -28,9 +28,15 @@ mock.module(supabaseClientUrl, {
   },
 });
 
-const { createOrGetDirectConversation, fetchMyConversations, fetchMessages, sendMessage, MessagingOperationError } = await import(
-  new URL("../src/social/services/messagingClient.ts", import.meta.url).href
-);
+const {
+  createOrGetDirectConversation,
+  fetchMyConversations,
+  fetchMessages,
+  sendMessage,
+  fetchUnreadMessageCounts,
+  markConversationRead,
+  MessagingOperationError,
+} = await import(new URL("../src/social/services/messagingClient.ts", import.meta.url).href);
 
 // Phase 4 Slice C.1: every backend-failure branch below asserts three
 // things together — (1) the exact safe message, unconditionally on cause,
@@ -671,6 +677,318 @@ test("sendMessage: a block-caused RLS rejection produces the identical safe mess
         message: "This message could not be sent. Please try again.",
         cause: rawError,
         rawFragments: ["row-level security"],
+      })
+  );
+});
+
+// ==========================================================================
+// Phase 4 Slice F: fetchUnreadMessageCounts
+// ==========================================================================
+
+function unreadCountsClient({ userId = AUTH_USER_ID, data = [], error = null } = {}) {
+  const rpcCalls = [];
+  return {
+    rpcCalls,
+    client: {
+      auth: authUser(userId),
+      rpc: async (name, params) => {
+        rpcCalls.push({ name, params });
+        return error ? { data: null, error } : { data, error: null };
+      },
+    },
+  };
+}
+
+test("fetchUnreadMessageCounts: fails before any RPC call when not authenticated", async () => {
+  const { client, rpcCalls } = unreadCountsClient({ userId: null });
+  currentClient = client;
+  await assert.rejects(() => fetchUnreadMessageCounts(), /Sign in/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("fetchUnreadMessageCounts: a genuine auth.getUser() failure throws SocialUnavailableError, not the sign-in message, before any RPC call", async () => {
+  const { client, rpcCalls } = unreadCountsClient({});
+  client.auth = authUserError(AUTH_VERIFICATION_ERROR);
+  currentClient = client;
+  await assert.rejects(
+    () => fetchUnreadMessageCounts(),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      assert.doesNotMatch(err.message, /Sign in/);
+      assert.equal(err.cause, AUTH_VERIFICATION_ERROR);
+      return true;
+    }
+  );
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("fetchUnreadMessageCounts: calls get_unread_message_counts with no arguments at all", async () => {
+  const { client, rpcCalls } = unreadCountsClient({ data: [] });
+  currentClient = client;
+  await fetchUnreadMessageCounts();
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].name, "get_unread_message_counts");
+  assert.equal(rpcCalls[0].params, undefined, "no arguments — not even an empty object — are ever fabricated for this zero-parameter RPC");
+});
+
+test("fetchUnreadMessageCounts: a genuine zero-row success returns a genuinely empty map, not an error and not a fabricated entry", async () => {
+  const { client } = unreadCountsClient({ data: [] });
+  currentClient = client;
+  const result = await fetchUnreadMessageCounts();
+  assert.ok(result instanceof Map);
+  assert.equal(result.size, 0);
+});
+
+test("fetchUnreadMessageCounts: parses valid rows into a deterministic conversation-id-keyed map", async () => {
+  const { client } = unreadCountsClient({
+    data: [
+      { conversation_id: CONVO_1, unread_count: 3 },
+      { conversation_id: CONVO_2, unread_count: 0 },
+    ],
+  });
+  currentClient = client;
+  const result = await fetchUnreadMessageCounts();
+  assert.equal(result.size, 2);
+  assert.equal(result.get(CONVO_1), 3);
+  assert.equal(result.get(CONVO_2), 0);
+});
+
+test("fetchUnreadMessageCounts: accepts a numeric-string bigint representation of unread_count", async () => {
+  const { client } = unreadCountsClient({ data: [{ conversation_id: CONVO_1, unread_count: "42" }] });
+  currentClient = client;
+  const result = await fetchUnreadMessageCounts();
+  assert.equal(result.get(CONVO_1), 42);
+});
+
+test("fetchUnreadMessageCounts: rejects a malformed conversation id in a row rather than dropping or coercing it", async () => {
+  const { client } = unreadCountsClient({ data: [{ conversation_id: "not-a-uuid", unread_count: 1 }] });
+  currentClient = client;
+  await assert.rejects(
+    () => fetchUnreadMessageCounts(),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "fetch_unread_counts",
+        message: "Your unread counts could not be loaded. Please try again.",
+        rawFragments: ["not-a-uuid"],
+      })
+  );
+});
+
+test("fetchUnreadMessageCounts: rejects a negative unread_count", async () => {
+  const { client } = unreadCountsClient({ data: [{ conversation_id: CONVO_1, unread_count: -1 }] });
+  currentClient = client;
+  await assert.rejects(() => fetchUnreadMessageCounts(), /Your unread counts could not be loaded/);
+});
+
+test("fetchUnreadMessageCounts: rejects a fractional unread_count", async () => {
+  const { client } = unreadCountsClient({ data: [{ conversation_id: CONVO_1, unread_count: 1.5 }] });
+  currentClient = client;
+  await assert.rejects(() => fetchUnreadMessageCounts(), /Your unread counts could not be loaded/);
+});
+
+test("fetchUnreadMessageCounts: rejects an unsafe unread_count (beyond Number.MAX_SAFE_INTEGER) rather than silently coercing it", async () => {
+  const { client } = unreadCountsClient({ data: [{ conversation_id: CONVO_1, unread_count: Number.MAX_SAFE_INTEGER + 1 }] });
+  currentClient = client;
+  await assert.rejects(() => fetchUnreadMessageCounts(), /Your unread counts could not be loaded/);
+});
+
+test("fetchUnreadMessageCounts: rejects a malformed (non-numeric) string unread_count", async () => {
+  const { client } = unreadCountsClient({ data: [{ conversation_id: CONVO_1, unread_count: "12abc" }] });
+  currentClient = client;
+  await assert.rejects(() => fetchUnreadMessageCounts(), /Your unread counts could not be loaded/);
+});
+
+test("fetchUnreadMessageCounts: rejects a duplicate conversation id anywhere in the result, never silently overwriting one with the other", async () => {
+  const { client } = unreadCountsClient({
+    data: [
+      { conversation_id: CONVO_1, unread_count: 1 },
+      { conversation_id: CONVO_1, unread_count: 5 },
+    ],
+  });
+  currentClient = client;
+  await assert.rejects(() => fetchUnreadMessageCounts(), /Your unread counts could not be loaded/);
+});
+
+test("fetchUnreadMessageCounts: an RPC failure throws the safe message, preserving the original error as cause, never becoming a fake empty/zero result", async () => {
+  const rawError = { message: "permission denied for function get_unread_message_counts", code: "42501" };
+  const { client } = unreadCountsClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => fetchUnreadMessageCounts(),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "fetch_unread_counts",
+        message: "Your unread counts could not be loaded. Please try again.",
+        cause: rawError,
+        rawFragments: ["permission denied", "42501"],
+      })
+  );
+});
+
+// ==========================================================================
+// Phase 4 Slice F: markConversationRead
+// ==========================================================================
+
+const VALID_MESSAGE_ID = "e1000000-0000-0000-0000-000000000001";
+const OTHER_MESSAGE_ID = "e1000000-0000-0000-0000-000000000099";
+const OTHER_CONVO_ID = "c0000000-0000-0000-0000-000000000099";
+const OTHER_USER_ID_2 = "b0000000-0000-0000-0000-000000000002";
+
+function validCursorRow(overrides = {}) {
+  return {
+    conversation_id: VALID_CONVO_ID,
+    user_id: AUTH_USER_ID,
+    last_read_message_id: VALID_MESSAGE_ID,
+    last_read_message_created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:01.000Z",
+    ...overrides,
+  };
+}
+
+function markReadClient({ userId = AUTH_USER_ID, data, error = null } = {}) {
+  const rpcCalls = [];
+  return {
+    rpcCalls,
+    client: {
+      auth: authUser(userId),
+      rpc: async (name, params) => {
+        rpcCalls.push({ name, params });
+        return error ? { data: null, error } : { data, error: null };
+      },
+    },
+  };
+}
+
+test("markConversationRead: rejects a malformed conversation ID before authentication or any RPC call", async () => {
+  const rpcCalls = [];
+  currentClient = {
+    auth: authUser(AUTH_USER_ID),
+    rpc: async (name, params) => {
+      rpcCalls.push({ name, params });
+      return { data: [validCursorRow()], error: null };
+    },
+  };
+  await assert.rejects(() => markConversationRead("not-a-uuid", VALID_MESSAGE_ID), /valid ID/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("markConversationRead: rejects a malformed message ID before authentication or any RPC call", async () => {
+  const rpcCalls = [];
+  currentClient = {
+    auth: authUser(AUTH_USER_ID),
+    rpc: async (name, params) => {
+      rpcCalls.push({ name, params });
+      return { data: [validCursorRow()], error: null };
+    },
+  };
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, "not-a-uuid"), /valid ID/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("markConversationRead: fails before any RPC call when not authenticated", async () => {
+  const { client, rpcCalls } = markReadClient({ userId: null, data: [validCursorRow()] });
+  currentClient = client;
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID), /Sign in/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("markConversationRead: a genuine auth.getUser() failure throws SocialUnavailableError, not the sign-in message, before any RPC call", async () => {
+  const rpcCalls = [];
+  currentClient = {
+    auth: authUserError(AUTH_VERIFICATION_ERROR),
+    rpc: async (name, params) => {
+      rpcCalls.push({ name, params });
+      return { data: [validCursorRow()], error: null };
+    },
+  };
+  await assert.rejects(
+    () => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      assert.doesNotMatch(err.message, /Sign in/);
+      assert.equal(err.cause, AUTH_VERIFICATION_ERROR);
+      return true;
+    }
+  );
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("markConversationRead: calls mark_conversation_read with the exact merged parameter names and no others — no caller-suppliable user id", async () => {
+  const { client, rpcCalls } = markReadClient({ data: [validCursorRow()] });
+  currentClient = client;
+  await markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID);
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].name, "mark_conversation_read");
+  assert.deepEqual(rpcCalls[0].params, { p_conversation_id: VALID_CONVO_ID, p_message_id: VALID_MESSAGE_ID });
+  assert.deepEqual(
+    Object.keys(rpcCalls[0].params).sort(),
+    ["p_conversation_id", "p_message_id"],
+    "no user-id parameter (or any other) is ever sent — the RPC binds to the session internally"
+  );
+});
+
+test("markConversationRead: a successful call returns exactly the server-confirmed cursor", async () => {
+  const row = validCursorRow();
+  const { client } = markReadClient({ data: [row] });
+  currentClient = client;
+  const result = await markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID);
+  assert.deepEqual(result, {
+    conversationId: row.conversation_id,
+    userId: row.user_id,
+    lastReadMessageId: row.last_read_message_id,
+    lastReadMessageCreatedAt: row.last_read_message_created_at,
+    updatedAt: row.updated_at,
+  });
+});
+
+test("markConversationRead: zero returned rows is a malformed response, never an assumed success", async () => {
+  const { client } = markReadClient({ data: [] });
+  currentClient = client;
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID), /Your read status could not be updated/);
+});
+
+test("markConversationRead: more than one returned row is a malformed response", async () => {
+  const { client } = markReadClient({ data: [validCursorRow(), validCursorRow()] });
+  currentClient = client;
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID), /Your read status could not be updated/);
+});
+
+test("markConversationRead: a row with a malformed/missing cursor field is rejected", async () => {
+  const { client } = markReadClient({ data: [validCursorRow({ last_read_message_created_at: null })] });
+  currentClient = client;
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID), /Your read status could not be updated/);
+});
+
+test("markConversationRead: a returned conversation_id that doesn't match the request is rejected, never trusted", async () => {
+  const { client } = markReadClient({ data: [validCursorRow({ conversation_id: OTHER_CONVO_ID })] });
+  currentClient = client;
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID), /Your read status could not be updated/);
+});
+
+test("markConversationRead: a returned last_read_message_id that doesn't match the requested message id is rejected", async () => {
+  const { client } = markReadClient({ data: [validCursorRow({ last_read_message_id: OTHER_MESSAGE_ID })] });
+  currentClient = client;
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID), /Your read status could not be updated/);
+});
+
+test("markConversationRead: a returned user_id that doesn't match the authenticated caller is rejected — never another user's row", async () => {
+  const { client } = markReadClient({ data: [validCursorRow({ user_id: OTHER_USER_ID_2 })] });
+  currentClient = client;
+  await assert.rejects(() => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID), /Your read status could not be updated/);
+});
+
+test("markConversationRead: an RPC failure (membership/RLS/network) throws the safe message, preserving the original error as cause, with no optimistic success", async () => {
+  const rawError = { message: "mark_conversation_read: not a member of this conversation", code: "P0001" };
+  const { client } = markReadClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => markConversationRead(VALID_CONVO_ID, VALID_MESSAGE_ID),
+    (err) =>
+      assertSafeMessagingError(err, {
+        operation: "mark_read",
+        message: "Your read status could not be updated. Please try again.",
+        cause: rawError,
+        rawFragments: ["mark_conversation_read", "not a member", "P0001"],
       })
   );
 });
