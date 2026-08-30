@@ -7,6 +7,7 @@ import { BlockButton } from "../components/BlockButton";
 import { ConnectButton } from "../components/ConnectButton";
 import { FollowButton } from "../components/FollowButton";
 import { MessageButton } from "../components/MessageButton";
+import { ReportDialog } from "../components/ReportDialog";
 import {
   fetchConnectionState,
   fetchFollowState,
@@ -165,6 +166,14 @@ export default function PublicProfileRoute() {
   const { profile, professional } = state.data;
   const isProfessional = profile.account_type === "professional";
   const canActOnRelationship = auth.status === "authenticated";
+  // Phase 4 Slice I: forces a full remount of ReportDialog (clearing any
+  // category/details/success/error state it's holding) whenever the profile
+  // being viewed or the authenticated identity viewing it changes — the same
+  // "give it a fresh key" idiom ConversationRoute.tsx already documents for
+  // ThreadView, needed here because this route component itself is not
+  // remounted on a userId param change (see blockGenerationRef above, which
+  // exists for the identical reason).
+  const reportResetKey = `${userId}:${auth.status === "authenticated" ? auth.session.subject : "guest"}`;
 
   return (
     <div className="flex flex-col gap-4">
@@ -199,6 +208,19 @@ export default function PublicProfileRoute() {
             <FollowButton userId={userId} initiallyFollowing={state.following} />
             <ConnectButton userId={userId} initialState={state.connection.state} initialConnectionId={state.connection.connectionId} />
             <MessageButton userId={userId} blocked={blockState.status === "ready" ? blockState.blocked : null} />
+            {/* Report is deliberately never gated on blockState (loading/error/
+                ready/blocked/not-blocked) — reporting must remain available
+                regardless of the caller's own block relationship with this
+                profile (submit_profile_report is block-blind server-side too;
+                see reportingClient.ts) and must never be described in terms of
+                block state. `key` forces a fresh instance (clearing any
+                in-progress category/details/result) whenever the profile or
+                the viewing identity changes — see reportResetKey above. */}
+            <ReportDialog
+              key={reportResetKey}
+              target={{ kind: "profile", reportedUserId: userId, profileLabel: profile.display_name }}
+              triggerLabel="Report profile"
+            />
             {blockState.status === "ready" && (
               <BlockButton
                 userId={userId}

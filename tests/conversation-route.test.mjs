@@ -18,6 +18,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const authUrl = new URL("../src/social/services/useAuthSession.ts", import.meta.url).href;
 const messagingClientUrl = new URL("../src/social/services/messagingClient.ts", import.meta.url).href;
 const socialClientUrl = new URL("../src/social/services/socialClient.ts", import.meta.url).href;
+const reportingClientUrl = new URL("../src/social/services/reportingClient.ts", import.meta.url).href;
 
 const AUTH_USER_ID = "a0000000-0000-0000-0000-000000000001";
 const OTHER_USER_ID = "b0000000-0000-0000-0000-000000000002";
@@ -156,6 +157,33 @@ mock.module(socialClientUrl, {
   exports: {
     fetchPublicProfileById: async () => null,
     SocialUnavailableError: class SocialUnavailableError extends Error {},
+  },
+});
+
+// Phase 4 Slice I: ThreadView now also renders ReportDialog per other-
+// participant message, which imports reportingClient.ts. Mocked here purely
+// so the real (unmocked) module — and, transitively, the real
+// supabaseClient.ts it imports, which throws on `import.meta.env` outside a
+// Vite context — is never loaded; this file predates reporting and never
+// exercises the Report message action itself (see
+// tests/message-report.test.mjs for that coverage).
+mock.module(reportingClientUrl, {
+  exports: {
+    REPORT_CATEGORIES: ["spam", "harassment", "hate_or_abuse", "threat_or_violence", "sexual_content", "impersonation", "scam_or_fraud", "other"],
+    REPORT_DETAILS_MAX_LENGTH: 1000,
+    ReportingOperationError: class ReportingOperationError extends Error {
+      constructor(operation, message, options) {
+        super(message, options);
+        this.name = "ReportingOperationError";
+        this.operation = operation;
+      }
+    },
+    submitProfileReport: async () => {
+      throw new Error("submitProfileReport not exercised in this file");
+    },
+    submitMessageReport: async () => {
+      throw new Error("submitMessageReport not exercised in this file");
+    },
   },
 });
 
