@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Globe, LogOut, MapPin, Users } from "lucide-react";
+import { Globe, LogOut, MapPin, ShieldCheck, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Avatar, Button, Card, EditorialHeading } from "../components/ui";
@@ -10,6 +10,7 @@ import {
   type OwnProfessionalProfile,
   type OwnProfile,
 } from "../services/socialClient";
+import { checkModeratorAccess } from "../services/moderationClient";
 import { useAuthSession } from "../services/useAuthSession";
 
 type LoadState =
@@ -27,6 +28,30 @@ const VERIFICATION_LABELS: Record<OwnProfessionalProfile["verification_status"],
 export default function ProfileRoute() {
   const auth = useAuthSession();
   const [state, setState] = useState<LoadState>({ status: "loading" });
+
+  // Phase 4 Slice J: the "Report review" discovery link. Deliberately
+  // three-state (not a plain boolean) so "still checking"/"a genuine check
+  // failure" never render the link either — only a confirmed `true` does.
+  // The link is purely a discovery convenience: ModerationRoute itself
+  // re-verifies access independently regardless of how it was reached, so
+  // a stale/failed check here only ever hides a link, never grants access.
+  const [moderatorAccess, setModeratorAccess] = useState<"loading" | "unavailable" | "denied" | "granted">("loading");
+
+  useEffect(() => {
+    if (auth.status !== "authenticated") return;
+    let cancelled = false;
+    setModeratorAccess("loading");
+    checkModeratorAccess()
+      .then((granted) => {
+        if (!cancelled) setModeratorAccess(granted ? "granted" : "denied");
+      })
+      .catch(() => {
+        if (!cancelled) setModeratorAccess("unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.status, auth.status === "authenticated" ? auth.session.subject : null]);
 
   const load = useCallback(() => {
     if (auth.status !== "authenticated") return;
@@ -72,13 +97,27 @@ export default function ProfileRoute() {
           <p className="mt-4 text-sm text-[var(--smc-charcoal-faint)]">No bio yet.</p>
         )}
 
-        <Link
-          to="/connections"
-          className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
-        >
-          <Users className="h-4 w-4" aria-hidden="true" />
-          Connections
-        </Link>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            to="/connections"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
+          >
+            <Users className="h-4 w-4" aria-hidden="true" />
+            Connections
+          </Link>
+          {/* Only ever rendered after a confirmed `true` from
+              checkModeratorAccess() — never while loading, never on a
+              failed check, and never for a confirmed non-moderator. */}
+          {moderatorAccess === "granted" && (
+            <Link
+              to="/moderation/reports"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
+            >
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              Report review
+            </Link>
+          )}
+        </div>
       </Card>
 
       {isProfessional && (
