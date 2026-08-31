@@ -648,20 +648,8 @@ reset request.jwt.claim.sub;
 -- ---- Once resolved/dismissed, a genuinely new report is allowed: proven
 -- directly via fixture-level status transition (no review-mutation API
 -- ships this slice — see the migration's own header). ----
---
--- Phase 4 Slice J correction: also sets reviewed_at/reviewed_by_user_id
--- alongside status here — 20260830193342_moderation_review.sql added
--- reports_review_state_consistent, which requires both whenever status is
--- not 'pending'; a bare `set status = 'resolved'` (this line's original
--- form, written before that constraint existed) would now violate it. Dave
--- (the pre-existing moderator fixture below) is reused as the reviewer,
--- since he is already a real active moderator in this file's own fixture
--- set at this point — this stays a direct fixture-level transition, not a
--- call through review_report() (still deliberately out of scope for
--- reporting.test.sql itself; see moderation_review.test.sql for that RPC's
--- own coverage).
-update public.reports
-set status = 'resolved', reviewed_at = now(), reviewed_by_user_id = 'e0000000-0000-0000-0000-000000000004'::uuid
+
+update public.reports set status = 'resolved'
 where id = :'profile_receipt_id'::uuid;
 
 set local role authenticated;
