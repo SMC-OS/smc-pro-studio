@@ -1,0 +1,828 @@
+import { test, mock, afterEach } from "node:test";
+import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
+
+// Phase 4 Slice J: real-mount interaction coverage for /moderation/reports
+// (ModerationRoute + ReviewDialog) and the "Report review" discovery link
+// on ProfileRoute, following this repo's existing jsdom + node:test
+// module-mocking convention (see tests/profile-report.test.mjs, which this
+// file mirrors for its dialog-instrumentation and stale-navigation
+// patterns).
+
+const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost/" });
+globalThis.window = dom.window;
+globalThis.document = dom.window.document;
+globalThis.HTMLElement = dom.window.HTMLElement;
+globalThis.Node = dom.window.Node;
+Object.defineProperty(dom.window.HTMLElement.prototype, "offsetParent", {
+  get() {
+    return this.isConnected ? dom.window.document.body : null;
+  },
+  configurable: true,
+});
+Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+globalThis.window.matchMedia =
+  globalThis.window.matchMedia ||
+  (() => ({ matches: false, media: "", addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+let liveDocumentKeydownListeners = 0;
+const realDocAddEventListener = dom.window.document.addEventListener.bind(dom.window.document);
+const realDocRemoveEventListener = dom.window.document.removeEventListener.bind(dom.window.document);
+dom.window.document.addEventListener = function instrumentedAddEventListener(type, ...rest) {
+  if (type === "keydown") liveDocumentKeydownListeners += 1;
+  return realDocAddEventListener(type, ...rest);
+};
+dom.window.document.removeEventListener = function instrumentedRemoveEventListener(type, ...rest) {
+  if (type === "keydown") liveDocumentKeydownListeners = Math.max(0, liveDocumentKeydownListeners - 1);
+  return realDocRemoveEventListener(type, ...rest);
+};
+
+const authUrl = new URL("../src/social/services/useAuthSession.ts", import.meta.url).href;
+const moderationClientUrl = new URL("../src/social/services/moderationClient.ts", import.meta.url).href;
+
+const AUTH_USER_ID = "a0000000-0000-0000-0000-000000000001";
+const REPORT_ID_1 = "b1000000-0000-0000-0000-000000000001";
+const REPORT_ID_2 = "b1000000-0000-0000-0000-000000000002";
+const REPORT_ID_3 = "b1000000-0000-0000-0000-000000000003";
+
+let authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+
+let checkAccessImpl = async () => true;
+const checkAccessCalls = [];
+
+let fetchQueueImpl = async () => ({ items: [], nextCursor: null });
+const fetchQueueCalls = [];
+
+let reviewImpl = async (reportId, decision) => ({ reportId, status: decision, reviewedAt: "2026-01-01T00:00:00.000Z" });
+const reviewCalls = [];
+
+mock.module(authUrl, { exports: { useAuthSession: () => authState } });
+
+mock.module(moderationClientUrl, {
+  exports: {
+    REVIEW_NOTE_MAX_LENGTH: 1000,
+    ModerationOperationError: class ModerationOperationError extends Error {
+      constructor(operation, message, options) {
+        super(message, options);
+        this.name = "ModerationOperationError";
+        this.operation = operation;
+      }
+    },
+    checkModeratorAccess: async (...args) => {
+      checkAccessCalls.push(args);
+      return checkAccessImpl(...args);
+    },
+    fetchModerationReports: async (...args) => {
+      fetchQueueCalls.push(args);
+      return fetchQueueImpl(...args);
+    },
+    reviewReport: async (...args) => {
+      reviewCalls.push(args);
+      return reviewImpl(...args);
+    },
+  },
+});
+
+// ProfileRoute is mounted only by the "discovery link" section at the end
+// of this file — mocked here regardless (module mocks must be registered
+// before any dynamic import of the module graph that reaches them) so that
+// section can exercise the real "Report review" link without touching the
+// real (unmocked) socialClient.ts/authClient.ts, which would otherwise
+// reach the real supabaseClient.ts and crash on `import.meta.env` outside
+// a Vite context — the identical class of issue Slice I's own
+// block-button.test.mjs/message-button.test.mjs/conversation-route.test.mjs
+// already had to guard against for reportingClient.ts.
+const socialClientUrl = new URL("../src/social/services/socialClient.ts", import.meta.url).href;
+const authClientUrl = new URL("../src/services/authClient.ts", import.meta.url).href;
+
+function ownProfileFor(userId) {
+  return {
+    id: userId,
+    display_name: "Own User",
+    username: null,
+    avatar_path: null,
+    account_type: "customer",
+    bio: null,
+    visibility: "public",
+    onboarding_completed: true,
+  };
+}
+
+mock.module(socialClientUrl, {
+  exports: {
+    fetchOwnProfile: async () => ownProfileFor(AUTH_USER_ID),
+    fetchOwnProfessionalProfile: async () => {
+      throw new Error("not a professional profile");
+    },
+  },
+});
+
+mock.module(authClientUrl, {
+  exports: {
+    signOut: async () => {},
+  },
+});
+
+const React = (await import("react")).default;
+const { createRoot } = await import("react-dom/client");
+const { MemoryRouter } = await import("react-router-dom");
+const { default: ModerationRoute } = await import(new URL("../src/social/routes/ModerationRoute.tsx", import.meta.url).href);
+const { default: ProfileRoute } = await import(new URL("../src/social/routes/ProfileRoute.tsx", import.meta.url).href);
+
+let currentRoot = null;
+
+function freshRoot() {
+  document.getElementById("root")?.remove();
+  const container = document.createElement("div");
+  container.id = "root";
+  document.body.appendChild(container);
+  currentRoot = createRoot(container);
+  return currentRoot;
+}
+
+afterEach(async () => {
+  if (currentRoot) {
+    await React.act(async () => {
+      currentRoot.unmount();
+    });
+    currentRoot = null;
+  }
+  assert.equal(liveDocumentKeydownListeners, 0, "a document-level keydown listener leaked past this test's unmount");
+});
+
+async function flush(ms = 50) {
+  await React.act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+}
+
+async function mountModeration() {
+  const root = freshRoot();
+  await React.act(async () => {
+    root.render(React.createElement(MemoryRouter, { initialEntries: ["/moderation/reports"] }, React.createElement(ModerationRoute)));
+  });
+  return document.getElementById("root");
+}
+
+function findButton(container, text) {
+  return [...container.querySelectorAll("button")].find((b) => b.textContent.trim() === text);
+}
+
+function typeInto(textarea, value) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
+  nativeSetter.call(textarea, value);
+  textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+}
+
+function queueItem(overrides = {}) {
+  return {
+    reportId: REPORT_ID_1,
+    targetKind: "profile",
+    category: "spam",
+    details: "some details",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    status: "pending",
+    reviewedAt: null,
+    reviewedByDisplayName: null,
+    reviewNote: null,
+    reporterDisplayName: "Alice",
+    reportedDisplayName: "Bob",
+    messageBody: null,
+    messageCreatedAt: null,
+    ...overrides,
+  };
+}
+
+function resetAll() {
+  authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
+  checkAccessImpl = async () => true;
+  checkAccessCalls.length = 0;
+  fetchQueueImpl = async () => ({ items: [], nextCursor: null });
+  fetchQueueCalls.length = 0;
+  reviewImpl = async (reportId, decision) => ({ reportId, status: decision, reviewedAt: "2026-01-01T00:00:00.000Z" });
+  reviewCalls.length = 0;
+}
+
+// ==========================================================================
+// Guest / access gating.
+// ==========================================================================
+
+test("a guest sees a sign-in prompt and makes no queue call — checkModeratorAccess is never called either", async () => {
+  resetAll();
+  authState = { status: "guest" };
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /Sign in to access moderation/);
+  assert.ok(container.querySelector('a[href="/auth"]'));
+  assert.equal(checkAccessCalls.length, 0, "checkModeratorAccess must never be called for a guest");
+  assert.equal(fetchQueueCalls.length, 0, "fetchModerationReports must never be called for a guest");
+});
+
+test("moderator-access loading never shows an empty-queue or denied state", async () => {
+  resetAll();
+  let resolveAccess;
+  checkAccessImpl = () => new Promise((resolve) => { resolveAccess = () => resolve(true); });
+  const container = await mountModeration();
+  await flush(10);
+  assert.doesNotMatch(container.textContent, /don't have access/);
+  assert.doesNotMatch(container.textContent, /No pending reports/);
+  assert.equal(fetchQueueCalls.length, 0, "the queue must never be fetched before access is confirmed");
+  await React.act(async () => {
+    resolveAccess();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+});
+
+test("a confirmed non-moderator sees a neutral access-denied state, never an empty queue, and the queue is never fetched", async () => {
+  resetAll();
+  checkAccessImpl = async () => false;
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /don't have access/i);
+  assert.doesNotMatch(container.textContent, /No pending reports/, "denial must never be worded like or confused with a genuine empty queue");
+  assert.equal(fetchQueueCalls.length, 0, "fetchModerationReports must never be called for a confirmed non-moderator");
+});
+
+test("an access-check failure shows a safe error state with Retry, distinct from denial", async () => {
+  resetAll();
+  let calls = 0;
+  checkAccessImpl = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("We couldn't verify your access. Please try again.");
+    return true;
+  };
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /We couldn't verify your access\. Please try again\./);
+  const retry = findButton(container, "Try again");
+  assert.ok(retry);
+  await React.act(async () => {
+    retry.click();
+  });
+  await flush();
+  assert.equal(calls, 2);
+  assert.match(document.getElementById("root").textContent, /Report review/, "a successful retry must reveal the real workspace");
+});
+
+// ==========================================================================
+// Queue: loading / empty / error / populated.
+// ==========================================================================
+
+test("queue loading never renders as an empty state", async () => {
+  resetAll();
+  let resolveQueue;
+  fetchQueueImpl = () => new Promise((resolve) => { resolveQueue = () => resolve({ items: [], nextCursor: null }); });
+  const container = await mountModeration();
+  await flush(10);
+  assert.doesNotMatch(container.textContent, /No pending reports/);
+  await React.act(async () => {
+    resolveQueue();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+});
+
+test("a confirmed empty queue is shown honestly", async () => {
+  resetAll();
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /No pending reports/);
+});
+
+test("a queue query failure shows a safe error state with Retry", async () => {
+  resetAll();
+  let calls = 0;
+  fetchQueueImpl = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("The moderation queue could not be loaded. Please try again.");
+    return { items: [queueItem()], nextCursor: null };
+  };
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /The moderation queue could not be loaded\. Please try again\./);
+  const retry = findButton(container, "Try again");
+  assert.ok(retry);
+  await React.act(async () => {
+    retry.click();
+  });
+  await flush();
+  assert.equal(calls, 2);
+  assert.match(document.getElementById("root").textContent, /Spam/, "a successful retry must reveal the real queue");
+});
+
+test("a populated queue renders category and target kind for each item", async () => {
+  resetAll();
+  fetchQueueImpl = async () => ({
+    items: [queueItem({ reportId: REPORT_ID_1, category: "harassment", targetKind: "message" })],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /Harassment/);
+  assert.match(container.textContent, /message/);
+});
+
+// ==========================================================================
+// Filters do not mix or duplicate; pagination.
+// ==========================================================================
+
+test("switching the status filter fetches only that status and never mixes results", async () => {
+  resetAll();
+  fetchQueueImpl = async (status) => ({
+    items: status === "pending" ? [queueItem({ reportId: REPORT_ID_1, category: "spam" })] : [queueItem({ reportId: REPORT_ID_2, category: "harassment", status })],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /Spam/);
+
+  const resolvedTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "Resolved");
+  await React.act(async () => {
+    resolvedTab.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /Harassment/);
+  assert.doesNotMatch(document.getElementById("root").textContent, /Spam/, "the pending item must not remain visible under the resolved filter");
+  assert.equal(fetchQueueCalls.at(-1)[0], "resolved");
+});
+
+test("Load more appends a second page without duplicating or losing the first page's items", async () => {
+  resetAll();
+  let call = 0;
+  fetchQueueImpl = async (status, cursor) => {
+    call += 1;
+    if (!cursor) {
+      return { items: [queueItem({ reportId: REPORT_ID_1, category: "spam" })], nextCursor: { createdAt: "2026-01-01T00:00:00.000Z", id: REPORT_ID_1 } };
+    }
+    return { items: [queueItem({ reportId: REPORT_ID_2, category: "harassment" })], nextCursor: null };
+  };
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /Spam/);
+  const loadMore = findButton(container, "Load more");
+  assert.ok(loadMore);
+  await React.act(async () => {
+    loadMore.click();
+  });
+  await flush();
+  const finalText = document.getElementById("root").textContent;
+  assert.match(finalText, /Spam/);
+  assert.match(finalText, /Harassment/);
+  assert.equal(call, 2);
+  assert.equal(findButton(document.getElementById("root"), "Load more"), undefined, "no further page exists once nextCursor is null");
+});
+
+// ==========================================================================
+// Stale-response protection.
+// ==========================================================================
+
+test("a stale queue response for a previous status filter cannot overwrite the newer filter's rendered state", async () => {
+  resetAll();
+  let resolvePending;
+  let call = 0;
+  fetchQueueImpl = (status) => {
+    call += 1;
+    if (call === 1) return new Promise((resolve) => { resolvePending = () => resolve({ items: [queueItem({ reportId: REPORT_ID_1, category: "spam" })], nextCursor: null }); });
+    return Promise.resolve({ items: [queueItem({ reportId: REPORT_ID_2, category: "harassment", status })], nextCursor: null });
+  };
+  const container = await mountModeration();
+  await flush(10); // pending's own fetch is now in flight
+
+  const resolvedTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "Resolved");
+  await React.act(async () => {
+    resolvedTab.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /Harassment/, "the newer (resolved) filter's real result must render");
+
+  resolvePending?.();
+  await flush();
+  assert.doesNotMatch(document.getElementById("root").textContent, /Spam/, "the stale pending fetch's late resolution must never appear once a newer filter is active");
+});
+
+test("a stale queue response for a previous authenticated identity cannot overwrite the newer identity's state", async () => {
+  resetAll();
+  let resolveFirst;
+  let call = 0;
+  fetchQueueImpl = () => {
+    call += 1;
+    if (call === 1) return new Promise((resolve) => { resolveFirst = () => resolve({ items: [queueItem({ reportId: REPORT_ID_1, category: "spam" })], nextCursor: null }); });
+    return Promise.resolve({ items: [queueItem({ reportId: REPORT_ID_2, category: "impersonation" })], nextCursor: null });
+  };
+  const container = await mountModeration();
+  await flush(10); // first identity's fetch is now in flight
+
+  await React.act(async () => {
+    authState = { status: "authenticated", session: { subject: "z9999999-0000-0000-0000-000000000009" } };
+    // Re-render is triggered by the mocked useAuthSession returning a new
+    // value on the next render pass — force one via a state-changing act.
+    currentRoot.render(React.createElement(MemoryRouter, { initialEntries: ["/moderation/reports"] }, React.createElement(ModerationRoute)));
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /Impersonation/);
+
+  resolveFirst?.();
+  await flush();
+  assert.doesNotMatch(document.getElementById("root").textContent, /Spam/, "the previous identity's stale fetch must never surface after switching identities");
+});
+
+// ==========================================================================
+// Evidence rendering: exact message only, plain text (never HTML).
+// ==========================================================================
+
+test("selecting a message report shows only its exact reported message, never surrounding conversation content", async () => {
+  resetAll();
+  fetchQueueImpl = async () => ({
+    items: [
+      queueItem({
+        reportId: REPORT_ID_1,
+        targetKind: "message",
+        category: "threat_or_violence",
+        messageBody: "This is the exact reported message.",
+        messageCreatedAt: "2026-01-01T00:05:00.000Z",
+      }),
+    ],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await flush();
+  await React.act(async () => {
+    [...container.querySelectorAll("button")].find((b) => b.textContent.includes("Threat or violence")).click();
+  });
+  await flush(10);
+  assert.match(document.getElementById("root").textContent, /This is the exact reported message\./);
+});
+
+test("message content is rendered as a plain text node — an HTML-looking payload never executes and appears only as literal text", async () => {
+  resetAll();
+  const payload = '<img src=x onerror="window.__xss = true">';
+  fetchQueueImpl = async () => ({
+    items: [queueItem({ reportId: REPORT_ID_1, targetKind: "message", messageBody: payload, messageCreatedAt: "2026-01-01T00:00:00.000Z" })],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await flush();
+  await React.act(async () => {
+    [...container.querySelectorAll("button")].find((b) => b.textContent.includes("Spam"))?.click();
+  });
+  await flush(10);
+  const root = document.getElementById("root");
+  assert.equal(window.__xss, undefined, "an injected onerror handler must never actually execute");
+  const anyDdHasPayload = [...root.querySelectorAll("dd")].some((dd) => dd.textContent.includes("<img"));
+  assert.ok(anyDdHasPayload, "the payload must appear as literal visible text, not be parsed as markup");
+  assert.equal(root.querySelectorAll("img").length, 0, "no <img> element may ever be created from message content");
+});
+
+test("a profile report never shows a message body — no fabricated message content", async () => {
+  resetAll();
+  fetchQueueImpl = async () => ({ items: [queueItem({ reportId: REPORT_ID_1, targetKind: "profile", messageBody: null })], nextCursor: null });
+  const container = await mountModeration();
+  await flush();
+  await React.act(async () => {
+    [...container.querySelectorAll("button")].find((b) => b.textContent.includes("Spam"))?.click();
+  });
+  await flush(10);
+  assert.doesNotMatch(document.getElementById("root").textContent, /Reported message/);
+});
+
+// ==========================================================================
+// Actions only on pending; resolve/dismiss confirmed-only; duplicate prevention.
+// ==========================================================================
+
+test("Resolve/Dismiss actions appear only for a pending report — never for a resolved or dismissed one", async () => {
+  resetAll();
+  fetchQueueImpl = async () => ({
+    items: [queueItem({ reportId: REPORT_ID_1, status: "resolved", reviewedByDisplayName: "Mod", reviewedAt: "2026-01-01T00:00:00.000Z" })],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await React.act(async () => {}); // let statusFilter default settle before switching
+  const resolvedTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "Resolved");
+  await React.act(async () => {
+    resolvedTab.click();
+  });
+  await flush();
+  await React.act(async () => {
+    [...container.querySelectorAll("button")].find((b) => b.textContent.includes("Spam"))?.click();
+  });
+  await flush(10);
+  assert.equal(findButton(document.getElementById("root"), "Resolve"), undefined, "no Resolve action on an already-resolved report");
+  assert.equal(findButton(document.getElementById("root"), "Dismiss"), undefined, "no Dismiss action either");
+  assert.match(document.getElementById("root").textContent, /Resolved by Mod/);
+});
+
+async function mountWithPendingReport() {
+  fetchQueueImpl = async () => ({ items: [queueItem({ reportId: REPORT_ID_1, category: "spam" })], nextCursor: null });
+  const container = await mountModeration();
+  await flush();
+  await React.act(async () => {
+    [...container.querySelectorAll("button")].find((b) => b.textContent.includes("Spam"))?.click();
+  });
+  await flush(10);
+  return document.getElementById("root");
+}
+
+test("Resolve waits for a confirmed response before showing success or removing the item from the queue", async () => {
+  resetAll();
+  let resolveReview;
+  reviewImpl = () => new Promise((resolve) => { resolveReview = () => resolve({ reportId: REPORT_ID_1, status: "resolved", reviewedAt: "2026-01-01T00:00:00.000Z" }); });
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Resolve").click();
+  });
+  const submit = [...document.getElementById("root").querySelectorAll('[role="dialog"] button[type="submit"]')][0];
+  await React.act(async () => {
+    submit.click();
+  });
+  await flush(10);
+  assert.doesNotMatch(document.getElementById("root").textContent, /No automatic action was taken/, "must not claim success before the RPC resolves");
+  assert.equal(reviewCalls.length, 1);
+
+  await React.act(async () => {
+    resolveReview();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  assert.match(document.getElementById("root").textContent, /No automatic action was taken/);
+});
+
+test("success wording states only that the decision was recorded — never a warning, removal, suspension, block, or notification claim", async () => {
+  resetAll();
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Dismiss").click();
+  });
+  await React.act(async () => {
+    [...document.getElementById("root").querySelectorAll('[role="dialog"] button[type="submit"]')][0].click();
+  });
+  await flush();
+  const dialogText = document.getElementById("root").querySelector('[role="dialog"]').textContent;
+  assert.doesNotMatch(dialogText, /warn|remov|suspend|block(ed)?|notif/i);
+  assert.match(dialogText, /No automatic action was taken/);
+});
+
+test("a reviewed report is removed from the pending queue only after confirmation", async () => {
+  resetAll();
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Resolve").click();
+  });
+  await React.act(async () => {
+    [...document.getElementById("root").querySelectorAll('[role="dialog"] button[type="submit"]')][0].click();
+  });
+  await flush();
+  await React.act(async () => {
+    findButton(document.getElementById("root"), "Close").click();
+  });
+  await flush(10);
+  assert.doesNotMatch(document.getElementById("root").textContent, /Spam/, "the resolved item must no longer appear in the pending queue view");
+});
+
+test("repeated submit clicks while pending are prevented — exactly one reviewReport call", async () => {
+  resetAll();
+  let resolveReview;
+  reviewImpl = () => new Promise((resolve) => { resolveReview = () => resolve({ reportId: REPORT_ID_1, status: "dismissed", reviewedAt: "2026-01-01T00:00:00.000Z" }); });
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Dismiss").click();
+  });
+  const submit = [...document.getElementById("root").querySelectorAll('[role="dialog"] button[type="submit"]')][0];
+  await React.act(async () => {
+    submit.click();
+  });
+  await React.act(async () => {
+    submit.click(); // no-op: disabled while pending
+  });
+  await flush(10);
+  assert.equal(reviewCalls.length, 1);
+  await React.act(async () => {
+    resolveReview();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+});
+
+test("a failed review preserves the note and keeps the report in the pending queue", async () => {
+  resetAll();
+  reviewImpl = async () => {
+    throw new Error("This report could not be reviewed. Please try again.");
+  };
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Resolve").click();
+  });
+  const dialog = document.getElementById("root").querySelector('[role="dialog"]');
+  const textarea = dialog.querySelector("textarea");
+  await React.act(async () => {
+    typeInto(textarea, "my review note");
+  });
+  await React.act(async () => {
+    dialog.querySelector('button[type="submit"]').click();
+  });
+  await flush();
+  const rootAfter = document.getElementById("root");
+  assert.match(rootAfter.textContent, /This report could not be reviewed\. Please try again\./);
+  assert.equal(rootAfter.querySelector('[role="dialog"] textarea').value, "my review note", "the note must survive a failed submission");
+  assert.match(rootAfter.textContent, /Spam/, "the report must remain visible in the pending queue after a failed review");
+});
+
+test("a concurrent-finalization failure (already reviewed by someone else) is a recoverable error, not a crash or silent success", async () => {
+  resetAll();
+  reviewImpl = async () => {
+    throw new Error("This report could not be reviewed. Please try again.");
+  };
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Resolve").click();
+  });
+  await React.act(async () => {
+    document.getElementById("root").querySelector('[role="dialog"] button[type="submit"]').click();
+  });
+  await flush();
+  const dialog = document.getElementById("root").querySelector('[role="dialog"]');
+  assert.ok(dialog, "the dialog must remain open and usable after a concurrent-finalization-shaped failure");
+  const cancel = [...dialog.querySelectorAll("button")].find((b) => b.textContent.trim() === "Cancel");
+  await React.act(async () => {
+    cancel.click();
+  });
+  await flush(10);
+  assert.equal(document.getElementById("root").querySelector('[role="dialog"]'), null);
+  assert.match(document.getElementById("root").textContent, /Spam/, "recovery via Cancel leaves the item visible for a manual Refresh, never silently removed");
+});
+
+// ==========================================================================
+// No raw backend text ever reaches the DOM.
+// ==========================================================================
+
+test("no raw PostgREST/RLS/constraint/function text ever reaches the DOM on a review failure", async () => {
+  resetAll();
+  const { ModerationOperationError } = await import(moderationClientUrl);
+  reviewImpl = async () => {
+    throw new ModerationOperationError("review_report", "This report could not be reviewed. Please try again.", {
+      cause: { message: 'new row violates row-level security policy for table "reports"', code: "42501" },
+    });
+  };
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Dismiss").click();
+  });
+  await React.act(async () => {
+    document.getElementById("root").querySelector('[role="dialog"] button[type="submit"]').click();
+  });
+  await flush();
+  const text = document.getElementById("root").textContent;
+  assert.match(text, /This report could not be reviewed\. Please try again\./);
+  for (const rawFragment of ["row-level security", "42501", "review_report", "reports_", "constraint", "PostgREST"]) {
+    assert.ok(!text.includes(rawFragment), `must never leak raw fragment ${JSON.stringify(rawFragment)}`);
+  }
+});
+
+// ==========================================================================
+// Mobile Back behavior.
+// ==========================================================================
+
+test("selecting a report on mobile shows Back, and Back returns to the queue", async () => {
+  resetAll();
+  fetchQueueImpl = async () => ({ items: [queueItem({ reportId: REPORT_ID_1, category: "spam" })], nextCursor: null });
+  const container = await mountModeration();
+  await flush();
+  await React.act(async () => {
+    [...container.querySelectorAll("button")].find((b) => b.textContent.includes("Spam")).click();
+  });
+  await flush(10);
+  const back = findButton(document.getElementById("root"), "Back to queue");
+  assert.ok(back, "expected a Back control in the detail view");
+  await React.act(async () => {
+    back.click();
+  });
+  await flush(10);
+  assert.equal(findButton(document.getElementById("root"), "Back to queue"), undefined, "Back must return to the queue view");
+});
+
+// ==========================================================================
+// Dialog keyboard/focus accessibility.
+// ==========================================================================
+
+test("the review dialog focuses Cancel initially, Escape closes and restores focus to its own trigger, and Tab wraps within the dialog", async () => {
+  resetAll();
+  const container = await mountWithPendingReport();
+  const resolveTrigger = findButton(container, "Resolve");
+  await React.act(async () => {
+    resolveTrigger.focus();
+    resolveTrigger.click();
+  });
+  const dialog = document.getElementById("root").querySelector('[role="dialog"]');
+  const cancelButton = [...dialog.querySelectorAll("button")].find((b) => b.textContent.trim() === "Cancel");
+  assert.ok(document.activeElement === cancelButton, "initial focus must land on Cancel");
+
+  const focusable = [...dialog.querySelectorAll("button:not([disabled]), textarea:not([disabled])")];
+  const last = focusable[focusable.length - 1];
+  await React.act(async () => {
+    last.focus();
+  });
+  await React.act(async () => {
+    last.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+  });
+  assert.ok(document.activeElement === focusable[0], "Tab from the last focusable control must wrap to the first");
+
+  await React.act(async () => {
+    document.activeElement.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  await flush(10);
+  assert.equal(document.getElementById("root").querySelector('[role="dialog"]'), null);
+  assert.ok(document.activeElement === resolveTrigger, "focus must return to the Resolve trigger after Escape");
+  assert.equal(reviewCalls.length, 0, "Escape must never submit a review decision");
+});
+
+test("focus moves to the success view's Close button only after a confirmed review, never before", async () => {
+  resetAll();
+  let resolveReview;
+  reviewImpl = () => new Promise((resolve) => { resolveReview = () => resolve({ reportId: REPORT_ID_1, status: "resolved", reviewedAt: "2026-01-01T00:00:00.000Z" }); });
+  const container = await mountWithPendingReport();
+  const resolveTrigger = findButton(container, "Resolve");
+  await React.act(async () => {
+    resolveTrigger.focus();
+    resolveTrigger.click();
+  });
+  const submit = document.getElementById("root").querySelector('[role="dialog"] button[type="submit"]');
+  await React.act(async () => {
+    submit.focus();
+    submit.click();
+  });
+  await flush(10);
+  assert.ok(document.activeElement === submit, "focus must still be on submit while the review is pending");
+
+  await React.act(async () => {
+    resolveReview();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const closeButton = [...document.getElementById("root").querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === "Close");
+  assert.ok(document.activeElement === closeButton, "focus must move to Close only after the confirmed success");
+});
+
+test("unmounting while the review dialog is still open removes the document-level keydown listener", async () => {
+  resetAll();
+  const container = await mountWithPendingReport();
+  await React.act(async () => {
+    findButton(container, "Resolve").click();
+  });
+  assert.ok(document.getElementById("root").querySelector('[role="dialog"]'));
+  assert.equal(liveDocumentKeydownListeners, 1);
+  await React.act(async () => {
+    currentRoot.unmount();
+  });
+  currentRoot = null;
+  assert.equal(liveDocumentKeydownListeners, 0);
+});
+
+// ==========================================================================
+// "Report review" discovery link on ProfileRoute — appears only after
+// confirmed active-moderator access.
+// ==========================================================================
+
+async function mountOwnProfile() {
+  const root = freshRoot();
+  await React.act(async () => {
+    root.render(React.createElement(MemoryRouter, { initialEntries: ["/profile"] }, React.createElement(ProfileRoute)));
+  });
+  return document.getElementById("root");
+}
+
+test("the Report review link is absent while moderator access is still loading", async () => {
+  resetAll();
+  let resolveAccess;
+  checkAccessImpl = () => new Promise((resolve) => { resolveAccess = () => resolve(true); });
+  const container = await mountOwnProfile();
+  await flush();
+  assert.equal(findButton(container, "Report review"), undefined);
+  await React.act(async () => {
+    resolveAccess();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+});
+
+test("the Report review link is absent for a confirmed non-moderator", async () => {
+  resetAll();
+  checkAccessImpl = async () => false;
+  const container = await mountOwnProfile();
+  await flush();
+  assert.equal(findButton(container, "Report review"), undefined);
+});
+
+test("the Report review link is absent when the access check itself fails", async () => {
+  resetAll();
+  checkAccessImpl = async () => {
+    throw new Error("unavailable");
+  };
+  const container = await mountOwnProfile();
+  await flush();
+  assert.equal(findButton(container, "Report review"), undefined);
+});
+
+test("the Report review link appears only after confirmed active-moderator access, and points at /moderation/reports", async () => {
+  resetAll();
+  checkAccessImpl = async () => true;
+  const container = await mountOwnProfile();
+  await flush();
+  const link = findButton(container, "Report review") ?? [...container.querySelectorAll("a")].find((a) => a.textContent.trim() === "Report review");
+  assert.ok(link, "expected the Report review link once access is confirmed");
+  assert.equal(link.getAttribute("href"), "/moderation/reports");
+});
