@@ -8,6 +8,7 @@ import NetworkRoute from "./routes/NetworkRoute";
 import HomeRoute from "./routes/HomeRoute";
 import ConversationRoute from "./routes/ConversationRoute";
 import MessagesRoute from "./routes/MessagesRoute";
+import ModerationRoute from "./routes/ModerationRoute";
 import ProfileRoute from "./routes/ProfileRoute";
 import PublicProfileRoute from "./routes/PublicProfileRoute";
 import ResetPasswordRoute from "./routes/ResetPasswordRoute";
@@ -57,6 +58,11 @@ export default function SocialApp() {
           {/* Contextual only — reached from ProfileRoute's "Connections" link,
               not a primary nav tab (see AGENTS.md's approved nav direction). */}
           <Route path="connections" element={<ConnectionsRoute />} />
+          {/* Contextual only — reached from ProfileRoute's "Report review" link,
+              shown only after confirmed active-moderator access, not a
+              primary nav tab. ModerationRoute independently re-verifies
+              access itself regardless of how this route was reached. */}
+          <Route path="moderation/reports" element={<ModerationRoute />} />
           <Route path="auth" element={<AuthRoute />} />
           <Route path="auth/reset-password" element={<ResetPasswordRoute />} />
           {import.meta.env.DEV && <Route path="dev/otp-preview" element={<OtpPreviewRoute />} />}
