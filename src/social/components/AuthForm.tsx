@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion, type Transition } from "motion/react";
 import {
@@ -286,7 +287,13 @@ export default function AuthForm({
                 <PasswordField label="Confirm password" value={confirmPassword} onChange={setConfirmPassword} shown={showPassword} onToggle={() => setShowPassword(!showPassword)} autoComplete="new-password" />
                 <label className="flex items-start gap-3 text-xs text-[var(--smc-charcoal-faint)]">
                   <input type="checkbox" checked={acceptTerms} onChange={(event) => setAcceptTerms(event.target.checked)} className="mt-0.5" />
-                  <span>I accept the Terms of Use and acknowledge the Privacy Notice. Both require final legal review before public beta.</span>
+                  <span>
+                    I accept the Terms of Use and{" "}
+                    <Link to="/community-guidelines" className="font-semibold underline underline-offset-2">
+                      Community Guidelines
+                    </Link>
+                    , and acknowledge the Privacy Notice. All require final legal review before public beta.
+                  </span>
                 </label>
                 <SubmitButton busy={busy}>Create account</SubmitButton>
               </form>

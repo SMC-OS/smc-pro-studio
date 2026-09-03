@@ -439,6 +439,27 @@ test("success is shown only after a confirmed receipt and never exposes the rece
   assert.match(finalText, /Report received/);
   assert.doesNotMatch(finalText, new RegExp(RECEIPT_ID));
   assert.doesNotMatch(finalText, /remov|delet|banned|suspend|block(ed)?|resolved/i);
+  // Community Guidelines owner-review pass: same honest expectation as the
+  // profile-report surface — see profile-report.test.mjs's identical check.
+  assert.match(finalText, /may not receive an individual update/i);
+});
+
+// Community Guidelines owner-review pass: see profile-report.test.mjs's
+// identical test for the full rationale — proven here too since ReportDialog
+// is the same shared component mounted from the message-reporting surface.
+test("the initial report form states report confidentiality without promising anonymity, and links to the Community Guidelines", async () => {
+  resetAll();
+  fetchMessagesImpl = async () => ({ messages: [msg("m1", OTHER_USER_ID, "text", "2026-01-01T00:00:01.000Z")], nextCursor: null });
+  const container = await mountThread();
+  await flush();
+  await openReport(reportButtonsIn(container)[0]);
+  const dialog = document.getElementById("root").querySelector('[role="dialog"]');
+  assert.match(dialog.textContent, /restricted to authorised moderators/i);
+  assert.match(dialog.textContent, /safety, legal, or regulatory reasons/i);
+  assert.match(dialog.textContent, /don't promise anonymity/i);
+  const guidelinesLink = [...dialog.querySelectorAll("a")].find((a) => a.textContent.trim() === "Community Guidelines");
+  assert.ok(guidelinesLink, "a Community Guidelines link must be present");
+  assert.equal(guidelinesLink.getAttribute("href"), "/community-guidelines");
 });
 
 // Copilot finding (Issue 1, merged Slice I) — see profile-report.test.mjs's

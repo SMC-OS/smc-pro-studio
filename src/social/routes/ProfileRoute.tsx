@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Globe, LogOut, MapPin, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, Globe, LogOut, MapPin, ShieldCheck, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Avatar, Button, Card, EditorialHeading } from "../components/ui";
@@ -104,6 +104,16 @@ export default function ProfileRoute() {
           >
             <Users className="h-4 w-4" aria-hidden="true" />
             Connections
+          </Link>
+          {/* Always visible, unlike "Report review" below — Community
+              Guidelines applies to every user, not just moderators, so it is
+              never gated on any access check. */}
+          <Link
+            to="/community-guidelines"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
+          >
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
+            Community Guidelines
           </Link>
           {/* Only ever rendered after a confirmed `true` from
               checkModeratorAccess() — never while loading, never on a
