@@ -781,6 +781,48 @@ test("neither Hide nor Restore appears for a pending message report — review m
   assert.equal(findButton(container, "Restore message"), undefined);
 });
 
+// Phase 4 safety-checkpoint audit (2026-09-03): the only two "neither"
+// combinations previously exercised were pending and profile-target-resolved
+// — a dismissed message report was never given its own fixture, even though
+// the component's gate (item.status === "resolved") makes dismissed behave
+// identically to pending by construction. This closes that coverage gap
+// directly rather than relying on the shared gate alone.
+test("neither Hide nor Restore appears for a dismissed message report — dismissal is not enforceable either", async () => {
+  resetAll();
+  fetchQueueImpl = async (status) => ({
+    items:
+      status === "dismissed"
+        ? [
+            queueItem({
+              reportId: REPORT_ID_1,
+              targetKind: "message",
+              category: "harassment",
+              status: "dismissed",
+              reviewedByDisplayName: "Mod",
+              reviewedAt: "2026-01-01T00:00:00.000Z",
+              messageBody: "The reported text.",
+              messageModerationStatus: "visible",
+            }),
+          ]
+        : [],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await flush();
+  const dismissedTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "Dismissed");
+  await React.act(async () => {
+    dismissedTab.click();
+  });
+  await flush();
+  await React.act(async () => {
+    [...document.getElementById("root").querySelectorAll("button")].find((b) => b.textContent.includes("Harassment"))?.click();
+  });
+  await flush(10);
+  const root = document.getElementById("root");
+  assert.equal(findButton(root, "Hide message"), undefined);
+  assert.equal(findButton(root, "Restore message"), undefined);
+});
+
 test("the Hide confirmation states plainly that both people, including the sender, lose visibility, and that it can be reversed", async () => {
   resetAll();
   const container = await mountWithResolvedMessageReport("visible");
