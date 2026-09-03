@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(162);
+select plan(168);
 
 -- ==========================================================================
 -- Phase 4 Slice A: direct-messaging schema and RLS foundation
@@ -530,6 +530,103 @@ select throws_ok(
   format($$insert into public.messages (conversation_id, sender_id, body)
     values (%L::uuid, 'd0000000-0000-0000-0000-000000000007'::uuid, 'Can G still message F?')$$, :'fg_conversation_id'),
   '42501', null, 'the blocker (G) also cannot send once they have blocked the other party'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ==========================================================================
+-- Phase 4 safety-checkpoint audit (2026-09-03): create_direct_conversation()'s
+-- own idempotent "return the existing conversation" fast path was never
+-- proven to be equally block-gated as the fresh-creation path is above — it
+-- runs the identical has_blocked() check unconditionally before the lookup
+-- (20260824090000_direct_messaging_foundation.sql), but that guarantee had
+-- no direct test. Nor did unblocking-restores-capability have any coverage
+-- at all: every existing block-related assertion in this file proves a
+-- block *stops* something; none prove that removing it *restores* the
+-- identical capability, for either the lookup RPC or raw sends, in either
+-- direction. Both gaps are closed here.
+--
+-- Dedicated new fixtures (Mia/Noah), not the F/G pair above: F/G's own
+-- block is still relied on by later sections of this file (the direct-call
+-- probing coverage immediately below, and the read-state block-does-not-
+-- hide-unread proof much further down) — deleting it here to test unblock
+-- would silently corrupt those later, unrelated proofs.
+-- ==========================================================================
+
+insert into auth.users (id, email, raw_user_meta_data, raw_app_meta_data, aud, role, encrypted_password, email_confirmed_at, created_at, updated_at)
+values
+  ('d0000000-0000-0000-0000-00000000000d', 'dm-mia@fixture.test', jsonb_build_object('display_name', 'Mia Unblock Fixture'), '{}'::jsonb, 'authenticated', 'authenticated', 'not-a-real-password', now(), now(), now()),
+  ('d0000000-0000-0000-0000-00000000000e', 'dm-noah@fixture.test', jsonb_build_object('display_name', 'Noah Unblock Fixture'), '{}'::jsonb, 'authenticated', 'authenticated', 'not-a-real-password', now(), now(), now());
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000d';
+select lives_ok(
+  $$select public.create_direct_conversation('d0000000-0000-0000-0000-00000000000e'::uuid)$$,
+  'Mia and Noah can create a conversation before any block exists between them'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+select id as mn_conversation_id from public.conversations
+where kind = 'direct'
+  and direct_member_low = least('d0000000-0000-0000-0000-00000000000d'::uuid, 'd0000000-0000-0000-0000-00000000000e'::uuid)
+  and direct_member_high = greatest('d0000000-0000-0000-0000-00000000000d'::uuid, 'd0000000-0000-0000-0000-00000000000e'::uuid) \gset
+
+insert into public.blocks (blocker_id, blocked_id)
+values ('d0000000-0000-0000-0000-00000000000e', 'd0000000-0000-0000-0000-00000000000d');
+
+-- ---- the idempotent lookup path is not a bypass: re-calling create_direct_conversation() for an *existing* conversation while blocked is rejected identically to fresh creation, in both directions ----
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000d';
+select throws_ok(
+  $$select public.create_direct_conversation('d0000000-0000-0000-0000-00000000000e'::uuid)$$,
+  'P0001', 'create_direct_conversation: this conversation is not available',
+  'Mia re-calling create_direct_conversation for the existing Mia/Noah conversation while blocked is rejected — the idempotent lookup fast path cannot be used to route around the block check'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000e';
+select throws_ok(
+  $$select public.create_direct_conversation('d0000000-0000-0000-0000-00000000000d'::uuid)$$,
+  'P0001', 'create_direct_conversation: this conversation is not available',
+  'Noah re-calling create_direct_conversation for the same existing conversation while blocked is rejected too — symmetric in both directions'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+-- ---- unblocking restores both the lookup RPC and raw sending, in both directions, without creating a second conversation ----
+delete from public.blocks
+where blocker_id = 'd0000000-0000-0000-0000-00000000000e'::uuid
+  and blocked_id = 'd0000000-0000-0000-0000-00000000000d'::uuid;
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000d';
+select results_eq(
+  $$select public.create_direct_conversation('d0000000-0000-0000-0000-00000000000e'::uuid)$$,
+  format($$select %L::uuid$$, :'mn_conversation_id'),
+  'after the block is removed, create_direct_conversation returns the identical, already-existing conversation id — a genuine restored lookup, never a second/duplicate conversation'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000d';
+select lives_ok(
+  format($$insert into public.messages (conversation_id, sender_id, body)
+    values (%L::uuid, 'd0000000-0000-0000-0000-00000000000d'::uuid, 'Mia can message Noah again now that the block is gone.')$$, :'mn_conversation_id'),
+  'once unblocked, Mia (the formerly-blocked party) can send again'
+);
+reset role;
+reset request.jwt.claim.sub;
+
+set local role authenticated;
+set local request.jwt.claim.sub to 'd0000000-0000-0000-0000-00000000000e';
+select lives_ok(
+  format($$insert into public.messages (conversation_id, sender_id, body)
+    values (%L::uuid, 'd0000000-0000-0000-0000-00000000000e'::uuid, 'Noah can message Mia again too.')$$, :'mn_conversation_id'),
+  'once unblocked, Noah (the former blocker) can send again too — sending is symmetric in both directions'
 );
 reset role;
 reset request.jwt.claim.sub;
