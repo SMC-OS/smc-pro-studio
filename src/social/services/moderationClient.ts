@@ -3,19 +3,21 @@ import { SocialUnavailableError } from "./socialClient";
 import type { ReportCategory, ReportTargetKind } from "./reportingClient";
 
 /**
- * Phase 4 Slice J: service boundary for moderator report review only. Wraps
- * 20260830193342_moderation_review.sql's three client-reachable RPCs
- * (check_moderator_access, list_moderation_reports, review_report) exactly
- * as merged — no schema/RLS/grant/RPC change of any kind happens here, and
- * this file never queries or writes public.reports/public.messages
- * directly (public.reports grants no client INSERT/UPDATE/DELETE of any
- * kind, and its only SELECT policy is moderator-only via RLS — see the
- * migration). A dedicated file, not folded into reportingClient.ts: report
- * *submission* (reportingClient.ts) and report *review* (this file) are
+ * Phase 4 Slice J/K: service boundary for moderator report review and
+ * message enforcement. Wraps 20260830193342_moderation_review.sql's three
+ * review RPCs (check_moderator_access, list_moderation_reports,
+ * review_report) and 20260831151303_moderation_enforcement.sql's one
+ * enforcement RPC (moderate_reported_message) exactly as merged — no
+ * schema/RLS/grant/RPC change of any kind happens here, and this file never
+ * queries or writes public.reports/public.messages/public.moderation_actions
+ * directly (each grants no client write of any kind; every read this file
+ * needs already flows through list_moderation_reports() itself). A
+ * dedicated file, not folded into reportingClient.ts: report *submission*
+ * (reportingClient.ts) and report *review/enforcement* (this file) are
  * distinct authorization domains — every authenticated user can submit,
- * only an active moderator can review — the same reasoning that already
- * gave reporting its own file distinct from messagingClient.ts despite
- * referencing the same underlying messages table.
+ * only an active moderator can review or enforce — the same reasoning that
+ * already gave reporting its own file distinct from messagingClient.ts
+ * despite referencing the same underlying messages table.
  */
 
 // Mirrors public.report_status exactly (20260830105617_reporting_foundation.sql).
@@ -37,6 +39,35 @@ const REVIEW_DECISION_SET: ReadonlySet<string> = new Set<ReviewDecision>(["resol
 
 function isReviewDecision(value: unknown): value is ReviewDecision {
   return typeof value === "string" && REVIEW_DECISION_SET.has(value);
+}
+
+// Mirrors public.moderation_action_type exactly (20260831151303_moderation_
+// enforcement.sql) — exactly two values, message enforcement only, per this
+// slice's own explicit scope boundary (no profile/post/comment action of
+// any kind exists to type here).
+export type ModerationAction = "hide_message" | "restore_message";
+
+const MODERATION_ACTION_SET: ReadonlySet<string> = new Set<ModerationAction>(["hide_message", "restore_message"]);
+
+function isModerationAction(value: unknown): value is ModerationAction {
+  return typeof value === "string" && MODERATION_ACTION_SET.has(value);
+}
+
+// Mirrors public.moderation_status exactly (20260819120000_social_core.sql)
+// — the same three-value enum posts/comments already carry. Typed with all
+// three values (never narrowed to only the two this slice's own RPC can
+// produce for a message) so a future value is a type-safe "unknown state",
+// never a silently-miscoerced one.
+export type MessageModerationStatus = "visible" | "removed_by_owner" | "removed_by_moderator";
+
+const MESSAGE_MODERATION_STATUS_SET: ReadonlySet<string> = new Set<MessageModerationStatus>([
+  "visible",
+  "removed_by_owner",
+  "removed_by_moderator",
+]);
+
+function isMessageModerationStatus(value: unknown): value is MessageModerationStatus {
+  return typeof value === "string" && MESSAGE_MODERATION_STATUS_SET.has(value);
 }
 
 /**
@@ -76,6 +107,8 @@ export interface ModerationQueueItem {
   /** Non-null only for a message-report row — always null for a profile report (the RPC's own LEFT JOIN on message_id makes this structural, not a special case this file adds). */
   messageBody: string | null;
   messageCreatedAt: string | null;
+  /** Non-null only for a message-report row, for the identical structural reason as messageBody above. Reflects the reported message's *current* state — 'visible' unless a moderator has hidden it via moderateReportedMessage(). */
+  messageModerationStatus: MessageModerationStatus | null;
 }
 
 /** Mirrors messagingClient.ts's own MessageCursor shape exactly — (createdAt, id) as an opaque keyset cursor. */
@@ -97,6 +130,14 @@ export interface ReviewResult {
   reviewedAt: string;
 }
 
+/** Exactly what public.moderate_reported_message() returns — the minimal server-confirmed result the UI needs, never the note text or acting-moderator identity (the caller already knows both). */
+export interface EnforcementResult {
+  actionId: string;
+  messageId: string;
+  moderationStatus: MessageModerationStatus;
+  actedAt: string;
+}
+
 /**
  * The one error boundary every backend (Postgres/PostgREST/RPC) failure in
  * this file passes through before reaching a caller — the identical
@@ -106,7 +147,7 @@ export interface ReviewResult {
  * always one of the safe constants authored by this file, never derived
  * from `error.message`.
  */
-export type ModerationOperation = "check_access" | "fetch_queue" | "review_report";
+export type ModerationOperation = "check_access" | "fetch_queue" | "review_report" | "moderate_message";
 
 export class ModerationOperationError extends Error {
   readonly operation: ModerationOperation;
@@ -269,6 +310,22 @@ function parseQueueItem(raw: unknown): ModerationQueueItem {
   if (record.message_created_at !== null && typeof record.message_created_at !== "string") {
     throw new ModerationOperationError("fetch_queue", SAFE_QUEUE_ERROR);
   }
+  // Cross-validated against targetKind, not merely checked for its own
+  // shape: a message report's status is only ever null when the referenced
+  // message row itself is somehow unresolvable (structurally near-impossible
+  // — reports_message_reference_fk already guarantees a message report's
+  // message_id points at a real row — but never trusted blindly here), and
+  // a profile report must never carry a status at all (the RPC's own LEFT
+  // JOIN on message_id makes this structural on the server side; this check
+  // makes it structural on the client side too, rather than merely hoping
+  // the server never sends a malformed combination).
+  if (targetKind === "message") {
+    if (!isMessageModerationStatus(record.message_moderation_status)) {
+      throw new ModerationOperationError("fetch_queue", SAFE_QUEUE_ERROR);
+    }
+  } else if (record.message_moderation_status !== null) {
+    throw new ModerationOperationError("fetch_queue", SAFE_QUEUE_ERROR);
+  }
   return {
     reportId,
     targetKind,
@@ -283,6 +340,7 @@ function parseQueueItem(raw: unknown): ModerationQueueItem {
     reportedDisplayName: record.reported_display_name as string | null,
     messageBody: record.message_body as string | null,
     messageCreatedAt: record.message_created_at as string | null,
+    messageModerationStatus: record.message_moderation_status as MessageModerationStatus | null,
   };
 }
 
@@ -419,4 +477,79 @@ export async function reviewReport(reportId: string, decision: ReviewDecision, n
     throw new ModerationOperationError("review_report", SAFE_REVIEW_ERROR);
   }
   return parseReviewResult(data[0]);
+}
+
+// ==========================================================================
+// moderateReportedMessage
+// ==========================================================================
+
+const SAFE_ENFORCEMENT_ERROR = "This action could not be completed. Please try again.";
+
+function parseEnforcementResult(raw: unknown): EnforcementResult {
+  if (!raw || typeof raw !== "object") {
+    throw new ModerationOperationError("moderate_message", SAFE_ENFORCEMENT_ERROR);
+  }
+  const record = raw as Record<string, unknown>;
+  let actionId: string;
+  let messageId: string;
+  try {
+    actionId = requireUuid(record.action_id, "action_id");
+    messageId = requireUuid(record.message_id, "message_id");
+  } catch (parseError) {
+    throw new ModerationOperationError("moderate_message", SAFE_ENFORCEMENT_ERROR, { cause: parseError });
+  }
+  if (!isMessageModerationStatus(record.moderation_status)) {
+    throw new ModerationOperationError("moderate_message", SAFE_ENFORCEMENT_ERROR);
+  }
+  if (typeof record.acted_at !== "string" || !record.acted_at) {
+    throw new ModerationOperationError("moderate_message", SAFE_ENFORCEMENT_ERROR);
+  }
+  return { actionId, messageId, moderationStatus: record.moderation_status, actedAt: record.acted_at };
+}
+
+/**
+ * Calls public.moderate_reported_message(p_report_id, p_action, p_note) —
+ * the exact merged parameter names, and no others; there is no
+ * p_moderator_id parameter of any kind to send even if this file wanted to
+ * — the acting moderator always comes from the database itself (auth.uid())
+ * on the server side. `action` is typed to only ever be "hide_message" or
+ * "restore_message" — the only two values this slice supports (no profile/
+ * post/comment action exists to pass); the database remains authoritative
+ * for the report-shape/status gate, the conflict-of-interest rejection, and
+ * the atomic compare-and-swap transition — this function's own
+ * responsibility ends at auth/UUID/action/note validation, exactly
+ * mirroring reviewReport above.
+ *
+ * Every RPC failure — access denied, a revoked role, conflict-of-interest, a
+ * report that is pending/dismissed/profile-target, a message already in the
+ * target state (concurrent enforcement), or a genuine network/database
+ * problem — collapses to the same safe SAFE_ENFORCEMENT_ERROR text, the
+ * original error preserved as `cause` for logging. A concurrent-enforcement
+ * failure (two moderators racing) is therefore indistinguishable from any
+ * other failure to the caller — the UI's own recovery path (reload the
+ * report) is the same regardless of cause.
+ */
+export async function moderateReportedMessage(reportId: string, action: ModerationAction, note?: string): Promise<EnforcementResult> {
+  const { client } = await requireAuthenticatedClient("Sign in to moderate this report.");
+  requireUuid(reportId, "The report ID");
+  if (!isModerationAction(action)) {
+    throw new Error("Choose hide or restore.");
+  }
+  const preparedNote = prepareReviewNote(note);
+
+  const { data, error } = await client.rpc("moderate_reported_message", {
+    p_report_id: reportId,
+    p_action: action,
+    p_note: preparedNote,
+  });
+  if (error) {
+    throw new ModerationOperationError("moderate_message", SAFE_ENFORCEMENT_ERROR, { cause: error });
+  }
+  // moderate_reported_message()'s `returns table (...)` serializes as a JSON
+  // array over PostgREST, identically to review_report() above — a
+  // well-formed call always yields exactly one element here.
+  if (!Array.isArray(data) || data.length !== 1) {
+    throw new ModerationOperationError("moderate_message", SAFE_ENFORCEMENT_ERROR);
+  }
+  return parseEnforcementResult(data[0]);
 }

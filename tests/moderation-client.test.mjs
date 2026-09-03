@@ -23,6 +23,7 @@ const {
   checkModeratorAccess,
   fetchModerationReports,
   reviewReport,
+  moderateReportedMessage,
   ModerationOperationError,
   REVIEW_NOTE_MAX_LENGTH,
 } = await import(new URL("../src/social/services/moderationClient.ts", import.meta.url).href);
@@ -45,6 +46,7 @@ const REPORT_ID_2 = "b1000000-0000-0000-0000-000000000002";
 const SAFE_ACCESS_ERROR = "We couldn't verify your access. Please try again.";
 const SAFE_QUEUE_ERROR = "The moderation queue could not be loaded. Please try again.";
 const SAFE_REVIEW_ERROR = "This report could not be reviewed. Please try again.";
+const SAFE_ENFORCEMENT_ERROR = "This action could not be completed. Please try again.";
 
 function authUser(userId) {
   return { getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }) };
@@ -85,6 +87,9 @@ function queueItem(overrides = {}) {
     reported_display_name: "Bob",
     message_body: null,
     message_created_at: null,
+    // Phase 4 Slice K: always present in the real RPC's own row shape (null
+    // for a profile report, per list_moderation_reports()'s own LEFT JOIN).
+    message_moderation_status: null,
     has_more: false,
     ...overrides,
   };
@@ -92,6 +97,16 @@ function queueItem(overrides = {}) {
 
 function reviewRow(overrides = {}) {
   return { report_id: REPORT_ID_1, status: "resolved", reviewed_at: "2026-01-01T00:00:00.000Z", ...overrides };
+}
+
+function enforcementRow(overrides = {}) {
+  return {
+    action_id: "c1000000-0000-0000-0000-000000000001",
+    message_id: "d1000000-0000-0000-0000-000000000001",
+    moderation_status: "removed_by_moderator",
+    acted_at: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
 }
 
 // ==========================================================================
@@ -305,6 +320,7 @@ test("fetchModerationReports: parses a full, well-formed queue item into the exa
     target_kind: "message",
     message_body: "the reported text",
     message_created_at: "2026-01-01T00:00:05.000Z",
+    message_moderation_status: "visible",
     reviewed_at: "2026-01-01T00:01:00.000Z",
     reviewed_by_display_name: "Mod",
     review_note: "looked into it",
@@ -327,15 +343,56 @@ test("fetchModerationReports: parses a full, well-formed queue item into the exa
     reportedDisplayName: "Bob",
     messageBody: "the reported text",
     messageCreatedAt: "2026-01-01T00:00:05.000Z",
+    messageModerationStatus: "visible",
   });
 });
 
-test("fetchModerationReports: a profile report row has a null message body, never fabricated content", async () => {
-  const { client } = rpcClient({ data: [queueItem({ target_kind: "profile", message_body: null, message_created_at: null })] });
+test("fetchModerationReports: a profile report row has a null message body/status, never fabricated content", async () => {
+  const { client } = rpcClient({
+    data: [queueItem({ target_kind: "profile", message_body: null, message_created_at: null, message_moderation_status: null })],
+  });
   currentClient = client;
   const page = await fetchModerationReports("pending");
   assert.equal(page.items[0].messageBody, null);
   assert.equal(page.items[0].messageCreatedAt, null);
+  assert.equal(page.items[0].messageModerationStatus, null);
+});
+
+test("fetchModerationReports: a hidden message report row reflects its current removed_by_moderator status", async () => {
+  const { client } = rpcClient({ data: [queueItem({ target_kind: "message", message_moderation_status: "removed_by_moderator" })] });
+  currentClient = client;
+  const page = await fetchModerationReports("pending");
+  assert.equal(page.items[0].messageModerationStatus, "removed_by_moderator");
+});
+
+test("fetchModerationReports: a malformed row (unrecognized message_moderation_status) is rejected rather than trusted", async () => {
+  const { client } = rpcClient({ data: [queueItem({ message_moderation_status: "quarantined" })] });
+  currentClient = client;
+  await assert.rejects(() => fetchModerationReports("pending"), (err) => {
+    assert.ok(err instanceof ModerationOperationError);
+    assert.equal(err.message, SAFE_QUEUE_ERROR);
+    return true;
+  });
+});
+
+test("fetchModerationReports: a malformed combination (message target with a null status) is rejected — a message report must always carry a valid status", async () => {
+  const { client } = rpcClient({ data: [queueItem({ target_kind: "message", message_moderation_status: null })] });
+  currentClient = client;
+  await assert.rejects(() => fetchModerationReports("pending"), (err) => {
+    assert.ok(err instanceof ModerationOperationError);
+    assert.equal(err.message, SAFE_QUEUE_ERROR);
+    return true;
+  });
+});
+
+test("fetchModerationReports: a malformed combination (profile target with a non-null status) is rejected — a profile report must never carry one", async () => {
+  const { client } = rpcClient({ data: [queueItem({ target_kind: "profile", message_moderation_status: "visible" })] });
+  currentClient = client;
+  await assert.rejects(() => fetchModerationReports("pending"), (err) => {
+    assert.ok(err instanceof ModerationOperationError);
+    assert.equal(err.message, SAFE_QUEUE_ERROR);
+    return true;
+  });
 });
 
 test("fetchModerationReports: has_more=true on the last row produces a nextCursor from that row's own createdAt/reportId", async () => {
@@ -520,6 +577,209 @@ test("reviewReport: never sends a note field when omitted, and never a reporter/
   currentClient = client;
   await reviewReport(REPORT_ID_1, "resolved");
   for (const forbidden of ["reporter_id", "p_reporter_id", "reported_user_id", "p_reported_user_id", "target_kind", "p_target_kind"]) {
+    assert.ok(!(forbidden in rpcCalls[0].params), `must never send ${forbidden}`);
+  }
+});
+
+// ==========================================================================
+// moderateReportedMessage
+// ==========================================================================
+
+test("moderateReportedMessage: fails before any RPC call when not authenticated", async () => {
+  const { client, rpcCalls } = rpcClient({ userId: null });
+  currentClient = client;
+  await assert.rejects(() => moderateReportedMessage(REPORT_ID_1, "hide_message"), /Sign in/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("moderateReportedMessage: a genuine auth.getUser() failure throws SocialUnavailableError before any RPC call, preserving cause", async () => {
+  const rpcCalls = [];
+  currentClient = {
+    auth: authUserError(AUTH_VERIFICATION_ERROR),
+    rpc: async (name, params) => {
+      rpcCalls.push({ name, params });
+      return { data: [enforcementRow()], error: null };
+    },
+  };
+  await assert.rejects(
+    () => moderateReportedMessage(REPORT_ID_1, "hide_message"),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      assert.doesNotMatch(err.message, /Sign in/);
+      assert.equal(err.cause, AUTH_VERIFICATION_ERROR);
+      return true;
+    }
+  );
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("moderateReportedMessage: rejects a malformed report ID before any RPC call", async () => {
+  const { client, rpcCalls } = rpcClient({});
+  currentClient = client;
+  await assert.rejects(() => moderateReportedMessage("not-a-uuid", "hide_message"), /valid ID/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("moderateReportedMessage: rejects an invalid action before any RPC call — there is no third action beyond hide/restore", async () => {
+  const { client, rpcCalls } = rpcClient({});
+  currentClient = client;
+  await assert.rejects(() => moderateReportedMessage(REPORT_ID_1, "delete_message"), /hide or restore/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("moderateReportedMessage: calls moderate_reported_message with exactly the merged parameter names and no others — no moderator identity", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [enforcementRow()] });
+  currentClient = client;
+  await moderateReportedMessage(REPORT_ID_1, "hide_message");
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].name, "moderate_reported_message");
+  assert.deepEqual(rpcCalls[0].params, { p_report_id: REPORT_ID_1, p_action: "hide_message", p_note: null });
+  assert.deepEqual(Object.keys(rpcCalls[0].params).sort(), ["p_action", "p_note", "p_report_id"]);
+  for (const forbidden of ["moderator_id", "p_moderator_id", "acted_at", "p_acted_at"]) {
+    assert.ok(!(forbidden in rpcCalls[0].params), `must never send ${forbidden}`);
+  }
+});
+
+test("moderateReportedMessage: restore_message is sent verbatim as the action", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [enforcementRow({ moderation_status: "visible" })] });
+  currentClient = client;
+  await moderateReportedMessage(REPORT_ID_1, "restore_message");
+  assert.equal(rpcCalls[0].params.p_action, "restore_message");
+});
+
+test("moderateReportedMessage: trims a supplied note before sending", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [enforcementRow()] });
+  currentClient = client;
+  await moderateReportedMessage(REPORT_ID_1, "hide_message", "   confirmed harassment   ");
+  assert.equal(rpcCalls[0].params.p_note, "confirmed harassment");
+});
+
+test("moderateReportedMessage: omitted note is sent as null, matching the RPC's own default-null contract", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [enforcementRow()] });
+  currentClient = client;
+  await moderateReportedMessage(REPORT_ID_1, "hide_message");
+  assert.equal(rpcCalls[0].params.p_note, null);
+});
+
+test("moderateReportedMessage: rejects a supplied whitespace-only note before any RPC call", async () => {
+  const { client, rpcCalls } = rpcClient({});
+  currentClient = client;
+  await assert.rejects(() => moderateReportedMessage(REPORT_ID_1, "hide_message", "   \n\t  "), /whitespace-only/);
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("moderateReportedMessage: rejects a note over the merged maximum length before any RPC call, but allows exactly the maximum", async () => {
+  const over = rpcClient({});
+  currentClient = over.client;
+  await assert.rejects(() => moderateReportedMessage(REPORT_ID_1, "hide_message", "x".repeat(REVIEW_NOTE_MAX_LENGTH + 1)), /1000 characters or fewer/);
+  assert.equal(over.rpcCalls.length, 0);
+
+  const exact = rpcClient({ data: [enforcementRow()] });
+  currentClient = exact.client;
+  await moderateReportedMessage(REPORT_ID_1, "hide_message", "x".repeat(REVIEW_NOTE_MAX_LENGTH));
+  assert.equal(exact.rpcCalls.length, 1, "exactly the maximum length must be accepted, not rejected");
+});
+
+test("moderateReportedMessage: a valid confirmed result is returned exactly as camelCase fields", async () => {
+  const { client } = rpcClient({
+    data: [enforcementRow({ action_id: REPORT_ID_2, message_id: REPORT_ID_1, moderation_status: "visible", acted_at: "2026-02-02T00:00:00.000Z" })],
+  });
+  currentClient = client;
+  const result = await moderateReportedMessage(REPORT_ID_1, "restore_message");
+  assert.deepEqual(result, { actionId: REPORT_ID_2, messageId: REPORT_ID_1, moderationStatus: "visible", actedAt: "2026-02-02T00:00:00.000Z" });
+});
+
+test("moderateReportedMessage: a malformed response (zero rows) is rejected rather than assumed successful", async () => {
+  const { client } = rpcClient({ data: [] });
+  currentClient = client;
+  await assert.rejects(() => moderateReportedMessage(REPORT_ID_1, "hide_message"), /could not be completed/);
+});
+
+test("moderateReportedMessage: a malformed response (more than one row) is rejected", async () => {
+  const { client } = rpcClient({ data: [enforcementRow(), enforcementRow()] });
+  currentClient = client;
+  await assert.rejects(() => moderateReportedMessage(REPORT_ID_1, "hide_message"), /could not be completed/);
+});
+
+test("moderateReportedMessage: a malformed response (unrecognized moderation_status) is rejected rather than trusted", async () => {
+  const { client } = rpcClient({ data: [enforcementRow({ moderation_status: "quarantined" })] });
+  currentClient = client;
+  await assert.rejects(() => moderateReportedMessage(REPORT_ID_1, "hide_message"), (err) => {
+    assert.ok(err instanceof ModerationOperationError);
+    assert.equal(err.message, SAFE_ENFORCEMENT_ERROR);
+    return true;
+  });
+});
+
+test("moderateReportedMessage: a report-must-be-resolved RPC rejection normalizes to the safe message, never raw function/schema text, preserving cause", async () => {
+  const rawError = { message: "moderate_reported_message: report must be resolved before enforcement", code: "P0001" };
+  const { client } = rpcClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => moderateReportedMessage(REPORT_ID_1, "hide_message"),
+    (err) =>
+      assertSafeModerationError(err, {
+        operation: "moderate_message",
+        message: SAFE_ENFORCEMENT_ERROR,
+        cause: rawError,
+        rawFragments: ["moderate_reported_message", "must be resolved", "P0001"],
+      })
+  );
+});
+
+test("moderateReportedMessage: a not-a-message-report RPC rejection normalizes to the identical safe message", async () => {
+  const rawError = { message: "moderate_reported_message: report is not a message report", code: "P0001" };
+  const { client } = rpcClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => moderateReportedMessage(REPORT_ID_1, "hide_message"),
+    (err) =>
+      assertSafeModerationError(err, {
+        operation: "moderate_message",
+        message: SAFE_ENFORCEMENT_ERROR,
+        cause: rawError,
+        rawFragments: ["moderate_reported_message", "not a message report", "P0001"],
+      })
+  );
+});
+
+test("moderateReportedMessage: a conflict-of-interest RPC rejection normalizes to the identical safe message, never raw function/schema text", async () => {
+  const rawError = { message: "moderate_reported_message: cannot enforce a report you submitted", code: "P0001" };
+  const { client } = rpcClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => moderateReportedMessage(REPORT_ID_1, "hide_message"),
+    (err) =>
+      assertSafeModerationError(err, {
+        operation: "moderate_message",
+        message: SAFE_ENFORCEMENT_ERROR,
+        cause: rawError,
+        rawFragments: ["moderate_reported_message", "you submitted", "P0001"],
+      })
+  );
+});
+
+test("moderateReportedMessage: a concurrent-enforcement (already in the expected state) RPC rejection remains a safe error, never a silent success, preserving cause", async () => {
+  const rawError = { message: "moderate_reported_message: message is not currently visible", code: "P0001" };
+  const { client } = rpcClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => moderateReportedMessage(REPORT_ID_1, "hide_message"),
+    (err) =>
+      assertSafeModerationError(err, {
+        operation: "moderate_message",
+        message: SAFE_ENFORCEMENT_ERROR,
+        cause: rawError,
+        rawFragments: ["moderate_reported_message", "not currently visible", "P0001"],
+      })
+  );
+});
+
+test("moderateReportedMessage: never sends a moderator/target field of any kind", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [enforcementRow()] });
+  currentClient = client;
+  await moderateReportedMessage(REPORT_ID_1, "hide_message");
+  for (const forbidden of ["moderator_id", "p_moderator_id", "reporter_id", "p_reporter_id", "message_id", "p_message_id"]) {
     assert.ok(!(forbidden in rpcCalls[0].params), `must never send ${forbidden}`);
   }
 });
