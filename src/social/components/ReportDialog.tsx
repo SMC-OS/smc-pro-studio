@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { Flag } from "lucide-react";
 import { Button } from "./ui";
 import {
@@ -260,9 +261,12 @@ export function ReportDialog({
                 {/* Neutral by design: never names the reported person/message, never
                     claims any action was taken against them, and never exposes the
                     receipt's own id — see the requirement that success copy must
-                    state only that the report was received for review. */}
+                    state only that the report was received for review. The second
+                    sentence sets an honest expectation (no notification system
+                    exists) rather than leaving the reporter to assume one does. */}
                 <p id={descriptionId} role="status" className="text-sm text-[var(--smc-charcoal-soft)]">
-                  Thank you. This has been sent to our moderators for review.
+                  Thank you. This has been sent to our moderators for review. You may not receive an individual update on the
+                  outcome.
                 </p>
                 <div className="mt-1 flex justify-end">
                   <Button
@@ -284,7 +288,13 @@ export function ReportDialog({
                   {target.kind === "profile" ? `Report ${target.profileLabel}?` : "Report this message?"}
                 </h2>
                 <p id={descriptionId} className="text-sm text-[var(--smc-charcoal-soft)]">
-                  Tell us what's wrong. Our moderators will review this report.
+                  Tell us what's wrong. Our moderators will review this report. Report details are restricted to authorised
+                  moderators, except where disclosure is required for safety, legal, or regulatory reasons — we don't promise
+                  anonymity. See our{" "}
+                  <Link to="/community-guidelines" className="font-semibold text-[var(--smc-charcoal)] underline underline-offset-2">
+                    Community Guidelines
+                  </Link>
+                  .
                 </p>
 
                 <div className="flex flex-col gap-1">

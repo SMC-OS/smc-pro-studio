@@ -224,7 +224,8 @@ export function EnforcementDialog({
                 <p id={descriptionId} role="status" className="text-sm text-[var(--smc-charcoal-soft)]">
                   {action === "hide_message"
                     ? "The message is now hidden from both people in this conversation. This can be reversed at any time."
-                    : "The message is now visible to both people in this conversation again."}
+                    : "The message is now visible to both people in this conversation again."}{" "}
+                  Anyone with this conversation already open will see this after they refresh or reconnect.
                 </p>
                 <div className="mt-1 flex justify-end">
                   <Button

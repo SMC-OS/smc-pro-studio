@@ -345,6 +345,17 @@ test("a populated queue renders category and target kind for each item", async (
   assert.match(container.textContent, /message/);
 });
 
+// Community Guidelines owner-review pass: the queue header links to the
+// guidelines the moderator is expected to enforce against.
+test("the queue header links to the Community Guidelines", async () => {
+  resetAll();
+  const container = await mountModeration();
+  await flush();
+  const guidelinesLink = [...container.querySelectorAll("a")].find((a) => a.textContent.trim() === "Community Guidelines");
+  assert.ok(guidelinesLink, "a Community Guidelines link must be present in the queue header");
+  assert.equal(guidelinesLink.getAttribute("href"), "/community-guidelines");
+});
+
 // ==========================================================================
 // Filters do not mix or duplicate; pagination.
 // ==========================================================================
@@ -861,6 +872,11 @@ test("Hide waits for a confirmed response before showing success, and the button
     await new Promise((r) => setTimeout(r, 20));
   });
   assert.match(document.getElementById("root").textContent, /Message hidden/);
+  // Community Guidelines owner-review pass: tells the moderator plainly that
+  // an already-open participant thread does not update live — see
+  // EnforcementDialog.tsx's own module comment for the underlying "no live/
+  // polling update" boundary this sentence discloses.
+  assert.match(document.getElementById("root").textContent, /already open will see this after they refresh or reconnect/i);
   assert.equal(findButton(document.getElementById("root"), "Restore message"), undefined, "the parent is only told, and the button only swaps, once Close is clicked");
 
   await React.act(async () => {
@@ -1110,4 +1126,38 @@ test("the Report review link appears only after confirmed active-moderator acces
   const link = findButton(container, "Report review") ?? [...container.querySelectorAll("a")].find((a) => a.textContent.trim() === "Report review");
   assert.ok(link, "expected the Report review link once access is confirmed");
   assert.equal(link.getAttribute("href"), "/moderation/reports");
+});
+
+// Community Guidelines owner-review pass: unlike "Report review" above, this
+// link must render for an ordinary non-moderator and must never be
+// conditioned on the moderator-access check in any of its four states.
+test("Community Guidelines renders for an ordinary authenticated non-moderator, and links to /community-guidelines", async () => {
+  resetAll();
+  checkAccessImpl = async () => false;
+  const container = await mountOwnProfile();
+  await flush();
+  const link = [...container.querySelectorAll("a")].find((a) => a.textContent.trim() === "Community Guidelines");
+  assert.ok(link, "Community Guidelines must render for a confirmed non-moderator");
+  assert.equal(link.getAttribute("href"), "/community-guidelines");
+  // Preserves the existing moderator-only behavior alongside it — a
+  // non-moderator gets Guidelines but never Report review.
+  assert.equal(findButton(container, "Report review"), undefined);
+});
+
+test("Community Guidelines is not conditional on moderator access — it renders identically while access is still loading, denied, unavailable, and granted", async () => {
+  const states = [
+    { name: "loading", impl: () => new Promise(() => {}) },
+    { name: "denied", impl: async () => false },
+    { name: "unavailable", impl: async () => { throw new Error("unavailable"); } },
+    { name: "granted", impl: async () => true },
+  ];
+  for (const { name, impl } of states) {
+    resetAll();
+    checkAccessImpl = impl;
+    const container = await mountOwnProfile();
+    await flush();
+    const link = [...container.querySelectorAll("a")].find((a) => a.textContent.trim() === "Community Guidelines");
+    assert.ok(link, `Community Guidelines must render while moderator access is ${name}`);
+    assert.equal(link.getAttribute("href"), "/community-guidelines");
+  }
 });

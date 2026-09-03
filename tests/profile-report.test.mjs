@@ -390,6 +390,28 @@ test("success copy is neutral — never claims punishment, removal, blocking, or
   const dialogText = document.getElementById("root").querySelector('[role="dialog"]').textContent;
   assert.doesNotMatch(dialogText, /remov|delet|banned|suspend|block(ed)?|action has been taken|resolved/i);
   assert.match(dialogText, /review/i, "must state only that the report was received for review");
+  // Community Guidelines owner-review pass: an honest expectation, not a
+  // promise — see requirement that reporters may not receive an individual
+  // outcome update.
+  assert.match(dialogText, /may not receive an individual update/i);
+});
+
+// Community Guidelines owner-review pass: the confidentiality/no-anonymity
+// statement and the Guidelines link must appear before the reporter ever
+// submits, not only in the success view — informing the decision to report,
+// not just confirming it afterward.
+test("the initial report form states report confidentiality without promising anonymity, and links to the Community Guidelines", async () => {
+  resetAll();
+  const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
+  await flush();
+  await openReportDialog(container);
+  const dialog = document.getElementById("root").querySelector('[role="dialog"]');
+  assert.match(dialog.textContent, /restricted to authorised moderators/i);
+  assert.match(dialog.textContent, /safety, legal, or regulatory reasons/i);
+  assert.match(dialog.textContent, /don't promise anonymity/i);
+  const guidelinesLink = [...dialog.querySelectorAll("a")].find((a) => a.textContent.trim() === "Community Guidelines");
+  assert.ok(guidelinesLink, "a Community Guidelines link must be present");
+  assert.equal(guidelinesLink.getAttribute("href"), "/community-guidelines");
 });
 
 test("a duplicate-pending submission still shows the same neutral confirmed result, never claiming a new report was created", async () => {

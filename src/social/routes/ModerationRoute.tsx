@@ -202,7 +202,13 @@ export default function ModerationRoute() {
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="smc-editorial text-xl font-medium text-[var(--smc-charcoal)]">Report review</h1>
-        <p className="text-sm text-[var(--smc-charcoal-soft)]">Review pending reports. Deciding here records your review only — it never takes automatic action.</p>
+        <p className="text-sm text-[var(--smc-charcoal-soft)]">
+          Review pending reports. Deciding here records your review only — it never takes automatic action. See the{" "}
+          <Link to="/community-guidelines" className="font-semibold text-[var(--smc-charcoal)] underline underline-offset-2">
+            Community Guidelines
+          </Link>{" "}
+          this queue enforces.
+        </p>
       </div>
 
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:items-start lg:gap-6">

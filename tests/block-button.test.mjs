@@ -296,6 +296,23 @@ test("a confirmed not-blocked state shows Block, and cancelling the confirmation
   assert.ok(findButton(container, "Block"), "state must remain Block after a cancelled confirmation");
 });
 
+// Community Guidelines owner-review pass: the block confirmation dialog is
+// deliberately never given a Community Guidelines link — blocking and
+// reporting must stay clearly separated, and only ReportDialog/
+// ModerationRoute/the signup checkbox/ProfileRoute link to the Guidelines.
+test("the block confirmation dialog never links to Community Guidelines — blocking and reporting stay clearly separated", async () => {
+  resetAll();
+  fetchMyBlockStateImpl = async () => false;
+  const container = await mountProfile(`/profile/${OTHER_USER_ID}`);
+  await flush();
+  await React.act(async () => {
+    findButton(container, "Block").click();
+  });
+  const dialog = container.querySelector('[role="dialog"]');
+  assert.doesNotMatch(dialog.textContent, /community guidelines/i);
+  assert.equal([...dialog.querySelectorAll("a")].length, 0, "the block confirmation dialog must contain no links at all");
+});
+
 test("repeated Block confirmation clicks while pending are prevented — exactly one blockUser call", async () => {
   resetAll();
   let resolveBlock;

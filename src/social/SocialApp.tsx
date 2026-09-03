@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import AuthRoute from "./routes/AuthRoute";
+import CommunityGuidelinesRoute from "./routes/CommunityGuidelinesRoute";
 import ConnectionsRoute from "./routes/ConnectionsRoute";
 import CreateRoute from "./routes/CreateRoute";
 import NetworkRoute from "./routes/NetworkRoute";
@@ -63,6 +64,12 @@ export default function SocialApp() {
               primary nav tab. ModerationRoute independently re-verifies
               access itself regardless of how this route was reached. */}
           <Route path="moderation/reports" element={<ModerationRoute />} />
+          {/* Deliberately public: CommunityGuidelinesRoute reads no auth state
+              and renders unconditionally, so a guest reaching it directly (or
+              via the signup checkbox, before they have a session) is never
+              redirected to sign-in — AppShell above only branches its own nav
+              rendering on auth.status, it never redirects the outlet itself. */}
+          <Route path="community-guidelines" element={<CommunityGuidelinesRoute />} />
           <Route path="auth" element={<AuthRoute />} />
           <Route path="auth/reset-password" element={<ResetPasswordRoute />} />
           {import.meta.env.DEV && <Route path="dev/otp-preview" element={<OtpPreviewRoute />} />}
