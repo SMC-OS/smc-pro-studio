@@ -1,11 +1,11 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 
-// Phase 4 Slice J: proves checkModeratorAccess/fetchModerationReports/
-// reviewReport throw SocialUnavailableError (via moderationClient.ts's
-// requireClient) and never reach an RPC call when Supabase itself is
-// unconfigured. Split into its own file/mock.module registration for the
-// identical reason messaging-client-unconfigured.test.mjs /
+// Phase 4 Slice J/K: proves checkModeratorAccess/fetchModerationReports/
+// reviewReport/moderateReportedMessage throw SocialUnavailableError (via
+// moderationClient.ts's requireClient) and never reach an RPC call when
+// Supabase itself is unconfigured. Split into its own file/mock.module
+// registration for the identical reason messaging-client-unconfigured.test.mjs /
 // reporting-client-unconfigured.test.mjs already document: isSupabaseConfigured
 // is captured once when the mock is set up, so a single file can't flip
 // between "configured" and "unconfigured" scenarios.
@@ -22,7 +22,7 @@ mock.module(supabaseClientUrl, {
   },
 });
 
-const { checkModeratorAccess, fetchModerationReports, reviewReport } = await import(
+const { checkModeratorAccess, fetchModerationReports, reviewReport, moderateReportedMessage } = await import(
   new URL("../src/social/services/moderationClient.ts", import.meta.url).href
 );
 
@@ -51,6 +51,16 @@ test("fetchModerationReports: an unconfigured Supabase client throws SocialUnava
 test("reviewReport: an unconfigured Supabase client throws SocialUnavailableError before any RPC call", async () => {
   await assert.rejects(
     () => reviewReport(VALID_REPORT_ID, "resolved"),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      return true;
+    }
+  );
+});
+
+test("moderateReportedMessage: an unconfigured Supabase client throws SocialUnavailableError before any RPC call", async () => {
+  await assert.rejects(
+    () => moderateReportedMessage(VALID_REPORT_ID, "hide_message"),
     (err) => {
       assert.equal(err.name, "SocialUnavailableError");
       return true;

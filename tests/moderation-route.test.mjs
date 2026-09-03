@@ -57,6 +57,15 @@ const fetchQueueCalls = [];
 let reviewImpl = async (reportId, decision) => ({ reportId, status: decision, reviewedAt: "2026-01-01T00:00:00.000Z" });
 const reviewCalls = [];
 
+// Phase 4 Slice K.
+let moderateImpl = async (reportId, action) => ({
+  actionId: "c1000000-0000-0000-0000-000000000001",
+  messageId: "d1000000-0000-0000-0000-000000000001",
+  moderationStatus: action === "hide_message" ? "removed_by_moderator" : "visible",
+  actedAt: "2026-01-01T00:00:00.000Z",
+});
+const moderateCalls = [];
+
 mock.module(authUrl, { exports: { useAuthSession: () => authState } });
 
 mock.module(moderationClientUrl, {
@@ -80,6 +89,10 @@ mock.module(moderationClientUrl, {
     reviewReport: async (...args) => {
       reviewCalls.push(args);
       return reviewImpl(...args);
+    },
+    moderateReportedMessage: async (...args) => {
+      moderateCalls.push(args);
+      return moderateImpl(...args);
     },
   },
 });
@@ -190,6 +203,9 @@ function queueItem(overrides = {}) {
     reportedDisplayName: "Bob",
     messageBody: null,
     messageCreatedAt: null,
+    // Phase 4 Slice K: always present in the real client shape (null for a
+    // profile report).
+    messageModerationStatus: null,
     ...overrides,
   };
 }
@@ -202,6 +218,13 @@ function resetAll() {
   fetchQueueCalls.length = 0;
   reviewImpl = async (reportId, decision) => ({ reportId, status: decision, reviewedAt: "2026-01-01T00:00:00.000Z" });
   reviewCalls.length = 0;
+  moderateImpl = async (reportId, action) => ({
+    actionId: "c1000000-0000-0000-0000-000000000001",
+    messageId: "d1000000-0000-0000-0000-000000000001",
+    moderationStatus: action === "hide_message" ? "removed_by_moderator" : "visible",
+    actedAt: "2026-01-01T00:00:00.000Z",
+  });
+  moderateCalls.length = 0;
 }
 
 // ==========================================================================
@@ -673,6 +696,226 @@ test("no raw PostgREST/RLS/constraint/function text ever reaches the DOM on a re
   for (const rawFragment of ["row-level security", "42501", "review_report", "reports_", "constraint", "PostgREST"]) {
     assert.ok(!text.includes(rawFragment), `must never leak raw fragment ${JSON.stringify(rawFragment)}`);
   }
+});
+
+// ==========================================================================
+// Phase 4 Slice K: message enforcement (Hide/Restore) — offered only for a
+// resolved, message-target report, mutually exclusive on the message's own
+// current moderation status.
+// ==========================================================================
+
+async function mountWithResolvedMessageReport(messageModerationStatus = "visible") {
+  fetchQueueImpl = async (status) => ({
+    items:
+      status === "resolved"
+        ? [
+            queueItem({
+              reportId: REPORT_ID_1,
+              targetKind: "message",
+              category: "harassment",
+              status: "resolved",
+              reviewedByDisplayName: "Mod",
+              reviewedAt: "2026-01-01T00:00:00.000Z",
+              messageBody: "The reported text.",
+              messageModerationStatus,
+            }),
+          ]
+        : [],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await flush();
+  const resolvedTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "Resolved");
+  await React.act(async () => {
+    resolvedTab.click();
+  });
+  await flush();
+  await React.act(async () => {
+    [...document.getElementById("root").querySelectorAll("button")].find((b) => b.textContent.includes("Harassment"))?.click();
+  });
+  await flush(10);
+  return document.getElementById("root");
+}
+
+test("Hide message appears for a resolved, visible message report — Restore does not", async () => {
+  resetAll();
+  const container = await mountWithResolvedMessageReport("visible");
+  assert.ok(findButton(container, "Hide message"));
+  assert.equal(findButton(container, "Restore message"), undefined);
+});
+
+test("Restore message appears for a resolved, already-hidden message report — Hide does not", async () => {
+  resetAll();
+  const container = await mountWithResolvedMessageReport("removed_by_moderator");
+  assert.ok(findButton(container, "Restore message"));
+  assert.equal(findButton(container, "Hide message"), undefined);
+  assert.match(container.textContent, /Hidden from conversation/);
+});
+
+test("neither Hide nor Restore appears for a resolved profile-target report — enforcement is message-only", async () => {
+  resetAll();
+  fetchQueueImpl = async (status) => ({
+    items: status === "resolved" ? [queueItem({ reportId: REPORT_ID_1, targetKind: "profile", status: "resolved", reviewedByDisplayName: "Mod", reviewedAt: "2026-01-01T00:00:00.000Z" })] : [],
+    nextCursor: null,
+  });
+  const container = await mountModeration();
+  await flush();
+  const resolvedTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "Resolved");
+  await React.act(async () => {
+    resolvedTab.click();
+  });
+  await flush();
+  await React.act(async () => {
+    [...document.getElementById("root").querySelectorAll("button")].find((b) => b.textContent.includes("Spam"))?.click();
+  });
+  await flush(10);
+  const root = document.getElementById("root");
+  assert.equal(findButton(root, "Hide message"), undefined);
+  assert.equal(findButton(root, "Restore message"), undefined);
+});
+
+test("neither Hide nor Restore appears for a pending message report — review must happen first", async () => {
+  resetAll();
+  const container = await mountWithPendingReport();
+  assert.equal(findButton(container, "Hide message"), undefined);
+  assert.equal(findButton(container, "Restore message"), undefined);
+});
+
+test("the Hide confirmation states plainly that both people, including the sender, lose visibility, and that it can be reversed", async () => {
+  resetAll();
+  const container = await mountWithResolvedMessageReport("visible");
+  await React.act(async () => {
+    findButton(container, "Hide message").click();
+  });
+  const dialogText = document.getElementById("root").querySelector('[role="dialog"]').textContent;
+  assert.match(dialogText, /both people/i);
+  assert.match(dialogText, /sender/i);
+  assert.match(dialogText, /reversed/i);
+});
+
+test("Hide waits for a confirmed response before showing success, and the button switches to Restore only after Close, without leaving the Resolved tab", async () => {
+  resetAll();
+  let resolveModerate;
+  moderateImpl = () =>
+    new Promise((resolve) => {
+      resolveModerate = () =>
+        resolve({ actionId: "c1000000-0000-0000-0000-000000000001", messageId: "d1000000-0000-0000-0000-000000000001", moderationStatus: "removed_by_moderator", actedAt: "2026-01-01T00:00:00.000Z" });
+    });
+  const container = await mountWithResolvedMessageReport("visible");
+  await React.act(async () => {
+    findButton(container, "Hide message").click();
+  });
+  const submit = document.getElementById("root").querySelector('[role="dialog"] button[type="submit"]');
+  await React.act(async () => {
+    submit.click();
+  });
+  await flush(10);
+  assert.doesNotMatch(document.getElementById("root").textContent, /Message hidden/, "must not claim success before the RPC resolves");
+  assert.equal(moderateCalls.length, 1);
+  assert.deepEqual(moderateCalls[0], [REPORT_ID_1, "hide_message", undefined]);
+
+  await React.act(async () => {
+    resolveModerate();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  assert.match(document.getElementById("root").textContent, /Message hidden/);
+  assert.equal(findButton(document.getElementById("root"), "Restore message"), undefined, "the parent is only told, and the button only swaps, once Close is clicked");
+
+  await React.act(async () => {
+    findButton(document.getElementById("root"), "Close").click();
+  });
+  await flush(10);
+  const rootAfter = document.getElementById("root");
+  assert.ok(findButton(rootAfter, "Restore message"), "after confirmation, the action swaps to Restore in place");
+  assert.equal(findButton(rootAfter, "Hide message"), undefined);
+  assert.match(rootAfter.textContent, /Harassment/, "the item stays in the Resolved tab — enforcement never changes report status");
+});
+
+test("a failed Hide preserves the typed note and the prior (visible) state — the trigger stays Hide, never silently swaps to Restore", async () => {
+  resetAll();
+  moderateImpl = async () => {
+    throw new Error("This action could not be completed. Please try again.");
+  };
+  const container = await mountWithResolvedMessageReport("visible");
+  await React.act(async () => {
+    findButton(container, "Hide message").click();
+  });
+  const dialog = document.getElementById("root").querySelector('[role="dialog"]');
+  const textarea = dialog.querySelector("textarea");
+  await React.act(async () => {
+    typeInto(textarea, "confirmed harassment");
+  });
+  await React.act(async () => {
+    dialog.querySelector('button[type="submit"]').click();
+  });
+  await flush();
+  const rootAfter = document.getElementById("root");
+  assert.match(rootAfter.textContent, /This action could not be completed\. Please try again\./);
+  assert.equal(rootAfter.querySelector('[role="dialog"] textarea').value, "confirmed harassment", "the typed note must survive a failed submission — never cleared on failure");
+  assert.ok(rootAfter.querySelector('[role="dialog"]'), "the dialog stays open for correction, not dismissed on failure");
+
+  await React.act(async () => {
+    const cancel = [...rootAfter.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent.trim() === "Cancel");
+    cancel.click();
+  });
+  await flush(10);
+  const rootFinal = document.getElementById("root");
+  assert.ok(findButton(rootFinal, "Hide message"), "prior state (visible) is untouched by the failure — Hide remains the offered action");
+  assert.equal(findButton(rootFinal, "Restore message"), undefined, "a failed enforcement attempt must never swap the offered action to Restore");
+});
+
+test("no raw PostgREST/RLS/constraint/function text ever reaches the DOM on an enforcement failure", async () => {
+  resetAll();
+  const { ModerationOperationError } = await import(moderationClientUrl);
+  moderateImpl = async () => {
+    throw new ModerationOperationError("moderate_message", "This action could not be completed. Please try again.", {
+      cause: { message: "moderate_reported_message: message is not currently visible", code: "P0001" },
+    });
+  };
+  const container = await mountWithResolvedMessageReport("visible");
+  await React.act(async () => {
+    findButton(container, "Hide message").click();
+  });
+  await React.act(async () => {
+    document.getElementById("root").querySelector('[role="dialog"] button[type="submit"]').click();
+  });
+  await flush();
+  const text = document.getElementById("root").textContent;
+  assert.match(text, /This action could not be completed\. Please try again\./);
+  for (const rawFragment of ["moderate_reported_message", "not currently visible", "P0001", "constraint"]) {
+    assert.ok(!text.includes(rawFragment), `must never leak raw fragment ${JSON.stringify(rawFragment)}`);
+  }
+});
+
+test("the enforcement dialog focuses Cancel initially, Tab wraps within the dialog, and Escape closes without acting, restoring focus to its own trigger", async () => {
+  resetAll();
+  const container = await mountWithResolvedMessageReport("visible");
+  const trigger = findButton(container, "Hide message");
+  await React.act(async () => {
+    trigger.focus();
+    trigger.click();
+  });
+  const dialog = document.getElementById("root").querySelector('[role="dialog"]');
+  const cancelButton = [...dialog.querySelectorAll("button")].find((b) => b.textContent.trim() === "Cancel");
+  assert.ok(document.activeElement === cancelButton, "initial focus must land on Cancel");
+
+  const focusable = [...dialog.querySelectorAll("button:not([disabled]), textarea:not([disabled])")];
+  const last = focusable[focusable.length - 1];
+  await React.act(async () => {
+    last.focus();
+  });
+  await React.act(async () => {
+    last.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+  });
+  assert.ok(document.activeElement === focusable[0], "Tab from the last focusable control must wrap to the first — a genuine focus trap, not merely initial-focus placement");
+
+  await React.act(async () => {
+    document.activeElement.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  await flush(10);
+  assert.equal(document.getElementById("root").querySelector('[role="dialog"]'), null);
+  assert.ok(document.activeElement === trigger, "focus must return to the Hide trigger after Escape");
+  assert.equal(moderateCalls.length, 0, "Escape must never submit an enforcement action");
 });
 
 // ==========================================================================

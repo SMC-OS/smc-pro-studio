@@ -4,9 +4,11 @@ import { ArrowLeft, Flag } from "lucide-react";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Button, Card, Chip } from "../components/ui";
 import { ReviewDialog } from "../components/ReviewDialog";
+import { EnforcementDialog } from "../components/EnforcementDialog";
 import {
   checkModeratorAccess,
   fetchModerationReports,
+  type EnforcementResult,
   type ModerationCursor,
   type ModerationQueueItem,
   type ModerationStatusFilter,
@@ -24,8 +26,12 @@ import { useAuthSession } from "../services/useAuthSession";
  * establishes (see PublicProfileRoute's own blockState, or ThreadView's
  * own loading/error/empty states).
  *
- * No enforcement UI of any kind exists here — Resolve/Dismiss only ever
- * record a review decision (see ReviewDialog's own copy).
+ * Resolve/Dismiss only ever record a review decision (see ReviewDialog's
+ * own copy). Phase 4 Slice K adds exactly one further, narrowly-scoped
+ * action on top of that: for a *resolved*, message-target report, a
+ * moderator may additionally hide or restore the exact reported message
+ * (see EnforcementDialog) — never any other content, never a profile/post/
+ * comment action, and never automatically.
  */
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -143,6 +149,26 @@ export default function ModerationRoute() {
     setSelectedReportId((current) => (current === reportId ? null : current));
   }
 
+  // Only ever called after a real, server-confirmed EnforcementResult (see
+  // EnforcementDialog's own onActed contract) — never optimistic. Unlike a
+  // review decision, enforcement never changes report.status, so the item
+  // stays exactly where it is in whichever filter/tab is currently shown —
+  // only its own messageModerationStatus is patched in place, which is all
+  // ReportDetail needs to swap between offering Hide and offering Restore.
+  function handleEnforced(reportId: string, result: EnforcementResult) {
+    setQueueState((prev) =>
+      prev.status === "ready"
+        ? {
+            status: "ready",
+            items: prev.items.map((item) =>
+              item.reportId === reportId ? { ...item, messageModerationStatus: result.moderationStatus } : item
+            ),
+            nextCursor: prev.nextCursor,
+          }
+        : prev
+    );
+  }
+
   if (auth.status === "loading") return <LoadingState label="Checking your account" />;
   if (auth.status === "guest") {
     return (
@@ -244,7 +270,7 @@ export default function ModerationRoute() {
 
         <div className={selectedItem ? "block" : "hidden lg:block"}>
           {selectedItem ? (
-            <ReportDetail item={selectedItem} onBack={() => setSelectedReportId(null)} onReviewed={handleReviewed} />
+            <ReportDetail item={selectedItem} onBack={() => setSelectedReportId(null)} onReviewed={handleReviewed} onEnforced={handleEnforced} />
           ) : (
             <EmptyState title="Select a report" description="Choose a report from the queue to see its details." />
           )}
@@ -258,10 +284,12 @@ function ReportDetail({
   item,
   onBack,
   onReviewed,
+  onEnforced,
 }: {
   item: ModerationQueueItem;
   onBack: () => void;
   onReviewed: (reportId: string, result: ReviewResult) => void;
+  onEnforced: (reportId: string, result: EnforcementResult) => void;
 }) {
   return (
     <Card className="p-6">
@@ -307,7 +335,19 @@ function ReportDetail({
         )}
         {item.targetKind === "message" && (
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--smc-charcoal-faint)]">Reported message</dt>
+            <dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[var(--smc-charcoal-faint)]">
+              Reported message
+              {/* Shown to the moderator alongside the evidence itself — the
+                  message body above is always the real content regardless
+                  of this status (moderator evidence access is never
+                  affected by hiding), this badge only reflects what
+                  ordinary conversation members currently see. */}
+              {item.messageModerationStatus === "removed_by_moderator" && (
+                <span className="rounded-[var(--smc-radius-pill)] bg-[var(--smc-mineral-clay)]/15 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-[var(--smc-mineral-clay)]">
+                  Hidden from conversation
+                </span>
+              )}
+            </dt>
             {item.messageBody !== null ? (
               <>
                 <dd className="whitespace-pre-wrap break-words rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] px-3 py-2 text-[var(--smc-charcoal)]">
@@ -334,6 +374,35 @@ function ReportDetail({
           </p>
           {item.reviewedAt && <p className="text-xs text-[var(--smc-charcoal-faint)]">{formatTimestamp(item.reviewedAt)}</p>}
           {item.reviewNote && <p className="mt-2 whitespace-pre-wrap break-words text-[var(--smc-charcoal-soft)]">{item.reviewNote}</p>}
+        </div>
+      )}
+
+      {/* Phase 4 Slice K: exactly one further action, only ever offered for
+          a resolved message-target report — never a profile report (not
+          currently enforceable at all — see moderate_reported_message's own
+          target-kind gate), never a pending/dismissed one (review must
+          happen first). Hide/Restore are mutually exclusive: only the
+          action matching the message's own current moderation_status is
+          ever offered, so this can never present a button that would only
+          fail the RPC's own compare-and-swap. */}
+      {item.status === "resolved" && item.targetKind === "message" && item.messageModerationStatus === "visible" && (
+        <div className="mt-3 flex gap-2">
+          <EnforcementDialog
+            reportId={item.reportId}
+            action="hide_message"
+            triggerLabel="Hide message"
+            onActed={(result) => onEnforced(item.reportId, result)}
+          />
+        </div>
+      )}
+      {item.status === "resolved" && item.targetKind === "message" && item.messageModerationStatus === "removed_by_moderator" && (
+        <div className="mt-3 flex gap-2">
+          <EnforcementDialog
+            reportId={item.reportId}
+            action="restore_message"
+            triggerLabel="Restore message"
+            onActed={(result) => onEnforced(item.reportId, result)}
+          />
         </div>
       )}
     </Card>
