@@ -24,6 +24,7 @@ const {
   fetchModerationReports,
   reviewReport,
   moderateReportedMessage,
+  listModerationActions,
   ModerationOperationError,
   REVIEW_NOTE_MAX_LENGTH,
 } = await import(new URL("../src/social/services/moderationClient.ts", import.meta.url).href);
@@ -47,6 +48,7 @@ const SAFE_ACCESS_ERROR = "We couldn't verify your access. Please try again.";
 const SAFE_QUEUE_ERROR = "The moderation queue could not be loaded. Please try again.";
 const SAFE_REVIEW_ERROR = "This report could not be reviewed. Please try again.";
 const SAFE_ENFORCEMENT_ERROR = "This action could not be completed. Please try again.";
+const SAFE_ACTION_HISTORY_ERROR = "The moderation history could not be loaded. Please try again.";
 
 function authUser(userId) {
   return { getUser: async () => ({ data: { user: userId ? { id: userId } : null }, error: null }) };
@@ -105,6 +107,22 @@ function enforcementRow(overrides = {}) {
     message_id: "d1000000-0000-0000-0000-000000000001",
     moderation_status: "removed_by_moderator",
     acted_at: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function actionHistoryRow(overrides = {}) {
+  return {
+    action_id: "c1000000-0000-0000-0000-000000000001",
+    report_id: REPORT_ID_1,
+    message_id: "d1000000-0000-0000-0000-000000000001",
+    action: "hide_message",
+    moderator_display_name: "Dave",
+    report_category: "harassment",
+    report_target_kind: "message",
+    note: null,
+    created_at: "2026-01-01T00:00:00.000Z",
+    has_more: false,
     ...overrides,
   };
 }
@@ -780,6 +798,192 @@ test("moderateReportedMessage: never sends a moderator/target field of any kind"
   currentClient = client;
   await moderateReportedMessage(REPORT_ID_1, "hide_message");
   for (const forbidden of ["moderator_id", "p_moderator_id", "reporter_id", "p_reporter_id", "message_id", "p_message_id"]) {
+    assert.ok(!(forbidden in rpcCalls[0].params), `must never send ${forbidden}`);
+  }
+});
+
+// ==========================================================================
+// listModerationActions (Phase 4 Slice L)
+// ==========================================================================
+
+test("listModerationActions: fails before any RPC call when not authenticated", async () => {
+  const { client, rpcCalls } = rpcClient({ userId: null });
+  currentClient = client;
+  await assert.rejects(() => listModerationActions());
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("listModerationActions: a genuine auth.getUser() failure throws SocialUnavailableError before any RPC call, preserving cause", async () => {
+  const rpcCalls = [];
+  currentClient = {
+    auth: authUserError(AUTH_VERIFICATION_ERROR),
+    rpc: async (name, params) => {
+      rpcCalls.push({ name, params });
+      return { data: null, error: null };
+    },
+  };
+  await assert.rejects(
+    () => listModerationActions(),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      assert.equal(err.cause, AUTH_VERIFICATION_ERROR);
+      return true;
+    }
+  );
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("listModerationActions: calls list_moderation_actions with exactly the merged parameter names and no others", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [] });
+  currentClient = client;
+  await listModerationActions();
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].name, "list_moderation_actions");
+  assert.deepEqual(rpcCalls[0].params, { p_limit: 25, p_cursor_created_at: null, p_cursor_id: null, p_report_id: null });
+  assert.deepEqual(
+    Object.keys(rpcCalls[0].params).sort(),
+    ["p_cursor_created_at", "p_cursor_id", "p_limit", "p_report_id"],
+    "no moderator-identity parameter of any kind is ever sent"
+  );
+});
+
+test("listModerationActions: an omitted limit defaults to 25, matching the RPC's own default", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [] });
+  currentClient = client;
+  await listModerationActions(null, undefined);
+  assert.equal(rpcCalls[0].params.p_limit, 25);
+});
+
+test("listModerationActions: a limit is clamped client-side to [1, 50] before the call", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [] });
+  currentClient = client;
+  await listModerationActions(null, 0);
+  assert.equal(rpcCalls[0].params.p_limit, 1);
+  await listModerationActions(null, 999);
+  assert.equal(rpcCalls[1].params.p_limit, 50);
+});
+
+test("listModerationActions: an optional reportId is validated and sent as p_report_id", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [] });
+  currentClient = client;
+  await listModerationActions(null, undefined, REPORT_ID_1);
+  assert.equal(rpcCalls[0].params.p_report_id, REPORT_ID_1);
+});
+
+test("listModerationActions: rejects a malformed reportId before any RPC call", async () => {
+  const { client, rpcCalls } = rpcClient({});
+  currentClient = client;
+  await assert.rejects(() => listModerationActions(null, undefined, "not-a-uuid"));
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("listModerationActions: a cursor missing its id is rejected before any RPC call", async () => {
+  const { client, rpcCalls } = rpcClient({});
+  currentClient = client;
+  await assert.rejects(() => listModerationActions({ createdAt: "2026-01-01T00:00:00.000Z", id: "" }));
+  assert.equal(rpcCalls.length, 0);
+});
+
+test("listModerationActions: a genuinely empty result is a real successful empty page, never an error", async () => {
+  const { client } = rpcClient({ data: [] });
+  currentClient = client;
+  const page = await listModerationActions();
+  assert.deepEqual(page, { items: [], nextCursor: null });
+});
+
+test("listModerationActions: a valid row is parsed exactly into camelCase fields", async () => {
+  const { client } = rpcClient({ data: [actionHistoryRow()] });
+  currentClient = client;
+  const page = await listModerationActions();
+  assert.deepEqual(page.items[0], {
+    actionId: "c1000000-0000-0000-0000-000000000001",
+    reportId: REPORT_ID_1,
+    messageId: "d1000000-0000-0000-0000-000000000001",
+    action: "hide_message",
+    moderatorDisplayName: "Dave",
+    reportCategory: "harassment",
+    reportTargetKind: "message",
+    note: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+  });
+});
+
+test("listModerationActions: a present note round-trips exactly", async () => {
+  const { client } = rpcClient({ data: [actionHistoryRow({ note: "Reconsidered." })] });
+  currentClient = client;
+  const page = await listModerationActions();
+  assert.equal(page.items[0].note, "Reconsidered.");
+});
+
+test("listModerationActions: hasMore/nextCursor are derived from the RPC's own has_more flag on the last row, never fabricated client-side", async () => {
+  const { client } = rpcClient({
+    data: [actionHistoryRow({ has_more: false }), actionHistoryRow({ action_id: "c1000000-0000-0000-0000-000000000002", created_at: "2026-01-02T00:00:00.000Z", has_more: true })],
+  });
+  currentClient = client;
+  const page = await listModerationActions();
+  assert.deepEqual(page.nextCursor, { createdAt: "2026-01-02T00:00:00.000Z", id: "c1000000-0000-0000-0000-000000000002" });
+});
+
+test("listModerationActions: no has_more on the last row means no next page", async () => {
+  const { client } = rpcClient({ data: [actionHistoryRow({ has_more: false })] });
+  currentClient = client;
+  const page = await listModerationActions();
+  assert.equal(page.nextCursor, null);
+});
+
+for (const [field, badValue] of [
+  ["action_id", "not-a-uuid"],
+  ["report_id", "not-a-uuid"],
+  ["message_id", "not-a-uuid"],
+  ["action", "some_other_action"],
+  ["moderator_display_name", 123],
+  ["report_category", 123],
+  ["report_target_kind", "profile_post"],
+  ["created_at", null],
+]) {
+  test(`listModerationActions: a malformed ${field} is rejected rather than trusted`, async () => {
+    const { client } = rpcClient({ data: [actionHistoryRow({ [field]: badValue })] });
+    currentClient = client;
+    await assert.rejects(
+      () => listModerationActions(),
+      (err) => assertSafeModerationError(err, { operation: "fetch_action_history", message: SAFE_ACTION_HISTORY_ERROR, rawFragments: [] })
+    );
+  });
+}
+
+test("listModerationActions: note may be null but not any other non-string type", async () => {
+  const { client } = rpcClient({ data: [actionHistoryRow({ note: 123 })] });
+  currentClient = client;
+  await assert.rejects(() => listModerationActions());
+});
+
+test("listModerationActions: an RPC failure normalizes to the safe message, never raw PostgREST/RLS/function text, preserving cause", async () => {
+  const rawError = { message: "list_moderation_actions: active moderator access required", code: "P0001" };
+  const { client } = rpcClient({ error: rawError });
+  currentClient = client;
+  await assert.rejects(
+    () => listModerationActions(),
+    (err) =>
+      assertSafeModerationError(err, {
+        operation: "fetch_action_history",
+        message: SAFE_ACTION_HISTORY_ERROR,
+        cause: rawError,
+        rawFragments: ["list_moderation_actions", "active moderator", "P0001"],
+      })
+  );
+});
+
+test("listModerationActions: a non-array response is rejected rather than trusted", async () => {
+  const { client } = rpcClient({ data: { not: "an array" } });
+  currentClient = client;
+  await assert.rejects(() => listModerationActions());
+});
+
+test("listModerationActions: never sends a moderator-identity field of any kind", async () => {
+  const { client, rpcCalls } = rpcClient({ data: [] });
+  currentClient = client;
+  await listModerationActions();
+  for (const forbidden of ["moderator_id", "p_moderator_id", "reporter_id", "p_reporter_id"]) {
     assert.ok(!(forbidden in rpcCalls[0].params), `must never send ${forbidden}`);
   }
 });

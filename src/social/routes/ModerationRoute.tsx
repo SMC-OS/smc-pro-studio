@@ -8,7 +8,10 @@ import { EnforcementDialog } from "../components/EnforcementDialog";
 import {
   checkModeratorAccess,
   fetchModerationReports,
+  listModerationActions,
   type EnforcementResult,
+  type ModerationActionCursor,
+  type ModerationActionItem,
   type ModerationCursor,
   type ModerationQueueItem,
   type ModerationStatusFilter,
@@ -51,12 +54,29 @@ const STATUS_FILTERS: { value: ModerationStatusFilter; label: string }[] = [
   { value: "dismissed", label: "Dismissed" },
 ];
 
+const ACTION_LABELS: Record<string, string> = {
+  hide_message: "Hid",
+  restore_message: "Restored",
+};
+
 type AccessState = { status: "loading" } | { status: "error"; message: string } | { status: "denied" } | { status: "granted" };
 
 type QueueState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; items: ModerationQueueItem[]; nextCursor: ModerationCursor | null };
+
+// Phase 4 Slice L: a fourth tab alongside the three ModerationStatusFilter
+// ones — deliberately not folded into ModerationStatusFilter itself, since
+// "history" is not a report-status filter at all, it is a different data
+// source entirely (the moderation_actions ledger, via list_moderation_
+// actions(), never list_moderation_reports()).
+type ActiveView = ModerationStatusFilter | "history";
+
+type HistoryState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; items: ModerationActionItem[]; nextCursor: ModerationActionCursor | null };
 
 function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -94,11 +114,55 @@ export default function ModerationRoute() {
   }, [loadAccess]);
 
   const [statusFilter, setStatusFilter] = useState<ModerationStatusFilter>("pending");
+  const [activeView, setActiveView] = useState<ActiveView>("pending");
   const [queueState, setQueueState] = useState<QueueState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [pageActionError, setPageActionError] = useState<string | null>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const queueGenerationRef = useRef(0);
+
+  const [historyState, setHistoryState] = useState<HistoryState>({ status: "loading" });
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  const [historyActionError, setHistoryActionError] = useState<string | null>(null);
+  const historyGenerationRef = useRef(0);
+
+  const loadHistory = useCallback(() => {
+    if (accessState.status !== "granted" || activeView !== "history") return;
+    const generation = ++historyGenerationRef.current;
+    setHistoryState({ status: "loading" });
+    setHistoryActionError(null);
+    listModerationActions(null)
+      .then((page) => {
+        if (historyGenerationRef.current !== generation) return;
+        setHistoryState({ status: "ready", items: page.items, nextCursor: page.nextCursor });
+      })
+      .catch((error: unknown) => {
+        if (historyGenerationRef.current !== generation) return;
+        setHistoryState({ status: "error", message: error instanceof Error ? error.message : "The moderation history could not be loaded. Please try again." });
+      });
+  }, [accessState.status, activeView, authIdentity]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
+
+  async function handleLoadMoreHistory() {
+    if (historyState.status !== "ready" || !historyState.nextCursor || loadingMoreHistory) return;
+    const cursor = historyState.nextCursor;
+    const generation = historyGenerationRef.current;
+    setLoadingMoreHistory(true);
+    setHistoryActionError(null);
+    try {
+      const page = await listModerationActions(cursor);
+      if (historyGenerationRef.current !== generation) return;
+      setHistoryState((prev) => (prev.status === "ready" ? { status: "ready", items: [...prev.items, ...page.items], nextCursor: page.nextCursor } : prev));
+    } catch (error) {
+      if (historyGenerationRef.current !== generation) return;
+      setHistoryActionError(error instanceof Error ? error.message : "More history could not be loaded. Please try again.");
+    } finally {
+      if (historyGenerationRef.current === generation) setLoadingMoreHistory(false);
+    }
+  }
 
   const loadQueue = useCallback(() => {
     if (accessState.status !== "granted") return;
@@ -211,22 +275,80 @@ export default function ModerationRoute() {
         </p>
       </div>
 
+      <div role="tablist" aria-label="Moderation view" className="flex gap-2 overflow-x-auto pb-1">
+        {STATUS_FILTERS.map((filter) => (
+          <Chip
+            key={filter.value}
+            role="tab"
+            aria-selected={activeView === filter.value}
+            active={activeView === filter.value}
+            onClick={() => {
+              setStatusFilter(filter.value);
+              setActiveView(filter.value);
+            }}
+          >
+            {filter.label}
+          </Chip>
+        ))}
+        {/* Phase 4 Slice L: a fourth tab, deliberately not a ModerationStatusFilter
+            value — switching here never touches statusFilter/selectedReportId,
+            and switching back to a status tab never re-fetches history that's
+            already loaded (loadHistory only re-runs when activeView === "history"). */}
+        <Chip role="tab" aria-selected={activeView === "history"} active={activeView === "history"} onClick={() => setActiveView("history")}>
+          History
+        </Chip>
+      </div>
+
+      {activeView === "history" ? (
+        <div>
+          {historyState.status === "loading" && <LoadingState label="Loading moderation history" />}
+          {historyState.status === "error" && <ErrorState message={historyState.message} onRetry={loadHistory} />}
+          {historyState.status === "ready" && historyState.items.length === 0 && (
+            <EmptyState title="No moderation actions yet" description="Hide and Restore actions will appear here once a moderator takes one." />
+          )}
+          {historyState.status === "ready" && historyState.items.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {historyState.items.map((item) => (
+                <li
+                  key={item.actionId}
+                  className="flex flex-col gap-1 rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] px-4 py-3"
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-[var(--smc-charcoal)]">
+                    <Flag className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {ACTION_LABELS[item.action] ?? item.action} a {item.reportTargetKind} message —{" "}
+                    {CATEGORY_LABELS[item.reportCategory] ?? item.reportCategory} report
+                  </span>
+                  <span className="text-xs text-[var(--smc-charcoal-faint)]">
+                    {item.moderatorDisplayName} · {formatTimestamp(item.createdAt)}
+                  </span>
+                  {item.note && <p className="whitespace-pre-wrap break-words text-sm text-[var(--smc-charcoal-soft)]">{item.note}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {historyActionError && (
+            <p role="alert" className="mt-2 text-xs font-medium text-[var(--smc-mineral-clay)]">
+              {historyActionError}
+            </p>
+          )}
+
+          {historyState.status === "ready" && historyState.nextCursor && (
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                onClick={() => void handleLoadMoreHistory()}
+                disabled={loadingMoreHistory}
+                className="min-h-[44px] rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-3 text-xs font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loadingMoreHistory ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:items-start lg:gap-6">
         <div className={selectedItem ? "hidden lg:block" : "block"}>
-          <div role="tablist" aria-label="Report status" className="mb-3 flex gap-2 overflow-x-auto pb-1">
-            {STATUS_FILTERS.map((filter) => (
-              <Chip
-                key={filter.value}
-                role="tab"
-                aria-selected={statusFilter === filter.value}
-                active={statusFilter === filter.value}
-                onClick={() => setStatusFilter(filter.value)}
-              >
-                {filter.label}
-              </Chip>
-            ))}
-          </div>
-
           {queueState.status === "loading" && <LoadingState label="Loading queue" />}
           {queueState.status === "error" && <ErrorState message={queueState.message} onRetry={loadQueue} />}
           {queueState.status === "ready" && queueState.items.length === 0 && (
@@ -282,6 +404,7 @@ export default function ModerationRoute() {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

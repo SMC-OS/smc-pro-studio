@@ -3,21 +3,26 @@ import { SocialUnavailableError } from "./socialClient";
 import type { ReportCategory, ReportTargetKind } from "./reportingClient";
 
 /**
- * Phase 4 Slice J/K: service boundary for moderator report review and
- * message enforcement. Wraps 20260830193342_moderation_review.sql's three
- * review RPCs (check_moderator_access, list_moderation_reports,
- * review_report) and 20260831151303_moderation_enforcement.sql's one
- * enforcement RPC (moderate_reported_message) exactly as merged — no
- * schema/RLS/grant/RPC change of any kind happens here, and this file never
- * queries or writes public.reports/public.messages/public.moderation_actions
- * directly (each grants no client write of any kind; every read this file
- * needs already flows through list_moderation_reports() itself). A
+ * Phase 4 Slice J/K/L: service boundary for moderator report review,
+ * message enforcement, and the moderation-actions audit history. Wraps
+ * 20260830193342_moderation_review.sql's three review RPCs
+ * (check_moderator_access, list_moderation_reports, review_report),
+ * 20260831151303_moderation_enforcement.sql's one enforcement RPC
+ * (moderate_reported_message), and 20260909211227_moderation_history_view.
+ * sql's one read-only history RPC (list_moderation_actions) exactly as
+ * merged — no schema/RLS/grant/RPC change of any kind happens here, and
+ * this file never queries or writes public.reports/public.messages/
+ * public.moderation_actions directly (each grants no client write of any
+ * kind, and as of Slice L moderation_actions grants no client read of any
+ * kind either — every read this file needs already flows through
+ * list_moderation_reports()/list_moderation_actions() themselves). A
  * dedicated file, not folded into reportingClient.ts: report *submission*
- * (reportingClient.ts) and report *review/enforcement* (this file) are
- * distinct authorization domains — every authenticated user can submit,
- * only an active moderator can review or enforce — the same reasoning that
- * already gave reporting its own file distinct from messagingClient.ts
- * despite referencing the same underlying messages table.
+ * (reportingClient.ts) and report *review/enforcement/history* (this file)
+ * are distinct authorization domains — every authenticated user can submit,
+ * only an active moderator can review, enforce, or read the audit history —
+ * the same reasoning that already gave reporting its own file distinct from
+ * messagingClient.ts despite referencing the same underlying messages
+ * table.
  */
 
 // Mirrors public.report_status exactly (20260830105617_reporting_foundation.sql).
@@ -123,6 +128,39 @@ export interface ModerationQueuePage {
   nextCursor: ModerationCursor | null;
 }
 
+/** Mirrors ModerationCursor's own (createdAt, id) keyset shape — here `id` is the ledger row's own action_id, not a report_id. */
+export interface ModerationActionCursor {
+  createdAt: string;
+  id: string;
+}
+
+/**
+ * One row of public.list_moderation_actions()'s result, camelCased —
+ * mirrors ModerationQueueItem's own convention. Deliberately narrow: never
+ * moderatorId (only moderatorDisplayName — accountable audit attribution,
+ * the same coalesce-to-"Profile unavailable" pattern reviewedByDisplayName
+ * already establishes), never reporter/reported-user identity of any kind,
+ * never report details, never message body — this is an audit trail of
+ * moderator actions, not a second evidence-access surface (that remains
+ * list_moderation_reports()'s own, unchanged, responsibility).
+ */
+export interface ModerationActionItem {
+  actionId: string;
+  reportId: string;
+  messageId: string;
+  action: ModerationAction;
+  moderatorDisplayName: string;
+  reportCategory: ReportCategory;
+  reportTargetKind: ReportTargetKind;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface ModerationActionPage {
+  items: ModerationActionItem[];
+  nextCursor: ModerationActionCursor | null;
+}
+
 /** Exactly what public.review_report() returns — the minimal server-confirmed result the UI needs, never the note text or reviewer identity (the caller already knows both). */
 export interface ReviewResult {
   reportId: string;
@@ -147,7 +185,7 @@ export interface EnforcementResult {
  * always one of the safe constants authored by this file, never derived
  * from `error.message`.
  */
-export type ModerationOperation = "check_access" | "fetch_queue" | "review_report" | "moderate_message";
+export type ModerationOperation = "check_access" | "fetch_queue" | "review_report" | "moderate_message" | "fetch_action_history";
 
 export class ModerationOperationError extends Error {
   readonly operation: ModerationOperation;
@@ -552,4 +590,129 @@ export async function moderateReportedMessage(reportId: string, action: Moderati
     throw new ModerationOperationError("moderate_message", SAFE_ENFORCEMENT_ERROR);
   }
   return parseEnforcementResult(data[0]);
+}
+
+// ==========================================================================
+// listModerationActions
+// ==========================================================================
+
+const SAFE_ACTION_HISTORY_ERROR = "The moderation history could not be loaded. Please try again.";
+
+function isReportTargetKind(value: unknown): value is ReportTargetKind {
+  return value === "profile" || value === "message";
+}
+
+function parseActionHistoryItem(raw: unknown): ModerationActionItem {
+  if (!raw || typeof raw !== "object") {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+  const record = raw as Record<string, unknown>;
+  let actionId: string;
+  let reportId: string;
+  let messageId: string;
+  try {
+    actionId = requireUuid(record.action_id, "action_id");
+    reportId = requireUuid(record.report_id, "report_id");
+    messageId = requireUuid(record.message_id, "message_id");
+  } catch (parseError) {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR, { cause: parseError });
+  }
+  if (!isModerationAction(record.action)) {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+  if (typeof record.moderator_display_name !== "string" || !record.moderator_display_name) {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+  if (typeof record.report_category !== "string") {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+  if (!isReportTargetKind(record.report_target_kind)) {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+  if (record.note !== null && typeof record.note !== "string") {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+  if (typeof record.created_at !== "string" || !record.created_at) {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+  return {
+    actionId,
+    reportId,
+    messageId,
+    action: record.action,
+    moderatorDisplayName: record.moderator_display_name,
+    reportCategory: record.report_category as ReportCategory,
+    reportTargetKind: record.report_target_kind,
+    note: record.note as string | null,
+    createdAt: record.created_at,
+  };
+}
+
+/**
+ * Calls public.list_moderation_actions(p_limit, p_cursor_created_at,
+ * p_cursor_id, p_report_id) — the exact merged parameter names, and no
+ * others; there is no caller-suppliable moderator identity parameter of any
+ * kind (the RPC binds to auth.uid() internally via private.is_active_
+ * moderator() and re-verifies on every call, never trusting a prior
+ * checkModeratorAccess() result). `limit` is clamped client-side to [1, 50]
+ * before the call (the RPC independently re-clamps regardless — defense in
+ * depth, the identical discipline fetchModerationReports already
+ * establishes); `cursor` — when supplied — must carry both `createdAt` and
+ * `id` together, matching the RPC's own "both or neither" validation.
+ * `reportId` — when supplied — scopes the result to one report's own action
+ * history; omitted, it is the global feed across every report a moderator
+ * has ever acted on.
+ *
+ * As of Slice L, public.moderation_actions grants no client SELECT of any
+ * kind — this function is the only client-reachable way to read it, and
+ * this file never falls back to a raw `.from("moderation_actions")` query
+ * of any kind, matching the identical discipline this file already
+ * establishes for `reports`/`messages`.
+ *
+ * A genuinely empty page is a real, successful result (a moderator who has
+ * never acted, or a report with no history yet, sees a real empty list) —
+ * but an RPC failure (denied access, a revoked role, a network/database
+ * problem, or a malformed response) always throws and is never
+ * reinterpreted as an empty history; only a query that actually ran and
+ * returned zero rows produces `[]`. `hasMore`/`nextCursor` are read from
+ * the RPC's own server-computed `has_more` flag on the last returned row —
+ * never inferred from an overfetch trick client-side, the same reasoning
+ * fetchModerationReports already documents.
+ */
+export async function listModerationActions(
+  cursor: ModerationActionCursor | null = null,
+  limit?: number,
+  reportId?: string
+): Promise<ModerationActionPage> {
+  const { client } = await requireAuthenticatedClient("Sign in to access moderation.");
+  if (cursor) {
+    requireUuid(cursor.id, "The cursor action ID");
+    if (typeof cursor.createdAt !== "string" || !cursor.createdAt) {
+      throw new Error("The cursor creation time must be valid.");
+    }
+  }
+  if (reportId !== undefined) {
+    requireUuid(reportId, "The report ID");
+  }
+  const boundedLimit = clampLimit(limit, QUEUE_DEFAULT_LIMIT, QUEUE_MAX_LIMIT, QUEUE_MIN_LIMIT);
+
+  const { data, error } = await client.rpc("list_moderation_actions", {
+    p_limit: boundedLimit,
+    p_cursor_created_at: cursor?.createdAt ?? null,
+    p_cursor_id: cursor?.id ?? null,
+    p_report_id: reportId ?? null,
+  });
+  if (error) {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR, { cause: error });
+  }
+  if (!Array.isArray(data)) {
+    throw new ModerationOperationError("fetch_action_history", SAFE_ACTION_HISTORY_ERROR);
+  }
+
+  const items = data.map((row) => parseActionHistoryItem(row));
+  const last = items[items.length - 1];
+  const lastRaw = data[data.length - 1] as Record<string, unknown> | undefined;
+  const hasMore = lastRaw !== undefined && lastRaw.has_more === true;
+  const nextCursor = hasMore && last ? { createdAt: last.createdAt, id: last.actionId } : null;
+  return { items, nextCursor };
 }

@@ -66,6 +66,10 @@ let moderateImpl = async (reportId, action) => ({
 });
 const moderateCalls = [];
 
+// Phase 4 Slice L.
+let listActionsImpl = async () => ({ items: [], nextCursor: null });
+const listActionsCalls = [];
+
 mock.module(authUrl, { exports: { useAuthSession: () => authState } });
 
 mock.module(moderationClientUrl, {
@@ -93,6 +97,10 @@ mock.module(moderationClientUrl, {
     moderateReportedMessage: async (...args) => {
       moderateCalls.push(args);
       return moderateImpl(...args);
+    },
+    listModerationActions: async (...args) => {
+      listActionsCalls.push(args);
+      return listActionsImpl(...args);
     },
   },
 });
@@ -210,6 +218,22 @@ function queueItem(overrides = {}) {
   };
 }
 
+// Phase 4 Slice L.
+function actionHistoryItem(overrides = {}) {
+  return {
+    actionId: "c1000000-0000-0000-0000-000000000001",
+    reportId: REPORT_ID_1,
+    messageId: "d1000000-0000-0000-0000-000000000001",
+    action: "hide_message",
+    moderatorDisplayName: "Dave",
+    reportCategory: "harassment",
+    reportTargetKind: "message",
+    note: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function resetAll() {
   authState = { status: "authenticated", session: { subject: AUTH_USER_ID } };
   checkAccessImpl = async () => true;
@@ -225,6 +249,8 @@ function resetAll() {
     actedAt: "2026-01-01T00:00:00.000Z",
   });
   moderateCalls.length = 0;
+  listActionsImpl = async () => ({ items: [], nextCursor: null });
+  listActionsCalls.length = 0;
 }
 
 // ==========================================================================
@@ -1160,4 +1186,187 @@ test("Community Guidelines is not conditional on moderator access — it renders
     assert.ok(link, `Community Guidelines must render while moderator access is ${name}`);
     assert.equal(link.getAttribute("href"), "/community-guidelines");
   }
+});
+
+// ==========================================================================
+// Phase 4 Slice L: the "History" tab — read-only moderation-actions ledger.
+// ==========================================================================
+
+test("switching to the History tab calls listModerationActions and renders a populated list", async () => {
+  resetAll();
+  listActionsImpl = async () => ({ items: [actionHistoryItem()], nextCursor: null });
+  const container = await mountModeration();
+  await flush();
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush();
+  assert.equal(listActionsCalls.length, 1);
+  const text = document.getElementById("root").textContent;
+  assert.match(text, /Hid/);
+  assert.match(text, /Harassment/);
+  assert.match(text, /Dave/);
+});
+
+test("the History tab shows a loading state before the first response", async () => {
+  resetAll();
+  listActionsImpl = () => new Promise(() => {});
+  const container = await mountModeration();
+  await flush();
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /Loading moderation history/i);
+});
+
+test("a History load failure shows a safe error state with a retry control, and it re-fetches", async () => {
+  resetAll();
+  let calls = 0;
+  listActionsImpl = async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("The moderation history could not be loaded. Please try again.");
+    return { items: [actionHistoryItem()], nextCursor: null };
+  };
+  const container = await mountModeration();
+  await flush();
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /could not be loaded/i);
+  const retry = [...document.getElementById("root").querySelectorAll("button")].find((b) => b.textContent.trim() === "Try again");
+  assert.ok(retry, "expected the shared ErrorState's own retry control");
+  await React.act(async () => {
+    retry.click();
+  });
+  await flush();
+  assert.equal(listActionsCalls.length, 2);
+  assert.match(document.getElementById("root").textContent, /Harassment/);
+});
+
+// The mocked listModerationActions stands in for the *entire* real client
+// function, including its own safe-error wrapping (see moderationClient.ts's
+// own SAFE_ACTION_HISTORY_ERROR discipline) — so, mirroring the identical
+// convention the enforcement-failure test above already establishes, the
+// mock throws the already-safe ModerationOperationError with the raw
+// backend text only as `cause`, proving the component renders nothing but
+// that safe message rather than asserting the component itself sanitizes
+// raw text it was never designed to see.
+test("no raw PostgREST/RLS/constraint/function text ever reaches the DOM on a History load failure", async () => {
+  resetAll();
+  const { ModerationOperationError } = await import(moderationClientUrl);
+  listActionsImpl = async () => {
+    throw new ModerationOperationError("fetch_action_history", "The moderation history could not be loaded. Please try again.", {
+      cause: { message: "list_moderation_actions: active moderator access required", code: "P0001" },
+    });
+  };
+  const container = await mountModeration();
+  await flush();
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush();
+  const text = document.getElementById("root").textContent;
+  assert.doesNotMatch(text, /list_moderation_actions|P0001|active moderator access required/);
+  assert.match(text, /could not be loaded/i);
+});
+
+test("a confirmed empty History is shown honestly, never as a loading or error state", async () => {
+  resetAll();
+  listActionsImpl = async () => ({ items: [], nextCursor: null });
+  const container = await mountModeration();
+  await flush();
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /No moderation actions yet/i);
+});
+
+test("Load more in History appends a second page without duplicating or losing the first page's items", async () => {
+  resetAll();
+  listActionsImpl = async (cursor) =>
+    cursor
+      ? { items: [actionHistoryItem({ actionId: "c1000000-0000-0000-0000-000000000002", action: "restore_message" })], nextCursor: null }
+      : { items: [actionHistoryItem()], nextCursor: { createdAt: "2026-01-01T00:00:00.000Z", id: "c1000000-0000-0000-0000-000000000001" } };
+  const container = await mountModeration();
+  await flush();
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush();
+  const loadMore = [...document.getElementById("root").querySelectorAll("button")].find((b) => b.textContent.trim() === "Load more");
+  assert.ok(loadMore, "expected a Load more control while a next cursor exists");
+  await React.act(async () => {
+    loadMore.click();
+  });
+  await flush();
+  assert.equal(listActionsCalls.length, 2);
+  const items = document.getElementById("root").querySelectorAll("li");
+  assert.equal(items.length, 2, "both pages' items must be present, none lost or duplicated");
+});
+
+test("switching from a status tab to History, and back, correctly toggles which panel is shown", async () => {
+  resetAll();
+  fetchQueueImpl = async () => ({ items: [queueItem({ reportId: REPORT_ID_1, category: "spam" })], nextCursor: null });
+  listActionsImpl = async () => ({ items: [actionHistoryItem()], nextCursor: null });
+  const container = await mountModeration();
+  await flush();
+  assert.match(container.textContent, /Spam/);
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /Harassment/);
+  assert.doesNotMatch(document.getElementById("root").textContent, /Select a report/, "the queue's own two-pane layout must not render while History is active");
+  const pendingTab = [...document.getElementById("root").querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "Pending");
+  await React.act(async () => {
+    pendingTab.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /Spam/);
+});
+
+test("a stale History response for a previous authenticated identity cannot overwrite the newer identity's state", async () => {
+  resetAll();
+  let resolveFirst;
+  let callCount = 0;
+  listActionsImpl = () => {
+    callCount += 1;
+    if (callCount === 1) return new Promise((resolve) => { resolveFirst = () => resolve({ items: [actionHistoryItem({ moderatorDisplayName: "Stale" })], nextCursor: null }); });
+    return Promise.resolve({ items: [actionHistoryItem({ moderatorDisplayName: "Fresh" })], nextCursor: null });
+  };
+  const container = await mountModeration();
+  await flush();
+  const historyTab = [...container.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab.click();
+  });
+  await flush(10); // first history fetch now in flight
+
+  await React.act(async () => {
+    authState = { status: "authenticated", session: { subject: "a0000000-0000-0000-0000-000000000099" } };
+  });
+  const container2 = await mountModeration();
+  await flush();
+  const historyTab2 = [...container2.querySelectorAll('[role="tab"]')].find((b) => b.textContent.trim() === "History");
+  await React.act(async () => {
+    historyTab2.click();
+  });
+  await flush();
+  assert.match(document.getElementById("root").textContent, /Fresh/);
+
+  await React.act(async () => {
+    resolveFirst();
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  assert.doesNotMatch(document.getElementById("root").textContent, /Stale/, "the earlier identity's stale response must never overwrite the newer identity's rendered state");
 });

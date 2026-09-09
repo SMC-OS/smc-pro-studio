@@ -22,7 +22,7 @@ mock.module(supabaseClientUrl, {
   },
 });
 
-const { checkModeratorAccess, fetchModerationReports, reviewReport, moderateReportedMessage } = await import(
+const { checkModeratorAccess, fetchModerationReports, reviewReport, moderateReportedMessage, listModerationActions } = await import(
   new URL("../src/social/services/moderationClient.ts", import.meta.url).href
 );
 
@@ -61,6 +61,16 @@ test("reviewReport: an unconfigured Supabase client throws SocialUnavailableErro
 test("moderateReportedMessage: an unconfigured Supabase client throws SocialUnavailableError before any RPC call", async () => {
   await assert.rejects(
     () => moderateReportedMessage(VALID_REPORT_ID, "hide_message"),
+    (err) => {
+      assert.equal(err.name, "SocialUnavailableError");
+      return true;
+    }
+  );
+});
+
+test("listModerationActions: an unconfigured Supabase client throws SocialUnavailableError before any RPC call", async () => {
+  await assert.rejects(
+    () => listModerationActions(),
     (err) => {
       assert.equal(err.name, "SocialUnavailableError");
       return true;
