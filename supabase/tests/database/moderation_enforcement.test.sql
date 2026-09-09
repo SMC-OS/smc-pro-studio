@@ -559,12 +559,22 @@ select results_eq(
   array[2::bigint], 'the rejected duplicate restore_message attempt created no third audit row either — still exactly hide then restore'
 );
 
--- ---- the append-only ledger has exactly two rows, correctly attributed, in order ----
-
-select results_eq(
-  format($$select action from public.moderation_actions where report_id = %L::uuid order by created_at$$, :'message_report_id'),
+-- ---- the append-only ledger has exactly two rows, correctly attributed ----
+--
+-- Phase 4 Slice L note: this originally ordered by created_at alone and
+-- asserted a specific row order — silently relying on undefined tie-break
+-- behavior for two rows sharing one pgTAP transaction's frozen now(), which
+-- happened to hold by accident (natural heap-scan order) until Slice L's
+-- own moderation_actions_created_at_id_idx gave the planner a real choice
+-- and legitimately changed it. set_eq proves the correct membership
+-- (exactly these two actions, nothing missing or extra) without depending
+-- on a tie-break order this table's own schema never actually guaranteed —
+-- the identical fix moderation_history.test.sql already applies to the
+-- same underlying issue for its own fixtures.
+select set_eq(
+  format($$select action from public.moderation_actions where report_id = %L::uuid$$, :'message_report_id'),
   array['hide_message'::public.moderation_action_type, 'restore_message'::public.moderation_action_type],
-  'moderation_actions has exactly the two actions that occurred, in the order they occurred'
+  'moderation_actions has exactly the two actions that occurred — hide and restore, nothing missing or extra'
 );
 select results_eq(
   format($$select moderator_id from public.moderation_actions
@@ -595,31 +605,39 @@ select throws_ok(
   'a raw DELETE against moderation_actions is rejected by the identical trigger'
 );
 
--- ---- ledger RLS: moderator can read it, reporter/reported/unrelated cannot ----
+-- ---- raw table SELECT is now blocked for everyone, including an active
+-- moderator — Slice L (20260909..._moderation_history_view.sql) revokes the
+-- SELECT grant this file originally shipped and makes list_moderation_
+-- actions() the sole client-readable boundary onto this table. RLS is still
+-- enabled and the policy still exists (defense in depth, and correct if the
+-- grant were ever restored), but with zero grant of any kind there is no
+-- privilege for the policy to even filter against, so every direct select
+-- attempt — moderator included — now fails closed with a permission error
+-- rather than an RLS-empty result. ----
 
 set local role authenticated;
 set local request.jwt.claim.sub to 'f0000000-0000-0000-0000-000000000004';
-select results_eq(
+select throws_ok(
   format($$select count(*)::bigint from public.moderation_actions where report_id = %L::uuid$$, :'message_report_id'),
-  array[2::bigint], 'Dave (active moderator) can read both ledger rows'
+  '42501', null, 'even Dave (an active moderator) can no longer read the ledger directly — list_moderation_actions() is the sole read path'
 );
 reset role;
 reset request.jwt.claim.sub;
 
 set local role authenticated;
 set local request.jwt.claim.sub to 'f0000000-0000-0000-0000-000000000001';
-select results_eq(
+select throws_ok(
   $$select count(*)::bigint from public.moderation_actions$$,
-  array[0::bigint], 'Alice (the reporter, not a moderator) cannot select any ledger row'
+  '42501', null, 'Alice (the reporter, not a moderator) is rejected by the missing grant, not merely filtered by RLS'
 );
 reset role;
 reset request.jwt.claim.sub;
 
 set local role authenticated;
 set local request.jwt.claim.sub to 'f0000000-0000-0000-0000-000000000002';
-select results_eq(
+select throws_ok(
   $$select count(*)::bigint from public.moderation_actions$$,
-  array[0::bigint], 'Bob (the reported/enforced-against party) cannot select any ledger row either'
+  '42501', null, 'Bob (the reported/enforced-against party) is rejected the same way'
 );
 reset role;
 reset request.jwt.claim.sub;
