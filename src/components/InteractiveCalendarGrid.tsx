@@ -26,48 +26,20 @@ export interface ScheduledTask {
   status: "Scheduled" | "In Progress" | "Completed" | "Delayed";
 }
 
-const INITIAL_SCHEDULE: ScheduledTask[] = [
-  {
-    id: "SCH-101",
-    projectName: "Kensington Residence",
-    siteAddress: "14 Phillimore Gardens, Kensington W8",
-    type: "Installation",
-    date: "2026-08-03",
-    timeSlot: "Full Day",
-    assignedCrew: "James Sterling + Mark Reynolds",
-    status: "In Progress"
-  },
-  {
-    id: "SCH-102",
-    projectName: "Spencer Hall Estate",
-    siteAddress: "Spencer Hall, Cotswolds OX7",
-    type: "Templating",
-    date: "2026-08-04",
-    timeSlot: "08:00 - 12:00",
-    assignedCrew: "David Vance (3D LiDAR)",
-    status: "Scheduled"
-  },
-  {
-    id: "SCH-103",
-    projectName: "Chelsea Design Studio",
-    siteAddress: "22 Kings Road, Chelsea SW3",
-    type: "Crane Lift",
-    date: "2026-08-05",
-    timeSlot: "08:00 - 12:00",
-    assignedCrew: "Heavy Rigging Crew 1",
-    status: "Scheduled"
-  },
-  {
-    id: "SCH-104",
-    projectName: "Mayfair Penthouse",
-    siteAddress: "42 Grosvenor Square, Mayfair W1K",
-    type: "Slab Delivery",
-    date: "2026-08-06",
-    timeSlot: "12:00 - 16:00",
-    assignedCrew: "Transport Logistics A",
-    status: "Scheduled"
-  }
-];
+/**
+ * Phase 5 Gate 0 purge (correction pass).
+ *
+ * This seed previously listed four fabricated scheduled site activities
+ * tied to fabricated projects ("Kensington Residence", "Spencer Hall
+ * Estate", "Chelsea Design Studio", "Mayfair Penthouse") at invented
+ * addresses, with fabricated named crew ("James Sterling + Mark
+ * Reynolds", "David Vance (3D LiDAR)") reused from other seeds this
+ * purge already removed. None of it was a real scheduled activity. The
+ * calendar grid, filter, and card layout are genuinely reusable, so they
+ * are kept; the seed is emptied so the schedule starts honestly empty
+ * until real activities are booked.
+ */
+const INITIAL_SCHEDULE: ScheduledTask[] = [];
 
 export default function InteractiveCalendarGrid() {
   const [schedule, setSchedule] = useState<ScheduledTask[]>(INITIAL_SCHEDULE);
@@ -127,6 +99,12 @@ export default function InteractiveCalendarGrid() {
 
       {/* Schedule List */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {filteredTasks.length === 0 && (
+          <div className="md:col-span-2 p-8 text-center bg-neutral-900 border border-neutral-800 rounded-2xl text-neutral-400 space-y-2">
+            <Calendar className="w-8 h-8 mx-auto text-neutral-600" />
+            <p className="text-xs font-mono">No site activity scheduled yet.</p>
+          </div>
+        )}
         {filteredTasks.map((task) => (
           <div
             key={task.id}

@@ -73,18 +73,19 @@ import {
   Maximize
 } from "lucide-react";
 
+/**
+ * Phase 5 Gate 0 purge (correction pass): `baseRates` (invented per-zone,
+ * per-service £ freight figures) has been removed from every zone — none
+ * of them were ever real courier rates. The zone/region and estimated
+ * transit-time information is kept since it is genuine operational
+ * information, not a price.
+ */
 export interface DeliveryZone {
   id: string;
   name: string;
   regionLabel: string;
   description: string;
   postcodePrefixes: string[];
-  baseRates: {
-    pickup: number;
-    standard: number;
-    "white-glove": number;
-    express: number;
-  };
   estDays: {
     standard: string;
     "white-glove": string;
@@ -99,8 +100,7 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     regionLabel: "Zone 1 • M25 Inner & Outer London",
     description: "Same-day/Next-day white glove dedicated vehicle delivery within M25 corridor.",
     postcodePrefixes: ["W", "SW", "NW", "EC", "WC", "SE", "E", "N", "TW", "UB", "HA", "EN", "IG", "RM", "DA", "BR", "CR", "SM", "KT"],
-    baseRates: { pickup: 0, standard: 15, "white-glove": 45, express: 75 },
-    estDays: { standard: "1-2 Business Days", "white-glove": "Scheduled Same-Day / Next-Day", express: "Guaranteed 24h Express" }
+    estDays: { standard: "1-2 Business Days", "white-glove": "Scheduled Same-Day / Next-Day", express: "24h Express (subject to confirmation)" }
   },
   {
     id: "uk-mainland",
@@ -108,7 +108,6 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     regionLabel: "Zone 2 • England, Wales & S. Scotland",
     description: "Insured crate courier with tracking & white glove room of choice placement.",
     postcodePrefixes: ["B", "M", "LS", "G", "EH", "BS", "CB", "OX", "CF", "NE", "PL", "EX", "SO", "PO", "BN", "CT", "IP", "NR", "LN", "DE", "NG"],
-    baseRates: { pickup: 0, standard: 25, "white-glove": 65, express: 110 },
     estDays: { standard: "2-3 Business Days", "white-glove": "3-5 Business Days", express: "24-48 Hours" }
   },
   {
@@ -117,7 +116,6 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     regionLabel: "Zone 3 • Offshore & High Altitude UK",
     description: "Reinforced timber cased transport for remote, island, or high-elevation estates.",
     postcodePrefixes: ["IV", "KW", "HS", "ZE", "PH", "PA", "AB", "FK", "KY", "DD", "BT"],
-    baseRates: { pickup: 0, standard: 45, "white-glove": 115, express: 165 },
     estDays: { standard: "4-6 Business Days", "white-glove": "5-7 Business Days", express: "2-3 Business Days" }
   },
   {
@@ -126,7 +124,6 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     regionLabel: "Zone 4 • EU Member States (DDP)",
     description: "Delivered Duty Paid (DDP) via specialised European stone logistics network.",
     postcodePrefixes: ["FR", "DE", "NL", "BE", "ES", "IT", "CH", "AT", "DK", "SE", "IE"],
-    baseRates: { pickup: 0, standard: 85, "white-glove": 185, express: 260 },
     estDays: { standard: "5-8 Business Days", "white-glove": "7-10 Business Days", express: "3-5 Business Days" }
   },
   {
@@ -135,181 +132,48 @@ export const DELIVERY_ZONES: DeliveryZone[] = [
     regionLabel: "Zone 5 • Americas, Gulf & Asia Air Freight",
     description: "Express air freight in ISPM-15 certified heat-treated timber crates.",
     postcodePrefixes: ["US", "CA", "NY", "FL", "TX", "AU", "AE", "SG", "HK", "JP"],
-    baseRates: { pickup: 0, standard: 175, "white-glove": 320, express: 450 },
     estDays: { standard: "6-10 Business Days", "white-glove": "8-12 Business Days", express: "4-6 Business Days" }
   }
 ];
 
-export interface MaterialAvailabilityInfo {
-  materialName: string;
-  status: string;
-  prepDays: number;
-  badge: string;
-  detail: string;
-}
-
-export function getMaterialAvailability(material: string): MaterialAvailabilityInfo {
-  const mat = (material || "").toLowerCase();
-  if (mat.includes("carrara")) {
-    return {
-      materialName: material,
-      status: "In Atelier Stock (Battersea Reserve)",
-      prepDays: 1,
-      badge: "In Stock (1-Day Prep)",
-      detail: "Pre-cut marble block reserved in Battersea. Immediate cleaning & dispatch prep."
-    };
-  } else if (mat.includes("calacatta")) {
-    return {
-      materialName: material,
-      status: "Custom Hand-Sealing & Polishing",
-      prepDays: 2,
-      badge: "2-Day Prep Lead",
-      detail: "Requires 24-hour natural wax seal curing & diamond edge hand-buffing."
-    };
-  } else if (mat.includes("nero") || mat.includes("marquina")) {
-    return {
-      materialName: material,
-      status: "Quarry Vein Selection & Inspection",
-      prepDays: 2,
-      badge: "2-Day Prep Lead",
-      detail: "Vein alignment verification & hydrophobic sealing before timber crating."
-    };
-  } else if (mat.includes("arabescato")) {
-    return {
-      materialName: material,
-      status: "Rare Block Selection & Honing",
-      prepDays: 4,
-      badge: "4-Day Lead Time",
-      detail: "High-contrast vein block extraction & custom matte honed finish curing."
-    };
-  } else if (mat.includes("pietra") || mat.includes("grey")) {
-    return {
-      materialName: material,
-      status: "Precision Bevel & Seal Curing",
-      prepDays: 3,
-      badge: "3-Day Prep Lead",
-      detail: "Precision edge profiling & stone density seal test."
-    };
-  } else if (mat.includes("travertine")) {
-    return {
-      materialName: material,
-      status: "Pore Filling & Matte Curing",
-      prepDays: 3,
-      badge: "3-Day Prep Lead",
-      detail: "Natural stone pore cavity fill & resin stabilization."
-    };
-  } else if (mat.includes("verde") || mat.includes("alpi")) {
-    return {
-      materialName: material,
-      status: "Deep Color Intensification",
-      prepDays: 2,
-      badge: "2-Day Prep Lead",
-      detail: "Specialist emerald vein color boost & protective oil coating."
-    };
-  }
-  return {
-    materialName: material,
-    status: "Standard Atelier Stock",
-    prepDays: 1,
-    badge: "1-Day Prep Lead",
-    detail: "Verified in Battersea inventory."
-  };
-}
-
-export function computeDeliveryWindow(items: any[], deliveryOption: string, zoneName?: string) {
-  const availabilities = items.map((item) => {
-    const avail = getMaterialAvailability(item.selectedMaterial);
-    return {
-      productName: item.product.name,
-      material: item.selectedMaterial,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      ...avail
-    };
-  });
-
-  const maxPrepDays = Math.max(...availabilities.map((a) => a.prepDays), 1);
-
-  let transitMinDays = 2;
-  let transitMaxDays = 4;
-
-  if (deliveryOption === "pickup") {
-    transitMinDays = 0;
-    transitMaxDays = 1;
-  } else if (deliveryOption === "express") {
-    transitMinDays = 1;
-    transitMaxDays = 2;
-  } else if (deliveryOption === "white-glove") {
-    transitMinDays = 2;
-    transitMaxDays = 3;
-  } else {
-    transitMinDays = 3;
-    transitMaxDays = 5;
-  }
-
-  const totalMinDays = maxPrepDays + transitMinDays;
-  const totalMaxDays = maxPrepDays + transitMaxDays;
-
-  const now = new Date();
-  const startDate = new Date(now);
-  startDate.setDate(now.getDate() + totalMinDays);
-
-  const endDate = new Date(now);
-  endDate.setDate(now.getDate() + totalMaxDays);
-
-  const startFormatted = startDate.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short"
-  });
-  const endFormatted = endDate.toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric"
-  });
-
-  return {
-    maxPrepDays,
-    transitMinDays,
-    transitMaxDays,
-    totalMinDays,
-    totalMaxDays,
-    dateRangeStr: deliveryOption === "pickup" ? "Ready within 24-48 Hours" : `${startFormatted} – ${endFormatted}`,
-    availabilities
-  };
-}
+/**
+ * Phase 5 Gate 0 purge: `getMaterialAvailability` and `computeDeliveryWindow`
+ * previously fabricated per-material stock/prep-day claims (e.g. "In Atelier
+ * Stock (Battersea Reserve)", "1-Day Prep") purely from a material-name
+ * string match, with no real inventory source, and used them to compute a
+ * fabricated delivery date range. Both were only ever called from the
+ * unreachable dead code removed from handleProcessOrder above, so they are
+ * removed here rather than left dormant.
+ */
 
 export interface ShopProduct {
   id: string;
   name: string;
   category: "chopping-boards" | "coffee-trays" | "coasters" | "sinks-taps" | "custom-decor";
   categoryLabel: string;
-  basePrice: number;
-  rating: number;
-  reviewCount: number;
   shortDesc: string;
   description: string;
   imageUrl: string;
   badge?: string;
   materialOptions: string[];
-  sizeOptions: { name: string; priceDelta: number }[];
+  sizeOptions: { name: string }[];
   handleOptions?: string[]; // For trays
   tapFinishOptions?: string[]; // For sinks & taps
   dimensions: string;
-  leadTime: string;
-  inStock: boolean;
 
   // Extended Details & Artisan Specs
-  origin?: string;
-  weight?: string;
-  hardnessRating?: string;
-  density?: string;
-  artisanMaster?: string;
-  artisanWorkshop?: string;
   craftingTechnique?: string;
   careInstructions?: string;
   keyFeatures?: string[];
+
+  // Phase 5 Gate 0: `origin`, `weight` and `artisanMaster` are no longer
+  // populated in the catalog below — none were ever sourced from a real
+  // supplier, courier, or staff record. Kept optional only so existing
+  // search/display code below (which already guards for them being
+  // absent) does not need to be rewired.
+  origin?: string;
+  weight?: string;
+  artisanMaster?: string;
 
   // Kitchen Island Live Demo & Video Presentation
   hasKitchenIslandDemo?: boolean;
@@ -326,12 +190,11 @@ export interface CartItem {
   cartId: string;
   product: ShopProduct;
   selectedMaterial: string;
-  selectedSize: { name: string; priceDelta: number };
+  selectedSize: { name: string };
   selectedHandle?: string;
   selectedTapFinish?: string;
   customEngraving?: string;
   quantity: number;
-  unitPrice: number;
 }
 
 export interface OrderTrackingEvent {
@@ -342,6 +205,16 @@ export interface OrderTrackingEvent {
   details: string;
 }
 
+/**
+ * Phase 5 Gate 0 purge (correction pass): `subtotal`, `discount`,
+ * `netSubtotal`, `baseFreightCost`, `heavyHandlingFee`,
+ * `transitInsuranceCost`, `deliveryCost`, `vatTax`, `total`, and
+ * `totalWeightKg` have been removed — every one of them was computed from
+ * a fabricated `basePrice`/`priceDelta` catalog figure, an invented
+ * per-zone freight rate, or a fabricated 3.5kg weight fallback. Checkout
+ * is disabled and this app never quotes a real price, so an order record
+ * has no real numeric total to carry.
+ */
 export interface ShopOrder {
   orderRef: string;
   date: string;
@@ -351,16 +224,6 @@ export interface ShopOrder {
   trackingNumber: string;
   estimatedDelivery: string;
   items: CartItem[];
-  subtotal: number;
-  discount: number;
-  netSubtotal: number;
-  baseFreightCost: number;
-  heavyHandlingFee: number;
-  transitInsuranceCost: number;
-  deliveryCost: number;
-  vatTax: number;
-  total: number;
-  totalWeightKg: number;
   custName: string;
   custEmail: string;
   custPhone: string;
@@ -380,33 +243,22 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Calacatta & Arabescato Dual-Stone Chopping Board",
     category: "chopping-boards",
     categoryLabel: "Artisan Chopping Boards",
-    basePrice: 185,
-    rating: 4.9,
-    reviewCount: 42,
     shortDesc: "Inlaid multi-material marble cutting board with brass perimeter accent & non-slip feet.",
     description: "Hand-finished in our London stonemason workshop. Combines high-density Calacatta Gold with Arabescato marble, separated by a 2mm solid brass expansion strip. Sealed with food-safe organic nano-wax.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuCceLmw5sOh0z2EWRZuuIt07t99JzV12V40LcoVylTvTo6qmVA_Eqm-L2PNJF9tfv0rlzd_-r2cnhzY8V2FFlAORqH0IvqeYSQIbjIM1up-2DWu6Y9X331y8UECNxCmr-z3xzhe6XQ67nKCIi2yNZVxokXX668E-MuK04RWhs55IOCz7IQDe-eAhjp9yk9VarnTSK5kbFrpO8YOJwmU8nUScy0xLQUHUUmJ6TTZwwOhCOahiu1o0lqf7QXgmfGGA9xDep-YmJGBP0w",
     badge: "Bestseller",
     materialOptions: ["Calacatta & Arabescato", "Nero Marquina & Carrara White", "Emerald Quartzite & Brass", "Travertine Silver & Walnut Wood"],
     sizeOptions: [
-      { name: "Compact (30 x 20 cm)", priceDelta: 0 },
-      { name: "Executive Chef (42 x 28 cm)", priceDelta: 45 },
-      { name: "Grand Feast Banquet (52 x 36 cm)", priceDelta: 95 }
+      { name: "Compact (30 x 20 cm)" },
+      { name: "Executive Chef (42 x 28 cm)" },
+      { name: "Grand Feast Banquet (52 x 36 cm)" }
     ],
     dimensions: "420 x 280 x 20 mm",
-    leadTime: "2-4 Business Days",
-    inStock: true,
-    origin: "Carrara Quarry, Tuscany, Italy & Macael, Spain",
-    weight: "4.8 kg",
-    hardnessRating: "Mohs 3.8 (Calacatta) / Mohs 4.0 (Arabescato)",
-    density: "2,720 kg/m³ High Compressive Strength",
-    artisanMaster: "Marco Rossi - Head Stonemason",
-    artisanWorkshop: "SMC Battersea Stone Atelier, London SW8",
     craftingTechnique: "High-precision 3D CNC waterjet inlay with 2mm brass expansion strip and 5-stage diamond pad manual polishing.",
     careInstructions: "Clean with warm water and mild pH-neutral dish soap. Avoid acidic cleaners (vinegar, bleach). Re-apply organic beeswax once every 6 months to preserve the hydrophobic seal.",
     keyFeatures: [
       "Solid 2mm brushed brass expansion joinery",
-      "BS EN 1186 certified organic food-safe nano-wax coating",
+      "Organic food-safe nano-wax coating",
       "Recessed non-slip rubber silicone pads on base",
       "Hand-beveled 45° chamfer edge finish"
     ],
@@ -446,26 +298,15 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Nero Marquina & Walnut Hybrid Board",
     category: "chopping-boards",
     categoryLabel: "Artisan Chopping Boards",
-    basePrice: 165,
-    rating: 4.8,
-    reviewCount: 29,
     shortDesc: "Deep black Spanish marble seamlessly bonded to American Black Walnut.",
     description: "Dual-temperature serving board. The cold marble section is ideal for charcuterie and cheese, while the end-grain walnut section protects knife edges for prep.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuBcHK03iYTJ1DFAk8dgBr4kisxAFbKpktYyspjsk5tmeR5k-j_8_vTSqApGCRSPkdLPuIUkMC72hwCMzXiITpxLQMVrJQXhsFerQfojoAjSZcOiyWxZw4NWcTozphYXckddNAfyV5gU26B-EY_lZ2TYrFNw6nTX8srBpSAu6YUlfl9sfGP5GcHhjRrZ7ZAwGR7g_GzWSkH9wPYG5i-R0nKxZWvqT_gK047VE8ar0HK88QnD4YCj35aZ3R6RGk1SVya1sA7B2h8GotA",
     materialOptions: ["Nero Marquina & Walnut", "Pietra Grey & Smoked Oak", "White Carrara & Ash Wood"],
     sizeOptions: [
-      { name: "Standard (38 x 25 cm)", priceDelta: 0 },
-      { name: "XL Serving Board (48 x 30 cm)", priceDelta: 50 }
+      { name: "Standard (38 x 25 cm)" },
+      { name: "XL Serving Board (48 x 30 cm)" }
     ],
     dimensions: "380 x 250 x 22 mm",
-    leadTime: "2-3 Business Days",
-    inStock: true,
-    origin: "Markina Quarries, Basque Country, Spain & Appalachian Walnut, USA",
-    weight: "3.6 kg",
-    hardnessRating: "Mohs 3.5 (Nero Marquina Marble) & Janka 1010 (Walnut)",
-    density: "2,690 kg/m³",
-    artisanMaster: "David Thorne - Senior Joiner & Mason",
-    artisanWorkshop: "SMC Southwark Wood & Stone Guild, London",
     craftingTechnique: "Dovetail stone-to-wood joinery with food-safe epoxy bonding and mineral oil hand rubbing.",
     careInstructions: "Hand wash only with mild soap. Do not soak wood section. Re-oil walnut with food-grade mineral oil every month.",
     keyFeatures: [
@@ -499,27 +340,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Travertine Navona Heavy Island Prep & Serving Board",
     category: "chopping-boards",
     categoryLabel: "Artisan Chopping Boards",
-    basePrice: 195,
-    rating: 5.0,
-    reviewCount: 34,
     shortDesc: "Honed Roman Travertine with deep juice groove & solid brass side handles.",
     description: "Carved from unfilled Navona Italian Travertine with a silky honed texture. Features a 10mm deep perimeter juice canal to keep kitchen island worktops clean during carving.",
     imageUrl: "https://images.unsplash.com/photo-1590736969955-71cc94901144?auto=format&fit=crop&w=800&q=80",
     badge: "New Arrival",
     materialOptions: ["Travertine Navona Beige", "Travertine Silver Grey", "Walnut Travertine"],
     sizeOptions: [
-      { name: "Standard Prep (40 x 28 cm)", priceDelta: 0 },
-      { name: "Grand Island Master (50 x 32 cm)", priceDelta: 65 }
+      { name: "Standard Prep (40 x 28 cm)" },
+      { name: "Grand Island Master (50 x 32 cm)" }
     ],
     dimensions: "450 x 300 x 25 mm",
-    leadTime: "2-3 Business Days",
-    inStock: true,
-    origin: "Tivoli Quarries, Lazio, Italy",
-    weight: "5.2 kg",
-    hardnessRating: "Mohs 3.6",
-    density: "2,650 kg/m³",
-    artisanMaster: "Marco Rossi",
-    artisanWorkshop: "SMC Battersea Stone Atelier, London SW8",
     craftingTechnique: "Resin-filled micro-pore surface treatment with deep CNC juice canal routing and satin oil finish.",
     careInstructions: "Wipe clean with warm water and soft sponge. Do not place in dishwasher.",
     keyFeatures: [
@@ -552,27 +382,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Pietra Grey & Solid Brass Inlaid Charcuterie Platter",
     category: "chopping-boards",
     categoryLabel: "Artisan Chopping Boards",
-    basePrice: 175,
-    rating: 4.9,
-    reviewCount: 21,
     shortDesc: "Dark graphite Iranian marble with double brass chevron inlay & bevelled rim.",
     description: "Deep charcoal-grey marble with delicate white calcite veining, detailed with twin 3mm solid brushed brass chevron inlays.",
     imageUrl: "https://images.unsplash.com/photo-1615937657715-3761191b7e40?auto=format&fit=crop&w=800&q=80",
     badge: "Designer Choice",
     materialOptions: ["Pietra Grey & Brass", "Nero Marquina & Copper", "Verde Alpi & Gold"],
     sizeOptions: [
-      { name: "Medium (38 x 26 cm)", priceDelta: 0 },
-      { name: "Large Feast (46 x 30 cm)", priceDelta: 55 }
+      { name: "Medium (38 x 26 cm)" },
+      { name: "Large Feast (46 x 30 cm)" }
     ],
     dimensions: "380 x 260 x 20 mm",
-    leadTime: "2-4 Business Days",
-    inStock: true,
-    origin: "Isfahan Marble Region & SMC London Workshop",
-    weight: "4.1 kg",
-    hardnessRating: "Mohs 4.0",
-    density: "2,710 kg/m³",
-    artisanMaster: "Antoine Laurent",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Precision CNC groove routing with hand-hammered brass chevron strip fit and 6-stage diamond honing.",
     careInstructions: "Hand wash only with pH neutral soap. Brass strips can be buffed with soft microfiber.",
     keyFeatures: [
@@ -600,27 +419,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Verde Alpi Emerald Marble Heavy Butcher Block",
     category: "chopping-boards",
     categoryLabel: "Artisan Chopping Boards",
-    basePrice: 220,
-    rating: 5.0,
-    reviewCount: 18,
     shortDesc: "30mm thick emerald green Italian marble slab with hand-polished 45° chamfer.",
     description: "An incredible heavyweight 30mm thick slab of rich Verde Alpi serpentinite marble. Features dramatic dark emerald green tones with lighter jade and white veins.",
     imageUrl: "https://images.unsplash.com/photo-1567306301408-9b74779a11af?auto=format&fit=crop&w=800&q=80",
     badge: "Exclusive",
     materialOptions: ["Verde Alpi Emerald", "Guatemala Green", "Calacatta Viola"],
     sizeOptions: [
-      { name: "Executive Butcher (42 x 30 cm)", priceDelta: 0 },
-      { name: "Grand Master Butcher (50 x 35 cm)", priceDelta: 85 }
+      { name: "Executive Butcher (42 x 30 cm)" },
+      { name: "Grand Master Butcher (50 x 35 cm)" }
     ],
     dimensions: "420 x 300 x 30 mm",
-    leadTime: "3-5 Business Days",
-    inStock: true,
-    origin: "Aosta Valley, Italian Alps",
-    weight: "7.1 kg",
-    hardnessRating: "Mohs 4.2 (High Density Serpentinite)",
-    density: "2,780 kg/m³",
-    artisanMaster: "Marco Rossi",
-    artisanWorkshop: "SMC Battersea Stone Atelier, London SW8",
     craftingTechnique: "Thick slab wire-saw cut with 45° hand chamfering and diamond pad satin polishing.",
     careInstructions: "Wash with mild soapy water. Apply food-safe mineral wax annually.",
     keyFeatures: [
@@ -650,9 +458,6 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Monolith Marble Coffee Tray with Metal Handles",
     category: "coffee-trays",
     categoryLabel: "Luxury Coffee Trays",
-    basePrice: 240,
-    rating: 5.0,
-    reviewCount: 56,
     shortDesc: "Solid carved marble tray with custom brushed metallic handles & felt padded base.",
     description: "Carved from a single block of natural stone with mitered border lip. Fitted with hand-polished ergonomic metal handles. Perfect for coffee table displays, cocktail service, or bed-in-breakfast.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAbvIF9L90gd_T_tBcV0MEpEEOYHtaWJgpCKc5hFe8zZ1m0NGsL0MN1I4J-sC2DOKK0NdAnNNw-4HOOz8gFsb3Yy5HutsAQPmfxnqt-V2QoV9IWHqWPXXD8jplRIRfUHsAaRhwoVFh3VOW7pTfAM7hSUQo5hpq0pS8rMi1NXc05RtrOnKK62pNMSE-CM0-CUPwXt6Ch9pvtl-UwhWLc7df3IYPaKuaK1uqL0C2NWqPmF5n7F2Jw_bgT_Zwze7msLZwUV3nP6j2cbvY",
@@ -660,18 +465,10 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     materialOptions: ["Calacatta Gold", "Nero Marquina Black", "Pietra Grey", "Emerald Quartzite", "Viola Marble"],
     handleOptions: ["Brushed Gold Brass", "Matte Black Steel", "Polished Rose Gold", "Antique Bronze Knurled"],
     sizeOptions: [
-      { name: "Small Butler (35 x 24 cm)", priceDelta: 0 },
-      { name: "Grand Executive (48 x 32 cm)", priceDelta: 75 }
+      { name: "Small Butler (35 x 24 cm)" },
+      { name: "Grand Executive (48 x 32 cm)" }
     ],
     dimensions: "480 x 320 x 45 mm (inc. handles)",
-    leadTime: "3-5 Business Days",
-    inStock: true,
-    origin: "Carrara, Tuscany, Italy & Macael, Andalusia",
-    weight: "6.2 kg",
-    hardnessRating: "Mohs 4.0",
-    density: "2,710 kg/m³",
-    artisanMaster: "Antoine Laurent - Metal & Stone Atelier",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Single-block CNC hollow carving with mitered 30mm rim lip and threaded brass handle anchors.",
     careInstructions: "Wipe with damp microfibre cloth. Metal handles are lacquered to prevent tarnishing; clean with dry lint-free cloth.",
     keyFeatures: [
@@ -686,27 +483,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Fluted Rim Marble Tray with Integrated Handles",
     category: "coffee-trays",
     categoryLabel: "Luxury Coffee Trays",
-    basePrice: 210,
-    rating: 4.9,
-    reviewCount: 38,
     shortDesc: "Precision CNC fluted border with recessed under-lip hand grips.",
     description: "Architectural tray featuring 3D CNC fluted perimeter wall and ergonomic undercut grips carved directly into the underside of the stone.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuDoafXBGRGQ3V9FLjGzaRqq5D8hAu7f7bkK7Um707rn9wQ3MnApsHzxLQ7xs-3Fu_i4JRz-_nTLThHphi_HZv8IPghkuaGAvGfOyBUA4UPIJbigq7B6MZ2z4SeREIWFhBFD5vd-1icM0UsTR5Eml59honv_Ay-Mr9K9-y7Os5YD37uKK9_2D-T8Jis1Tq-GCzDXMHyk0A9XSDtPZjNhe80F_TZVbRx_OGGNWLlfeEHmC9ImbgtnsPtebd37HXrODzdQPK3tdjKZPQI",
     materialOptions: ["White Carrara", "Arabescato Vagli", "Travertine Navona"],
     handleOptions: ["Carved Undercut Grips"],
     sizeOptions: [
-      { name: "Medium Square (32 x 32 cm)", priceDelta: 0 },
-      { name: "Large Rectangle (45 x 30 cm)", priceDelta: 60 }
+      { name: "Medium Square (32 x 32 cm)" },
+      { name: "Large Rectangle (45 x 30 cm)" }
     ],
     dimensions: "450 x 300 x 30 mm",
-    leadTime: "3-5 Business Days",
-    inStock: true,
-    origin: "Carrara, Tuscany, Italy",
-    weight: "5.1 kg",
-    hardnessRating: "Mohs 3.8",
-    density: "2,700 kg/m³",
-    artisanMaster: "Marco Rossi & CNC Precision Team",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "3D CNC fluted perimeter sculpting with undercut hand grips carved directly into the stone base.",
     careInstructions: "Clean fluted grooves with soft bristle brush and soapy water. Wipe dry immediately.",
     keyFeatures: [
@@ -721,9 +507,6 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Rosso Levanto Round Cocktail Tray with Knurled Brass Handles",
     category: "coffee-trays",
     categoryLabel: "Luxury Coffee Trays",
-    basePrice: 255,
-    rating: 5.0,
-    reviewCount: 16,
     shortDesc: "Deep cherry-burgundy Italian marble circular tray with knurled brass hardware.",
     description: "Hand-carved 35cm round tray carved from rich Rosso Levanto marble from Liguria, Italy. Features intense deep wine-red tone interwoven with white and jade vein networks.",
     imageUrl: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=800&q=80",
@@ -731,18 +514,10 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     materialOptions: ["Rosso Levanto Wine Red", "Calacatta Viola", "Nero Marquina"],
     handleOptions: ["Knurled Brass Handles", "Polished Chrome Handles"],
     sizeOptions: [
-      { name: "Circular Standard (35 cm Dia)", priceDelta: 0 },
-      { name: "Circular Grand (42 cm Dia)", priceDelta: 70 }
+      { name: "Circular Standard (35 cm Dia)" },
+      { name: "Circular Grand (42 cm Dia)" }
     ],
     dimensions: "350 Dia x 40 mm",
-    leadTime: "3-5 Business Days",
-    inStock: true,
-    origin: "Levanto, Liguria, Italy",
-    weight: "4.9 kg",
-    hardnessRating: "Mohs 4.0",
-    density: "2,730 kg/m³",
-    artisanMaster: "Antoine Laurent",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Circular lathe carving with mitered rim lip and knurled brass handle bolts.",
     careInstructions: "Wipe with soft cloth. Avoid abrasive detergents.",
     keyFeatures: [
@@ -759,28 +534,17 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Hexagonal Marble Coaster Set (Set of 6) + Marble Stand",
     category: "coasters",
     categoryLabel: "Cup Holders & Coasters",
-    basePrice: 85,
-    rating: 4.9,
-    reviewCount: 88,
     shortDesc: "Set of 6 faceted marble coasters with non-slip cork backing & matching storage caddy.",
     description: "Precision diamond-cut hexagonal coasters. Each piece features natural vein patterns sealed against condensation and stain marks. Includes a matching solid marble storage holder.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAufzkhd8V1dfUimdTLTQoH7PfLjH59r2w1BHDgT-JOX7qW1iTNXbcX_rHxClJqJjlYKc07OeTT0LrhCCLLZKIiRgh0CkH6j2fmZ5LHDOacO5kOy8CUfbOHGw1BWLNWJgREz_Bxaes7NRtPOu70fD2dRf8dve4DfmH2Gpfdai27Yq-aeUGqC5txHHB5pT9ed1qt71FIL9k6iMSOWlMu6Us1b6oDBdMfjx4q5PxWXiUQCCUz8VMcBnVncdmXc2Wq2d9YNYZTTJ6lSjQ",
     badge: "Gift Choice",
     materialOptions: ["Calacatta Gold", "Nero Marquina", "Mixed Duo (3 White / 3 Black)", "Terrazzo Gold"],
     sizeOptions: [
-      { name: "Set of 4 + Holder", priceDelta: -20 },
-      { name: "Set of 6 + Holder", priceDelta: 0 },
-      { name: "Set of 8 + Dual Holder", priceDelta: 35 }
+      { name: "Set of 4 + Holder" },
+      { name: "Set of 6 + Holder" },
+      { name: "Set of 8 + Dual Holder" }
     ],
     dimensions: "100 x 100 x 10 mm (per coaster)",
-    leadTime: "1-2 Business Days",
-    inStock: true,
-    origin: "Apuan Alps, Tuscany, Italy",
-    weight: "1.8 kg (Set + Stand)",
-    hardnessRating: "Mohs 3.5",
-    density: "2,700 kg/m³",
-    artisanMaster: "SMC Crafts Team",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Diamond-faceted 6-sided waterjet cutting with bevelled top edge and cork backing application.",
     careInstructions: "Wipe spills promptly. Do not submerge cork backing in water.",
     keyFeatures: [
@@ -795,27 +559,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Scalloped Calacatta Beverage Coasters (Set of 6)",
     category: "coasters",
     categoryLabel: "Cup Holders & Coasters",
-    basePrice: 95,
-    rating: 4.8,
-    reviewCount: 31,
     shortDesc: "Set of 6 scalloped rim Calacatta Gold coasters with brass edge detailing.",
     description: "Scalloped flower-edged coasters waterjet carved from Italian Calacatta Gold marble. Ideal for wine glasses, whiskey tumblers, or espresso cups.",
     imageUrl: "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&w=800&q=80",
     badge: "Trending",
     materialOptions: ["Calacatta Gold", "Rosso Levanto", "Nero Marquina"],
     sizeOptions: [
-      { name: "Set of 6 Coasters", priceDelta: 0 },
-      { name: "Set of 8 Coasters + Brass Stand", priceDelta: 30 }
+      { name: "Set of 6 Coasters" },
+      { name: "Set of 8 Coasters + Brass Stand" }
     ],
     dimensions: "105 Dia x 12 mm",
-    leadTime: "1-2 Business Days",
-    inStock: true,
-    origin: "Carrara, Italy",
-    weight: "1.5 kg",
-    hardnessRating: "Mohs 3.8",
-    density: "2,710 kg/m³",
-    artisanMaster: "SMC Crafts Team",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "5-axis waterjet scalloped perimeter profiling with hand-honed satin polish.",
     careInstructions: "Wipe clean with soft damp cloth.",
     keyFeatures: [
@@ -832,9 +585,6 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Integrated Monolithic Stone Ramp Sink & Designer Tap Set",
     category: "sinks-taps",
     categoryLabel: "Sinks & Designer Taps",
-    basePrice: 1250,
-    rating: 5.0,
-    reviewCount: 19,
     shortDesc: "Custom mitered ramp basin with concealed drainage slot & matching wall tap.",
     description: "Bespoke engineered stone ramp sink with sloped drainage plane and removable waste access plate. Comes bundled with a solid brass gooseneck wall-mounted tap mixer.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAFGqgsH0QN6WXsqp7IaIvYE5aHC9UNVWFywXW-kWNmXiGRJJi8pSnGRudv0EQuZfbPYgAbdYQNAu6KmLzDG2ngm3IJxXGcvRqfyyJeNtkyk9pxw6sKFfPvFIKTbirwxeaRMWGTj1GBTGFm0Mx8vs0IJdO4WRXaaHxF96WPejabrqu7BGN08esNJYayJDSaXgf-lESTNNIEf3GWMpmFqU2ECCam_D8qWi5-e-anMgbXsL0LY9B8aDBusg16VR5jwCC-u2Aq2agL3mQ",
@@ -842,20 +592,12 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     materialOptions: ["Calacatta Gold Porcelain", "Pietra Grey Marble", "Nero Marquina", "Travertine Beige"],
     tapFinishOptions: ["Brushed Gold Brass", "Matte Black Minimalist", "Polished Chrome", "Aged Copper"],
     sizeOptions: [
-      { name: "Single Basin (600 x 450 mm)", priceDelta: 0 },
-      { name: "Double Vanity Basin (1200 x 480 mm)", priceDelta: 650 }
+      { name: "Single Basin (600 x 450 mm)" },
+      { name: "Double Vanity Basin (1200 x 480 mm)" }
     ],
     dimensions: "600 x 450 x 140 mm",
-    leadTime: "7-10 Business Days",
-    inStock: true,
-    origin: "Castellón Porcelain Works, Spain & Tuscany Marble",
-    weight: "28.5 kg",
-    hardnessRating: "Mohs 7.0 (Sintered Porcelain) / Mohs 4.0 (Marble)",
-    density: "2,850 kg/m³",
-    artisanMaster: "Giacomo Valli - Master Sanitary Mason",
-    artisanWorkshop: "SMC Architectural Stoneworks, London",
     craftingTechnique: "Mitered 45° slab fabrication with concealed channel slot drain and removable waste access plate.",
-    careInstructions: "Clean with standard non-abrasive bathroom cleaner. Includes 10-year structural warranty.",
+    careInstructions: "Clean with standard non-abrasive bathroom cleaner.",
     keyFeatures: [
       "Concealed linear slot drainage plane with removable access plate",
       "Included wall-mounted solid brass mixer tap set",
@@ -868,27 +610,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Fluted Oval Vessel Basin & High-Rise Mixer Tap",
     category: "sinks-taps",
     categoryLabel: "Sinks & Designer Taps",
-    basePrice: 780,
-    rating: 4.9,
-    reviewCount: 31,
     shortDesc: "Countertop fluted marble bowl basin with high-spout monobloc mixer tap.",
     description: "Hand-carved oval vessel sink with vertical fluted texture on the exterior. Complemented by a high-rise brass mixer tap with ceramic cartridge.",
     imageUrl: "https://lh3.googleusercontent.com/aida/AP1WRLscLIpauTAWhZZX3QhpQiR8SWZEObzaUuX4nLLD-Q7YGSurY0urLR6bckoNG3EDfDCwzqxSuXePwbSBszNVt3g_mCKxQZeYXqtMcQIaknPs4tTmYPY2bHX17lg8rj-o63L6C80zEgX6kCH9I5L3k9jaOZ8PPA7mRqte4EKppGuM_MnAf9Sa17x2u2GMh59Gwbtp6Gz3rCARIYL5gp_t2681d3JLh3UXfJwTvwALr_EHij9Oppw4vHeiZSo",
     materialOptions: ["White Carrara", "Viola Calacatta", "Crema Marfil"],
     tapFinishOptions: ["Brushed Gold", "Matte Black", "Brushed Gunmetal"],
     sizeOptions: [
-      { name: "Standard Vessel (480 x 380 mm)", priceDelta: 0 },
-      { name: "Grand Deep Vessel (550 x 420 mm)", priceDelta: 180 }
+      { name: "Standard Vessel (480 x 380 mm)" },
+      { name: "Grand Deep Vessel (550 x 420 mm)" }
     ],
     dimensions: "480 x 380 x 150 mm",
-    leadTime: "5-7 Business Days",
-    inStock: true,
-    origin: "Carrara, Italy",
-    weight: "16.2 kg",
-    hardnessRating: "Mohs 3.8",
-    density: "2,710 kg/m³",
-    artisanMaster: "Giacomo Valli - Sanitary Mason",
-    artisanWorkshop: "SMC Architectural Stoneworks, London",
     craftingTechnique: "Hand-turned and CNC fluted exterior contouring with honed satin interior bowl.",
     careInstructions: "Rinse after use. Clean with mild bathroom detergent. Re-seal marble twice annually with included SMC Sealer kit.",
     keyFeatures: [
@@ -903,9 +634,6 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Verde Alpi Undermount Kitchen Sink & Gooseneck Tap",
     category: "sinks-taps",
     categoryLabel: "Sinks & Designer Taps",
-    basePrice: 1450,
-    rating: 5.0,
-    reviewCount: 12,
     shortDesc: "Carved emerald green undermount stone sink with pull-down spray tap.",
     description: "Deep single-bowl kitchen sink carved out of a solid block of Verde Alpi stone. Bundled with a commercial-grade brass gooseneck tap with dual-spray pull-down hose.",
     imageUrl: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80",
@@ -913,18 +641,10 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     materialOptions: ["Verde Alpi Emerald", "Nero Marquina", "Calacatta Gold"],
     tapFinishOptions: ["Brushed Brass", "Matt Black", "Aged Copper"],
     sizeOptions: [
-      { name: "Single Large Bowl (550 x 400 x 220 mm)", priceDelta: 0 },
-      { name: "Double Bowl (800 x 450 x 220 mm)", priceDelta: 520 }
+      { name: "Single Large Bowl (550 x 400 x 220 mm)" },
+      { name: "Double Bowl (800 x 450 x 220 mm)" }
     ],
     dimensions: "550 x 400 x 220 mm",
-    leadTime: "7-12 Business Days",
-    inStock: true,
-    origin: "Italian Alps & London Workshop",
-    weight: "34.0 kg",
-    hardnessRating: "Mohs 4.2",
-    density: "2,780 kg/m³",
-    artisanMaster: "Giacomo Valli",
-    artisanWorkshop: "SMC Architectural Stoneworks, London",
     craftingTechnique: "Block CNC excavation with radius hand-rubbed internal corners for easy cleaning.",
     careInstructions: "Clean with mild soap. Avoid harsh wire wool.",
     keyFeatures: [
@@ -941,26 +661,15 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Geometric Sculptural Marble Bookends (Pair)",
     category: "custom-decor",
     categoryLabel: "Custom Marble Accents",
-    basePrice: 140,
-    rating: 4.8,
-    reviewCount: 24,
     shortDesc: "Solid marble geometric blocks for luxury bookshelf & library styling.",
     description: "Heavyweight solid stone bookends diamond-carved into sharp architectural facets. Weighted to hold heavy art monographs.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuDl3Juegqj648HlNvPbOYmIQuaQIKFnKbnqr9grhSKSQ0243IlWTHbu2weFAqiwqfHOZSgI2WVoDsKGF-XInrBDGO9ihCIw2uSb0PEExjNRC9kDjYXidpbAd5zZ_tcxqigUKWeUZkAHSJ2daOPPXc0D9Gt5fSK3S8jgJj89cahrjn--zOWGQeBL8fFajyRmfbGCm8w8WWUX4jNGFU15xxXKXpg2ZqxFe-jmc0H3KIl5Ab51Mu_nLnlOTBXh5eWWPMtyNp2MBrRYDiQ",
     materialOptions: ["Nero Marquina", "Calacatta Gold", "Verde Alpi Green"],
     sizeOptions: [
-      { name: "Standard Pair (18cm height)", priceDelta: 0 },
-      { name: "Tall Sculptural Pair (24cm height)", priceDelta: 40 }
+      { name: "Standard Pair (18cm height)" },
+      { name: "Tall Sculptural Pair (24cm height)" }
     ],
     dimensions: "120 x 80 x 180 mm (each)",
-    leadTime: "2-3 Business Days",
-    inStock: true,
-    origin: "Marquina, Spain & Carrara, Italy",
-    weight: "4.4 kg (Pair)",
-    hardnessRating: "Mohs 4.0",
-    density: "2,690 kg/m³",
-    artisanMaster: "David Thorne",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Diamond block sawing with razor-sharp geometric faceting and velvet padded anti-slip base.",
     careInstructions: "Dust with soft dry cloth. Polished finish requires minimal maintenance.",
     keyFeatures: [
@@ -975,32 +684,21 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Solid Marble Rolling Pin & Brass Display Cradle",
     category: "custom-decor",
     categoryLabel: "Custom Marble Accents",
-    basePrice: 115,
-    rating: 4.9,
-    reviewCount: 37,
     shortDesc: "Chilled marble roller barrel with solid brass handles & display stand.",
     description: "Naturally cool marble cylinder retains low temperatures, preventing pastry dough from sticking. Comes with an engraved brass resting stand.",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuD0LYumSn3sho4_sukH-QWbBRZbWs3UGyrig7QYSz0H_T29LsVc1b6ONKY6IfnakzNriwcsCBXpYg9rUTNDJ3bEBswyuV935uwu3vjEDp9TUVx_thDJtqq-dGcdEJzGROshwMNdPA4jyWb4nnB70ARGLYXCqgmJtsqJLWJtbZkwYnTy5Ad0hG8IDp_dXuNOLfULlbgRg7qtXqM_mNQ4JarnhL2qoFMd00LL75hlNXJxlH_djad5ZwTLwmyIPh9pf6_3Ov0XFp8zjv0",
     materialOptions: ["Carrara White", "Pietra Grey"],
     sizeOptions: [
-      { name: "Master Chef Roller (45 cm)", priceDelta: 0 }
+      { name: "Master Chef Roller (45 cm)" }
     ],
     dimensions: "450 x 60 mm",
-    leadTime: "2-3 Business Days",
-    inStock: true,
-    origin: "White Carrara, Italy",
-    weight: "2.9 kg",
-    hardnessRating: "Mohs 3.8",
-    density: "2,700 kg/m³",
-    artisanMaster: "SMC Kitchenware Artisans",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Precision lathe turned stone cylinder fitted with solid brass rod handles & steel bearings.",
     careInstructions: "Hand wash cylinder in cold soapy water. Chill in refrigerator 15 minutes before rolling pastry.",
     keyFeatures: [
       "Naturally cold marble barrel keeps dough & butter cool",
       "Smooth steel ball-bearing rotational mechanism",
       "Includes solid brass resting cradle for display",
-      "BS EN 1186 Certified food-safe finish"
+      "Food-safe finish"
     ]
   },
   {
@@ -1008,27 +706,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Heavy Emerald Quartzite Mortar & Pestle Atelier Set",
     category: "custom-decor",
     categoryLabel: "Custom Marble Accents",
-    basePrice: 135,
-    rating: 5.0,
-    reviewCount: 45,
     shortDesc: "Extra-heavy unpolished interior stone mortar for spice grinding & pesto.",
     description: "Hand-lathed from high-density Emerald Quartzite. Unpolished interior bowl provides friction for crushing whole spices, garlic, herbs, and chimichurri.",
     imageUrl: "https://images.unsplash.com/photo-1590736969955-71cc94901144?auto=format&fit=crop&w=800&q=80",
     badge: "Chef Favorite",
     materialOptions: ["Emerald Quartzite", "Nero Marquina", "Carrara White"],
     sizeOptions: [
-      { name: "Standard Atelier (16 cm Dia)", priceDelta: 0 },
-      { name: "Grand Feast (20 cm Dia)", priceDelta: 35 }
+      { name: "Standard Atelier (16 cm Dia)" },
+      { name: "Grand Feast (20 cm Dia)" }
     ],
     dimensions: "160 Dia x 110 H mm",
-    leadTime: "1-3 Business Days",
-    inStock: true,
-    origin: "Minas Gerais Quarries, Brazil",
-    weight: "3.8 kg",
-    hardnessRating: "Mohs 7.0 (Extreme Quartzite Density)",
-    density: "2,820 kg/m³",
-    artisanMaster: "David Thorne",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Solid lathe turned with diamond texturing on interior bowl and weighted pestle handle.",
     careInstructions: "Rinse with warm water. Season with rice grain crush prior to first use.",
     keyFeatures: [
@@ -1043,27 +730,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Calacatta Viola Fluted Tissue Box & Vanity Organizer",
     category: "custom-decor",
     categoryLabel: "Custom Marble Accents",
-    basePrice: 160,
-    rating: 4.9,
-    reviewCount: 28,
     shortDesc: "Solid carved Viola marble tissue cover with magnetic bottom loading plate.",
     description: "Carved from dramatic Calacatta Viola marble with rich cabernet veining. Features vertical fluted perimeter walls and a brass magnetic base plate for effortless box refills.",
     imageUrl: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80",
     badge: "Luxury Vanity",
     materialOptions: ["Calacatta Viola", "White Carrara", "Travertine Beige"],
     sizeOptions: [
-      { name: "Standard Cube (14 x 14 x 15 cm)", priceDelta: 0 },
-      { name: "Rectangular Tissue Box (25 x 14 x 10 cm)", priceDelta: 45 }
+      { name: "Standard Cube (14 x 14 x 15 cm)" },
+      { name: "Rectangular Tissue Box (25 x 14 x 10 cm)" }
     ],
     dimensions: "140 x 140 x 150 mm",
-    leadTime: "2-4 Business Days",
-    inStock: true,
-    origin: "Carrara Viola Quarry, Tuscany",
-    weight: "2.7 kg",
-    hardnessRating: "Mohs 3.8",
-    density: "2,710 kg/m³",
-    artisanMaster: "SMC Craftsmen",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Precision 5-axis fluted wall excavation with concealed brass magnetic bottom plate.",
     careInstructions: "Dust with dry lint-free cloth.",
     keyFeatures: [
@@ -1078,27 +754,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Aura Monolithic Marble Wall Clock with Brass Hands",
     category: "custom-decor",
     categoryLabel: "Custom Marble Accents",
-    basePrice: 190,
-    rating: 5.0,
-    reviewCount: 19,
     shortDesc: "30cm circular marble disc with silent German quartz mechanism & brushed brass hands.",
     description: "Minimalist wall clock carved from a 15mm slab of natural stone. Features brass hour indices inlaid flush with the surface and a whisper-silent sweep movement.",
     imageUrl: "https://images.unsplash.com/photo-1563861826100-9cb868fdbe1c?auto=format&fit=crop&w=800&q=80",
     badge: "Statement Piece",
     materialOptions: ["Nero Marquina", "Calacatta Gold", "Travertine Navona"],
     sizeOptions: [
-      { name: "Standard Wall Disc (30 cm Dia)", priceDelta: 0 },
-      { name: "Grand Gallery Disc (40 cm Dia)", priceDelta: 65 }
+      { name: "Standard Wall Disc (30 cm Dia)" },
+      { name: "Grand Gallery Disc (40 cm Dia)" }
     ],
     dimensions: "300 Dia x 20 mm",
-    leadTime: "2-4 Business Days",
-    inStock: true,
-    origin: "Tuscany & SMC London Atelier",
-    weight: "3.2 kg",
-    hardnessRating: "Mohs 4.0",
-    density: "2,700 kg/m³",
-    artisanMaster: "Antoine Laurent",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Lathe turned stone disc with flush brass hour indices and heavy-duty wall anchor mount.",
     careInstructions: "Dust with dry cloth. Requires 1x AA battery.",
     keyFeatures: [
@@ -1113,27 +778,16 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
     name: "Solid Marble Wine & Champagne Ice Chiller Cylinder",
     category: "custom-decor",
     categoryLabel: "Custom Marble Accents",
-    basePrice: 125,
-    rating: 4.9,
-    reviewCount: 39,
     shortDesc: "Thermal stone cylinder keeps champagne & wine chilled for hours without ice.",
     description: "Carved from a solid block of high-density marble. Pre-chilled in the freezer for 20 minutes, stone natural thermal inertia maintains wine serving temperature throughout dinner.",
     imageUrl: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=800&q=80",
     badge: "Entertaining",
     materialOptions: ["White Carrara", "Nero Marquina", "Pietra Grey"],
     sizeOptions: [
-      { name: "Standard Bottle Chiller (12 cm Dia)", priceDelta: 0 },
-      { name: "Champagne Magnum Chiller (15 cm Dia)", priceDelta: 30 }
+      { name: "Standard Bottle Chiller (12 cm Dia)" },
+      { name: "Champagne Magnum Chiller (15 cm Dia)" }
     ],
     dimensions: "120 Dia x 220 H mm",
-    leadTime: "1-2 Business Days",
-    inStock: true,
-    origin: "Carrara, Italy",
-    weight: "2.4 kg",
-    hardnessRating: "Mohs 3.8",
-    density: "2,710 kg/m³",
-    artisanMaster: "SMC Kitchenware Artisans",
-    artisanWorkshop: "SMC Battersea Studio, London",
     craftingTechnique: "Lathe core excavation with honed exterior and felt bottom pad.",
     careInstructions: "Chill in freezer before use. Wipe dry after meal.",
     keyFeatures: [
@@ -1145,168 +799,20 @@ const CATALOG_PRODUCTS: ShopProduct[] = [
   }
 ];
 
-export const DEFAULT_SAMPLE_ORDERS: ShopOrder[] = [
-  {
-    orderRef: "SMC-SHOP-984120",
-    date: "20 Jul 2026",
-    time: "14:25",
-    status: "Shipped",
-    courierName: "SMC Dedicated White-Glove Transit",
-    trackingNumber: "SMC-WG-9841207GB",
-    estimatedDelivery: "24 Jul - 25 Jul 2026",
-    subtotal: 700.00,
-    discount: 0,
-    netSubtotal: 700.00,
-    baseFreightCost: 45.00,
-    heavyHandlingFee: 15.00,
-    transitInsuranceCost: 15.00,
-    deliveryCost: 75.00,
-    vatTax: 140.00,
-    total: 915.00,
-    totalWeightKg: 12.5,
-    custName: "Sir Alex Vance",
-    custEmail: "trade@smcpro.co.uk",
-    custPhone: "+44 7700 900123",
-    custAddress: "42 Park Lane, Mayfair, London W1K 1PN",
-    custPostcode: "W1K 1PN",
-    deliveryNotes: "Contact estate manager 1 hour prior to arrival.",
-    deliveryZoneName: "Greater London & Home Counties",
-    deliveryOption: "white-glove",
-    paymentMethod: "stripe",
-    items: [
-      {
-        cartId: "sample-1",
-        product: CATALOG_PRODUCTS[0],
-        selectedMaterial: "Calacatta Viola",
-        selectedSize: CATALOG_PRODUCTS[0].sizeOptions[0],
-        customEngraving: "THE VANCE ESTATE 2026",
-        quantity: 1,
-        unitPrice: 280
-      },
-      {
-        cartId: "sample-2",
-        product: CATALOG_PRODUCTS[1],
-        selectedMaterial: "Nero Marquina",
-        selectedSize: CATALOG_PRODUCTS[1].sizeOptions[0],
-        selectedHandle: "Brushed Solid Brass",
-        quantity: 1,
-        unitPrice: 420
-      }
-    ],
-    trackingEvents: [
-      {
-        title: "Order Placed & Atelier Reserved",
-        location: "SMC Battersea Atelier, London",
-        timestamp: "20 Jul 2026, 14:25",
-        completed: true,
-        details: "Calacatta Viola & Nero Marquina raw marble blocks allocated to Senior Master Stonemason."
-      },
-      {
-        title: "5-Axis CNC Milling & Miter Joinery",
-        location: "Battersea Stone Studio",
-        timestamp: "21 Jul 2026, 09:15",
-        completed: true,
-        details: "Waterjet contour milling completed down to ±0.2mm tolerance with 45° edge beveling."
-      },
-      {
-        title: "Food-Safe Nano-Wax Sealing & Serial Stamping",
-        location: "Battersea Stone Studio",
-        timestamp: "21 Jul 2026, 16:40",
-        completed: true,
-        details: "BS EN 1186 food contact certified and laser monogram engraved."
-      },
-      {
-        title: "Handed to SMC Dedicated Freight Courier",
-        location: "London SW8 Dispatch Hub",
-        timestamp: "22 Jul 2026, 08:30",
-        completed: true,
-        details: "Packed in custom foam-lined timber crate with certificate of provenance."
-      },
-      {
-        title: "In Transit to Regional Distribution Hub",
-        location: "Mayfair Logistics Hub",
-        timestamp: "22 Jul 2026, 11:20",
-        completed: true,
-        details: "Assigned to Dedicated White-Glove Vehicle #4 (Mayfair/Kensington Route)."
-      },
-      {
-        title: "Out for Final Delivery & Uncrating",
-        location: "42 Park Lane, Mayfair W1K 1PN",
-        timestamp: "Est. 24 Jul 2026",
-        completed: false,
-        details: "Scheduled room-of-choice placement and uncrating by 2-person white-glove crew."
-      }
-    ]
-  },
-  {
-    orderRef: "SMC-SHOP-619284",
-    date: "08 Jul 2026",
-    time: "10:15",
-    status: "Delivered",
-    courierName: "DPD Freight Specialist",
-    trackingNumber: "DPD-998412041GB",
-    estimatedDelivery: "11 Jul 2026",
-    subtotal: 270.00,
-    discount: 8.10,
-    netSubtotal: 261.90,
-    baseFreightCost: 25.00,
-    heavyHandlingFee: 0,
-    transitInsuranceCost: 15.00,
-    deliveryCost: 40.00,
-    vatTax: 52.38,
-    total: 354.28,
-    totalWeightKg: 4.2,
-    custName: "Sir Alex Vance",
-    custEmail: "trade@smcpro.co.uk",
-    custPhone: "+44 7700 900123",
-    custAddress: "42 Park Lane, Mayfair, London W1K 1PN",
-    custPostcode: "W1K 1PN",
-    deliveryNotes: "Leave with front desk concierge.",
-    deliveryZoneName: "Greater London & Home Counties",
-    deliveryOption: "standard",
-    paymentMethod: "bank-transfer",
-    items: [
-      {
-        cartId: "sample-3",
-        product: CATALOG_PRODUCTS[2],
-        selectedMaterial: "Arabescato Corchia",
-        selectedSize: CATALOG_PRODUCTS[2].sizeOptions[0],
-        quantity: 2,
-        unitPrice: 135
-      }
-    ],
-    trackingEvents: [
-      {
-        title: "Order Placed & Wire Transfer Cleared",
-        location: "SMC Battersea Atelier",
-        timestamp: "08 Jul 2026, 10:15",
-        completed: true,
-        details: "3% Wire payment discount applied."
-      },
-      {
-        title: "Hand-Polished & Felt Backing Applied",
-        location: "Battersea Stone Studio",
-        timestamp: "09 Jul 2026, 13:00",
-        completed: true,
-        details: "Set of 6 hexagonal coasters hand-honed and cork-lined."
-      },
-      {
-        title: "Dispatched via DPD Freight",
-        location: "London Distribution Hub",
-        timestamp: "10 Jul 2026, 08:45",
-        completed: true,
-        details: "Transit ID DPD-998412041GB."
-      },
-      {
-        title: "Delivered & Signed for by Concierge",
-        location: "42 Park Lane, Mayfair",
-        timestamp: "11 Jul 2026, 10:50",
-        completed: true,
-        details: "Signed by A. Vance."
-      }
-    ]
-  }
-];
+/**
+ * Phase 5 Gate 0 purge.
+ *
+ * This previously seeded the My Orders view, by default, with two
+ * fabricated completed orders attributed to a named individual ("Sir
+ * Alex Vance") who does not exist — a fake address, phone, and email,
+ * fake order totals (£915.00 / £354.28), a fake wire-transfer discount,
+ * fake courier assignments and tracking numbers, and fake fulfillment
+ * timelines (including a "BS EN 1186 food contact certified" claim and a
+ * fabricated "certificate of provenance"). None of it was ever a real
+ * order. Checkout cannot complete a real order (see handleProcessOrder
+ * above), so there is nothing real to seed order history from.
+ */
+export const DEFAULT_SAMPLE_ORDERS: ShopOrder[] = [];
 
 interface ArtisanShopViewProps {
   onBackToDashboard?: () => void;
@@ -1390,20 +896,20 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
   // Payment Options & Simulator State
   const [paymentMethod, setPaymentMethod] = useState<"stripe" | "apple-pay" | "klarna" | "bank-transfer" | "crypto">("stripe");
   const [testCardMode, setTestCardMode] = useState<"success" | "decline">("success");
-  const [cardNumber, setCardNumber] = useState<string>("4242 4242 4242 4242");
-  const [cardExpiry, setCardExpiry] = useState<string>("12/28");
-  const [cardCvc, setCardCvc] = useState<string>("888");
-  const [cardName, setCardName] = useState<string>("Sir Alex Vance");
+  const [cardNumber, setCardNumber] = useState<string>("");
+  const [cardExpiry, setCardExpiry] = useState<string>("");
+  const [cardCvc, setCardCvc] = useState<string>("");
+  const [cardName, setCardName] = useState<string>("");
   const [cryptoToken, setCryptoToken] = useState<"USDC" | "USDT" | "ETH">("USDC");
   const [copiedWallet, setCopiedWallet] = useState<boolean>(false);
-  
+
   // Checkout Form
-  const [custName, setCustName] = useState<string>("Sir Alex Vance");
+  const [custName, setCustName] = useState<string>("");
   const [custEmail, setCustEmail] = useState<string>(userEmail);
-  const [custPhone, setCustPhone] = useState<string>("+44 7700 900123");
-  const [custAddress, setCustAddress] = useState<string>("42 Park Lane, Mayfair, London W1K 1PN");
-  const [custPostcode, setCustPostcode] = useState<string>("W1K 1PN");
-  const [deliveryNotes, setDeliveryNotes] = useState<string>("Please contact estate manager 1 hour prior to arrival.");
+  const [custPhone, setCustPhone] = useState<string>("");
+  const [custAddress, setCustAddress] = useState<string>("");
+  const [custPostcode, setCustPostcode] = useState<string>("");
+  const [deliveryNotes, setDeliveryNotes] = useState<string>("");
 
   // Order Confirmation State
   const [completedOrder, setCompletedOrder] = useState<any>(null);
@@ -1648,7 +1154,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
     if (!selectedProduct) return;
 
     const sizeObj = selectedProduct.sizeOptions[selectedSizeIndex];
-    const unitPrice = selectedProduct.basePrice + sizeObj.priceDelta;
     const handleVal = selectedProduct.handleOptions ? selectedHandle : undefined;
     const tapVal = selectedProduct.tapFinishOptions ? selectedTapFinish : undefined;
     const engravingVal = customEngraving.trim() || undefined;
@@ -1682,8 +1187,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
         selectedHandle: handleVal,
         selectedTapFinish: tapVal,
         customEngraving: engravingVal,
-        quantity,
-        unitPrice
+        quantity
       };
       return [...prev, newItem];
     });
@@ -1693,10 +1197,9 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
   };
 
   // Helper to add product directly to cart (e.g. from bundle or demo modal)
-  const handleDirectAddToCart = (product: ShopProduct, materialName?: string, sizeOption?: { name: string; priceDelta: number }, qty: number = 1) => {
+  const handleDirectAddToCart = (product: ShopProduct, materialName?: string, sizeOption?: { name: string }, qty: number = 1) => {
     const mat = materialName || product.materialOptions[0] || "Calacatta Viola";
     const size = sizeOption || product.sizeOptions[0];
-    const unitPrice = product.basePrice + size.priceDelta;
 
     setCartItems((prev) => {
       const existingIdx = prev.findIndex(
@@ -1721,8 +1224,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
         product,
         selectedMaterial: mat,
         selectedSize: size,
-        quantity: qty,
-        unitPrice
+        quantity: qty
       };
       return [...prev, newItem];
     });
@@ -1746,193 +1248,42 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
     }
   };
 
-  // Weight and Surcharge Calculations
-  const totalWeightKg = useMemo(() => {
-    return cartItems.reduce((acc, item) => {
-      const raw = item.product.weight || "3.5 kg";
-      const parsed = parseFloat(raw.replace(/[^0-9.]/g, "")) || 3.5;
-      return acc + parsed * item.quantity;
-    }, 0);
-  }, [cartItems]);
-
-  const heavyHandlingFee = useMemo(() => {
-    if (deliveryOption === "pickup") return 0;
-    if (totalWeightKg > 15) {
-      const extraKg = totalWeightKg - 15;
-      return Math.min(60, Math.round(15 + extraKg * 0.8));
-    }
-    return 0;
-  }, [totalWeightKg, deliveryOption]);
-
+  /**
+   * Phase 5 Gate 0 purge (correction pass).
+   *
+   * This entire block previously computed a believable-looking cart total
+   * from nothing but fabricated inputs: a 3.5kg-per-item weight fallback
+   * feeding an invented "heavy handling" surcharge formula, an invented
+   * per-zone freight rate table, a flat £15 "insurance" fee, a fabricated
+   * per-payment-method discount ("3% Wire Trade Discount" / "2% Web3 Gas
+   * Discount"), and 20% VAT applied on top of a subtotal built from the
+   * catalog's fabricated `basePrice`/`priceDelta` figures. None of it was
+   * ever a real price. Checkout is disabled and stays disabled — see
+   * `handleProcessOrder` below — so there is no real total to compute;
+   * every place that used to display one now shows "Price on Application"
+   * or "Request Quote" instead.
+   */
   const activeZone = useMemo(() => {
     return DELIVERY_ZONES.find((z) => z.id === selectedZoneId) || DELIVERY_ZONES[0];
   }, [selectedZoneId]);
 
-  const baseFreightCost = useMemo(() => {
-    if (cartItems.length === 0) return 0;
-    if (deliveryOption === "pickup") return 0;
-    return activeZone.baseRates[deliveryOption] || 45;
-  }, [activeZone, deliveryOption, cartItems]);
-
-  const transitInsuranceCost = useMemo(() => {
-    if (deliveryOption === "pickup") return 0;
-    return includeInsurance ? 15 : 0;
-  }, [includeInsurance, deliveryOption]);
-
-  const deliveryCost = useMemo(() => {
-    if (deliveryOption === "pickup") return 0;
-    return baseFreightCost + heavyHandlingFee + transitInsuranceCost;
-  }, [deliveryOption, baseFreightCost, heavyHandlingFee, transitInsuranceCost]);
-
-  const cartSubtotal = useMemo(() => {
-    return cartItems.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
-  }, [cartItems]);
-
-  const paymentDiscount = useMemo(() => {
-    if (paymentMethod === "bank-transfer") {
-      return Math.round(cartSubtotal * 0.03 * 100) / 100; // 3% Wire Trade Discount
-    }
-    if (paymentMethod === "crypto") {
-      return Math.round(cartSubtotal * 0.02 * 100) / 100; // 2% Web3 Gas Discount
-    }
-    return 0;
-  }, [paymentMethod, cartSubtotal]);
-
-  const netSubtotal = useMemo(() => {
-    return Math.max(0, cartSubtotal - paymentDiscount);
-  }, [cartSubtotal, paymentDiscount]);
-
-  const vatTax = useMemo(() => {
-    return Math.round(netSubtotal * 0.20 * 100) / 100; // 20% UK VAT
-  }, [netSubtotal]);
-
-  const cartTotal = useMemo(() => {
-    return Math.round((netSubtotal + deliveryCost + vatTax) * 100) / 100;
-  }, [netSubtotal, deliveryCost, vatTax]);
-
   // Execute Order / Simulated Payment Process
+  /**
+   * Phase 5 Gate 0 purge.
+   *
+   * The guard below already fails safely — checkout has never been able
+   * to complete for a real customer. Everything that followed the early
+   * `return` was unreachable dead code that fabricated a fake completed
+   * order: a fake order reference and tracking number, a fake named
+   * courier assignment, fake payment-cleared/CNC-milling/QC tracking
+   * events (including a "BS EN 1186 certified" claim), and a fake 3D-Secure
+   * decline-test simulation — the exact "dormant simulated-success" risk
+   * pattern already removed elsewhere in this purge (see
+   * LegalDocumentsModal.tsx). It is deleted here rather than left dormant.
+   */
   const handleProcessOrder = () => {
     setPaymentErrorMessage("Checkout is unavailable until the production payment and order integrations are configured.");
     setIsProcessingPayment(false);
-    return;
-
-    // Step 1: Encrypting
-    setTimeout(() => {
-      setProcessingStepIndex(1); // 3DS Fraud Check
-    }, 600);
-
-    // Step 2: Contacting Bank
-    setTimeout(() => {
-      setProcessingStepIndex(2); // Clearing Funds
-    }, 1200);
-
-    // Step 3: Check test decline vs success
-    setTimeout(() => {
-      if (testCardMode === "decline" && paymentMethod === "stripe") {
-        setIsProcessingPayment(false);
-        setPaymentErrorMessage(
-          "Payment Gateway Declined: 3D-Secure Fraud Authentication Failed or Insufficient Funds (Simulated Decline Test). Please toggle test mode to 'Approved Test Card' or select an alternative payment method."
-        );
-        return;
-      }
-
-      setProcessingStepIndex(3); // Invoice & Provenance Generation
-      setTimeout(() => {
-        setIsProcessingPayment(false);
-        const orderRef = `SMC-SHOP-${Math.floor(100000 + Math.random() * 900000)}`;
-        const deliveryWindowInfo = computeDeliveryWindow(cartItems, deliveryOption, activeZone.name);
-
-        const newOrder = {
-          orderRef,
-          items: [...cartItems],
-          subtotal: cartSubtotal,
-          discount: paymentDiscount,
-          netSubtotal,
-          baseFreightCost,
-          heavyHandlingFee,
-          transitInsuranceCost,
-          deliveryCost,
-          vatTax,
-          total: cartTotal,
-          totalWeightKg,
-          custName,
-          custEmail,
-          custPhone,
-          custAddress,
-          custPostcode,
-          deliveryNotes,
-          deliveryZoneName: activeZone.name,
-          deliveryOption,
-          paymentMethod,
-          deliveryWindowInfo,
-          date: new Date().toLocaleDateString("en-GB", {
-            day: "numeric",
-            month: "short",
-            year: "numeric"
-          }),
-          time: new Date().toLocaleTimeString("en-GB", {
-            hour: "2-digit",
-            minute: "2-digit"
-          }),
-          estimatedDelivery: deliveryWindowInfo.dateRangeStr
-        };
-
-        setCompletedOrder(newOrder);
-
-        const orderTrackingEvents: OrderTrackingEvent[] = [
-          {
-            title: "Order Placed & Payment Cleared",
-            location: "SMC Battersea Atelier",
-            timestamp: `${newOrder.date}, ${newOrder.time}`,
-            completed: true,
-            details: `Order reference ${newOrder.orderRef} created. Total £${newOrder.total.toFixed(2)} paid.`
-          },
-          {
-            title: "Atelier Stone Allocation & CNC Milling",
-            location: "Battersea Stone Studio",
-            timestamp: "In Queue (1-2 Days)",
-            completed: false,
-            details: "Raw slab block selection, waterjet miter cutting, and edge chamfering."
-          },
-          {
-            title: "Food-Safe Nano-Wax Sealing & QC Stamping",
-            location: "Battersea Stone Studio",
-            timestamp: "Scheduled",
-            completed: false,
-            details: "BS EN 1186 certified organic protective wax coating & laser monogramming."
-          },
-          {
-            title: "Crated & Handed to Freight Courier",
-            location: "London SW8 Dispatch Center",
-            timestamp: "Scheduled",
-            completed: false,
-            details: `Dispatched via ${deliveryOption === 'white-glove' ? 'SMC Dedicated White-Glove Transit' : 'Specialist Freight Courier'}.`
-          },
-          {
-            title: "Out for Final Delivery & Uncrating",
-            location: custAddress,
-            timestamp: `Est. ${deliveryWindowInfo.dateRangeStr}`,
-            completed: false,
-            details: "Room of choice delivery and placement."
-          }
-        ];
-
-        const createdShopOrder: ShopOrder = {
-          ...newOrder,
-          status: "Processing",
-          courierName: deliveryOption === "white-glove" ? "SMC Dedicated White-Glove Transit" : "DPD Specialist Freight",
-          trackingNumber: `SMC-TRK-${Math.floor(10000000 + Math.random() * 90000000)}`,
-          trackingEvents: orderTrackingEvents
-        };
-
-        setOrders((prev) => [createdShopOrder, ...prev]);
-
-        setCartItems([]);
-        setIsCheckoutOpen(false);
-        setCheckoutStep("details");
-        setShowEmailToast(true);
-      }, 700);
-    }, 1800);
   };
 
   return (
@@ -2024,7 +1375,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                 <div className="text-left">
                   <span className="text-xs font-serif font-bold block">Artisan Cart</span>
                   <span className="text-[10px] font-mono text-neutral-400 group-hover:text-black font-semibold">
-                    {cartItems.length} items (£{cartSubtotal.toFixed(2)})
+                    {cartItems.length} items
                   </span>
                 </div>
                 {cartItems.length > 0 && (
@@ -2504,7 +1855,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                               )}
                               <div className="flex justify-between items-center pt-1 border-t border-neutral-800/60 text-neutral-300 text-[11px]">
                                 <span>Qty: {item.quantity}</span>
-                                <strong className="text-white font-serif">£{(item.unitPrice * item.quantity).toFixed(2)}</strong>
+                                <strong className="text-white font-serif">Price on Application</strong>
                               </div>
                             </div>
                           </div>
@@ -2593,16 +1944,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                       </span>
                     )}
 
-                    <div className="absolute top-3 right-3 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-md border border-neutral-700 text-[10px] font-mono text-gold flex items-center gap-1 z-10">
-                      <Star className="w-3 h-3 fill-gold text-gold" />
-                      <span>{prod.rating}</span>
-                      <span className="text-neutral-400">({prod.reviewCount})</span>
-                    </div>
-
-                    <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-md border border-neutral-800 text-[10px] font-mono text-neutral-300 z-10">
-                      Lead time: {prod.leadTime}
-                    </div>
-
                     {/* Hover Quick Action Overlay */}
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
                       <span className="px-3.5 py-2 bg-gold/90 text-black font-mono font-bold text-xs rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-xs transform translate-y-2 group-hover:translate-y-0 transition-transform">
@@ -2643,10 +1984,9 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
 
                       <div className="flex flex-col sm:flex-row justify-between sm:items-center pt-2 gap-3">
                         <div>
-                          <span className="text-[10px] font-mono text-neutral-500 uppercase block">Starting from</span>
+                          <span className="text-[10px] font-mono text-neutral-500 uppercase block">Pricing</span>
                           <span className="text-xl font-serif font-bold text-white">
-                            £{prod.basePrice}
-                            <span className="text-xs font-sans text-neutral-400 font-normal"> +VAT</span>
+                            Price on Application
                           </span>
                         </div>
 
@@ -2840,16 +2180,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         <span className="text-neutral-500">Dimensions:</span>
                         <strong className="text-white">{selectedProduct.dimensions}</strong>
                       </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-neutral-500">Craft Lead Time:</span>
-                        <strong className="text-gold">{selectedProduct.leadTime}</strong>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-neutral-500">Food Safe Wax:</span>
-                        <strong className="text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> BS EN Certified
-                        </strong>
-                      </div>
                       <div className="flex justify-between items-center pt-1 border-t border-neutral-800/80">
                         <span className="text-neutral-500">Master Mason:</span>
                         <strong className="text-neutral-300">{selectedProduct.artisanMaster?.split('-')[0] || "SMC Master Stonemason"}</strong>
@@ -2964,9 +2294,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                             }`}
                           >
                             <span>{sObj.name}</span>
-                            <span className="text-gold font-bold">
-                              {sObj.priceDelta === 0 ? "Included" : `+£${sObj.priceDelta}`}
-                            </span>
                           </button>
                         ))}
                       </div>
@@ -2982,7 +2309,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         type="text"
                         value={customEngraving}
                         onChange={(e) => setCustomEngraving(e.target.value)}
-                        placeholder="e.g. 'The Vance Estate' or 'A & M 2026'"
+                        placeholder="e.g. 'The Smith Family' or 'A & M 2026'"
                         maxLength={35}
                         className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-gold placeholder-neutral-600"
                       />
@@ -3007,10 +2334,9 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                       </div>
 
                       <div className="text-right">
-                        <span className="text-[10px] font-mono text-neutral-500 uppercase block">Total Configured Price</span>
+                        <span className="text-[10px] font-mono text-neutral-500 uppercase block">Pricing</span>
                         <span className="text-xl font-serif font-bold text-gold">
-                          £{(selectedProduct.basePrice + selectedProduct.sizeOptions[selectedSizeIndex].priceDelta) * quantity}
-                          <span className="text-xs text-neutral-400 font-sans font-normal"> +VAT</span>
+                          Price on Application
                         </span>
                       </div>
 
@@ -3071,29 +2397,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                     </div>
 
                     {/* Physical Properties Box */}
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-2.5">
-                      <h4 className="text-xs font-mono uppercase text-gold font-bold flex items-center gap-1.5 border-b border-neutral-800 pb-2">
-                        <Sparkles className="w-3.5 h-3.5" /> Geological Stone Metrics
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                        <div className="bg-neutral-950 p-2 rounded border border-neutral-800/80">
-                          <span className="text-[10px] text-neutral-500 block">Quarry Origin</span>
-                          <strong className="text-white text-[11px]">{selectedProduct.origin || "Carrara, Italy"}</strong>
-                        </div>
-                        <div className="bg-neutral-950 p-2 rounded border border-neutral-800/80">
-                          <span className="text-[10px] text-neutral-500 block">Mohs Hardness</span>
-                          <strong className="text-gold text-[11px]">{selectedProduct.hardnessRating || "Mohs 3.8 - 4.0"}</strong>
-                        </div>
-                        <div className="bg-neutral-950 p-2 rounded border border-neutral-800/80">
-                          <span className="text-[10px] text-neutral-500 block">Compressive Density</span>
-                          <strong className="text-white text-[11px]">{selectedProduct.density || "2,710 kg/m³"}</strong>
-                        </div>
-                        <div className="bg-neutral-950 p-2 rounded border border-neutral-800/80">
-                          <span className="text-[10px] text-neutral-500 block">Piece Weight</span>
-                          <strong className="text-white text-[11px]">{selectedProduct.weight || "3.8 kg"}</strong>
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {/* Right Column: Detailed Technical Specification */}
@@ -3154,7 +2457,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         </h4>
                       </div>
                       <p className="text-xs text-neutral-300 leading-relaxed font-sans">
-                        Treated with hydrophobic organic nano-wax. Fully safe for direct food contact (BS EN 1186 certified). Repels citrus oils, vinegar, red wine, and coffee.
+                        Treated with hydrophobic organic nano-wax, safe for direct food contact. Repels citrus oils, vinegar, red wine, and coffee.
                       </p>
                     </div>
 
@@ -3237,7 +2540,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         Full Dimensions, Weight & Packaging
                       </h3>
                       <p className="text-xs text-neutral-400 mt-1 leading-relaxed">
-                        SMC stone components are tolerance-checked to ±0.2mm to guarantee flawless integration into luxury kitchens, vanities, and display shelving.
+                        SMC stone components are precision fabricated for integration into luxury kitchens, vanities, and display shelving.
                       </p>
                     </div>
 
@@ -3249,21 +2552,15 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                       </div>
 
                       <div className="bg-neutral-900 p-3.5 rounded-xl border border-neutral-800 space-y-1">
-                        <span className="text-[10px] text-neutral-500 uppercase block">Net Piece Weight</span>
-                        <strong className="text-white text-sm block">{selectedProduct.weight || "4.8 kg"}</strong>
-                        <p className="text-[10px] text-neutral-400">Solid natural stone mass</p>
-                      </div>
-
-                      <div className="bg-neutral-900 p-3.5 rounded-xl border border-neutral-800 space-y-1">
                         <span className="text-[10px] text-neutral-500 uppercase block">Edge Profile & Chamfer</span>
                         <strong className="text-white text-sm block">45° Micro-Bevel</strong>
                         <p className="text-[10px] text-neutral-400">Hand-finished anti-chip bevel</p>
                       </div>
 
                       <div className="bg-neutral-900 p-3.5 rounded-xl border border-neutral-800 space-y-1">
-                        <span className="text-[10px] text-neutral-500 uppercase block">Packaged Transit Weight</span>
+                        <span className="text-[10px] text-neutral-500 uppercase block">Packaging</span>
                         <strong className="text-emerald-400 text-sm block">
-                          {(parseFloat(selectedProduct.weight || "4.8") + 1.4).toFixed(1)} kg in Timber Crate
+                          Timber Crate
                         </strong>
                         <p className="text-[10px] text-neutral-400">Shock-absorbing foam padded box</p>
                       </div>
@@ -3272,13 +2569,11 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                     {/* Shipping & Handling */}
                     <div className="bg-neutral-900/80 border border-neutral-800 p-4 rounded-xl space-y-2 text-xs font-mono">
                       <h4 className="font-bold text-gold uppercase flex items-center gap-1.5">
-                        <Truck className="w-4 h-4 text-gold" /> White-Glove Transit & Lead Times
+                        <Truck className="w-4 h-4 text-gold" /> Shipping
                       </h4>
-                      <ul className="space-y-1 text-neutral-300 text-[11px]">
-                        <li>• Shipped in reinforced foam-lined timber or heavy corrugated crates.</li>
-                        <li>• Full courier transit insurance included on all stone deliveries.</li>
-                        <li>• Atelier dispatch lead time: <strong className="text-gold">{selectedProduct.leadTime}</strong>.</li>
-                      </ul>
+                      <p className="text-neutral-300 text-[11px]">
+                        Contact SMC for shipping, packaging, and delivery timeframes.
+                      </p>
                     </div>
 
                     <div className="pt-2 flex justify-end">
@@ -3344,22 +2639,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                       ))}
                     </div>
 
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-2 font-mono text-xs text-neutral-300">
-                      <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 text-gold shrink-0 mt-0.5" />
-                        <div>
-                          <span className="text-[10px] text-neutral-500 block uppercase">Atelier Workshop</span>
-                          <strong className="text-white">{selectedProduct.artisanWorkshop || "SMC Battersea Stone Studio, London SW8"}</strong>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-2 pt-2 border-t border-neutral-800">
-                        <Clock className="w-4 h-4 text-gold shrink-0 mt-0.5" />
-                        <div>
-                          <span className="text-[10px] text-neutral-500 block uppercase">Crafting Time</span>
-                          <strong className="text-gold">{selectedProduct.leadTime}</strong>
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {/* Right Column: Handcrafting Narrative & Workflow */}
@@ -3539,7 +2818,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         className="w-full py-3 bg-gold hover:bg-amber-400 text-black font-mono text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
                       >
                         <SlidersHorizontal className="w-3.5 h-3.5" />
-                        <span>Configure & Order This Piece (£{selectedProduct.basePrice})</span>
+                        <span>Configure & Order This Piece</span>
                       </button>
                     </div>
                   </div>
@@ -3879,10 +3158,9 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                   <div className="bg-gradient-to-br from-neutral-900 via-black to-neutral-900 border border-gold/50 rounded-2xl p-4 space-y-3 shadow-xl">
                     <div className="flex justify-between items-baseline">
                       <div>
-                        <span className="text-[10px] font-mono text-neutral-400 uppercase block">Single Board Price</span>
-                        <span className="text-2xl font-serif font-bold text-white">£{islandDemoProduct.basePrice} <span className="text-xs text-neutral-400 font-sans">+VAT</span></span>
+                        <span className="text-[10px] font-mono text-neutral-400 uppercase block">Pricing</span>
+                        <span className="text-2xl font-serif font-bold text-white">Price on Application</span>
                       </div>
-                      <span className="px-2.5 py-1 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded-lg text-[10px] font-mono font-bold">In Stock • 2-3 Day Transit</span>
                     </div>
 
                     <div className="space-y-2">
@@ -3896,7 +3174,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         className="w-full py-3 bg-gold hover:bg-amber-400 text-black font-mono text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg"
                       >
                         <ShoppingCart className="w-4 h-4 fill-black" />
-                        <span>Add Chopping Board to Cart (£{islandDemoProduct.basePrice})</span>
+                        <span>Add Chopping Board to Cart</span>
                       </button>
 
                       {/* ADD COMPLETE KITCHEN ISLAND BUNDLE */}
@@ -3915,13 +3193,9 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         className="w-full py-3 bg-gradient-to-r from-amber-500/20 via-neutral-900 to-amber-500/10 hover:from-gold hover:to-amber-400 text-gold hover:text-black border border-gold/60 font-mono text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Sparkles className="w-4 h-4" />
-                        <span>Add Complete Island Bundle (£255 — Save 15%)</span>
+                        <span>Add Complete Island Bundle</span>
                       </button>
                     </div>
-
-                    <p className="text-[10px] font-mono text-center text-neutral-400">
-                      ⚡ Includes free white-glove padded transit packaging & organic care wax kit.
-                    </p>
                   </div>
 
                 </div>
@@ -4066,7 +3340,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                       </div>
 
                       <span className="font-serif font-bold text-white">
-                        £{item.unitPrice * item.quantity}
+                        Price on Application
                       </span>
                     </div>
 
@@ -4079,17 +3353,9 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
             {cartItems.length > 0 && (
               <div className="pt-4 border-t border-neutral-800 space-y-3">
                 <div className="space-y-1.5 text-xs font-mono">
-                  <div className="flex justify-between text-neutral-400">
-                    <span>Subtotal:</span>
-                    <strong className="text-white">£{cartSubtotal.toFixed(2)}</strong>
-                  </div>
-                  <div className="flex justify-between text-neutral-400">
-                    <span>Est. UK VAT (20%):</span>
-                    <strong className="text-white">£{vatTax.toFixed(2)}</strong>
-                  </div>
-                  <div className="flex justify-between text-neutral-300 font-bold pt-1 border-t border-neutral-800 text-sm">
-                    <span>Total (excl. delivery):</span>
-                    <strong className="text-gold">£{(cartSubtotal + vatTax).toFixed(2)}</strong>
+                  <div className="flex justify-between text-neutral-300 font-bold pt-1 text-sm">
+                    <span>Pricing:</span>
+                    <strong className="text-gold">Price on Application</strong>
                   </div>
                 </div>
 
@@ -4203,7 +3469,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                           type="text"
                           value={custName}
                           onChange={(e) => setCustName(e.target.value)}
-                          placeholder="Sir Alex Vance"
+                          placeholder="Full name"
                           className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2.5 text-white focus:border-gold outline-none"
                         />
                       </div>
@@ -4253,7 +3519,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         type="text"
                         value={custAddress}
                         onChange={(e) => setCustAddress(e.target.value)}
-                        placeholder="42 Park Lane, Mayfair, London W1K 1PN"
+                        placeholder="Street address, city, postcode"
                         className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2.5 text-white focus:border-gold outline-none"
                       />
                     </div>
@@ -4338,7 +3604,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                           </span>
                         </div>
                         <div className="text-right shrink-0 ml-2">
-                          <strong className="text-white text-sm block">£{activeZone.baseRates["white-glove"]}</strong>
                           <Check className={`w-4 h-4 text-gold ml-auto ${deliveryOption === "white-glove" ? "opacity-100" : "opacity-0"}`} />
                         </div>
                       </button>
@@ -4363,7 +3628,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                           </span>
                         </div>
                         <div className="text-right shrink-0 ml-2">
-                          <strong className="text-white text-sm block">£{activeZone.baseRates["express"]}</strong>
                           <Check className={`w-4 h-4 text-gold ml-auto ${deliveryOption === "express" ? "opacity-100" : "opacity-0"}`} />
                         </div>
                       </button>
@@ -4388,7 +3652,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                           </span>
                         </div>
                         <div className="text-right shrink-0 ml-2">
-                          <strong className="text-white text-sm block">£{activeZone.baseRates["standard"]}</strong>
                           <Check className={`w-4 h-4 text-gold ml-auto ${deliveryOption === "standard" ? "opacity-100" : "opacity-0"}`} />
                         </div>
                       </button>
@@ -4413,26 +3676,12 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                           </span>
                         </div>
                         <div className="text-right shrink-0 ml-2">
-                          <strong className="text-emerald-400 text-sm block">FREE £0</strong>
+                          <strong className="text-emerald-400 text-sm block">Free</strong>
                           <Check className={`w-4 h-4 text-gold ml-auto ${deliveryOption === "pickup" ? "opacity-100" : "opacity-0"}`} />
                         </div>
                       </button>
 
                     </div>
-
-                    {/* Heavy Freight Surcharge Notice */}
-                    {heavyHandlingFee > 0 && deliveryOption !== "pickup" && (
-                      <div className="p-3 bg-amber-950/30 border border-amber-800/50 rounded-xl flex items-center justify-between text-xs font-mono">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="w-4 h-4 text-gold" />
-                          <div>
-                            <strong className="text-gold block">Heavy Stone Surcharge Active ({totalWeightKg.toFixed(1)} kg)</strong>
-                            <span className="text-[10px] text-neutral-400">Order exceeds 15kg limit. Multi-person lift required.</span>
-                          </div>
-                        </div>
-                        <strong className="text-white font-bold">+£{heavyHandlingFee}</strong>
-                      </div>
-                    )}
 
                     {/* Transit Damage Insurance Checkbox */}
                     {deliveryOption !== "pickup" && (
@@ -4445,8 +3694,8 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                             className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
                           />
                           <div>
-                            <strong className="text-white block font-bold">Transit Damage Guarantee Insurance (+£15)</strong>
-                            <span className="text-[10px] text-neutral-400">Guarantees instant zero-cost replacement if stone is cracked in transit.</span>
+                            <strong className="text-white block font-bold">Transit Protection</strong>
+                            <span className="text-[10px] text-neutral-400">Optional cover for damage in transit. Terms and pricing confirmed by SMC.</span>
                           </div>
                         </label>
                       </div>
@@ -4483,308 +3732,18 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                   </div>
                 )}
 
-                {/* STEP 3: MOCK PAYMENT GATEWAY SIMULATION */}
+                {/* Phase 5 Gate 0 purge (correction pass): this step previously ran a "mock payment gateway simulation" with five fake payment methods - a Stripe-style card form with real Stripe test-card numbers and a success/decline toggle, Apple/Google Pay, a Klarna "3 interest-free installments" flow claiming a soft credit check with no credit impact, a BACS wire-transfer method showing a fabricated real-looking bank account (sort code, account number, IBAN), and a crypto method showing a fabricated wallet address to send funds to - plus fabricated per-method discounts (3% wire, 2% crypto). None of it was real, and directing a user to wire money or send crypto to a fabricated account is a materially worse risk than a display bug, so the entire step is replaced with an honest notice rather than left dormant. */}
                 {checkoutStep === "payment" && (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
                       <h4 className="font-serif text-base font-bold text-gold flex items-center gap-2">
-                        <CreditCard className="w-4 h-4" /> 3. Select Payment Gateway & Payment Simulator
+                        <CreditCard className="w-4 h-4" /> 3. Payment
                       </h4>
                       <span className="text-[10px] font-mono text-neutral-400">Step 3 of 3</span>
                     </div>
-
-                    {/* Payment Method Tabs */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("stripe")}
-                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                          paymentMethod === "stripe"
-                            ? "bg-gold/20 border-gold text-white font-bold"
-                            : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700"
-                        }`}
-                      >
-                        💳 Card Payment
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("apple-pay")}
-                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                          paymentMethod === "apple-pay"
-                            ? "bg-gold/20 border-gold text-white font-bold"
-                            : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700"
-                        }`}
-                      >
-                         Apple / G-Pay
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("klarna")}
-                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                          paymentMethod === "klarna"
-                            ? "bg-gold/20 border-gold text-white font-bold"
-                            : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700"
-                        }`}
-                      >
-                        🛍 Klarna 3x Split
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("bank-transfer")}
-                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                          paymentMethod === "bank-transfer"
-                            ? "bg-gold/20 border-gold text-white font-bold"
-                            : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700"
-                        }`}
-                      >
-                        🏛 Wire (-3% Trade)
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("crypto")}
-                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
-                          paymentMethod === "crypto"
-                            ? "bg-gold/20 border-gold text-white font-bold"
-                            : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700"
-                        }`}
-                      >
-                        ⚡ Web3 (-2% Gas)
-                      </button>
+                    <div className="p-4 bg-neutral-900 border border-neutral-800 rounded-xl text-xs text-neutral-300" role="status">
+                      Online payment is not currently available. Contact SMC to arrange payment for your order once pricing is confirmed.
                     </div>
-
-                    {/* METHOD 1: CREDIT / DEBIT CARD SIMULATION */}
-                    {paymentMethod === "stripe" && (
-                      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-3 font-mono text-xs">
-                        
-                        <div className="flex items-center justify-between border-b border-neutral-800 pb-2">
-                          <span className="text-white font-bold flex items-center gap-1.5">
-                            <Lock className="w-3.5 h-3.5 text-gold" /> Encrypted Card Terminal
-                          </span>
-                          <span className="text-[10px] text-neutral-400">Visa • Mastercard • Amex</span>
-                        </div>
-
-                        {/* Test Mode Simulator Toggle */}
-                        <div className="bg-neutral-950 p-2.5 rounded-lg border border-neutral-800 flex items-center justify-between">
-                          <span className="text-[10px] text-neutral-400">Gateway Test Simulation Mode:</span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTestCardMode("success");
-                                setCardNumber("4242 4242 4242 4242");
-                                setPaymentErrorMessage(null);
-                              }}
-                              className={`px-2.5 py-1 rounded text-[10px] cursor-pointer transition-colors ${
-                                testCardMode === "success"
-                                  ? "bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40"
-                                  : "bg-neutral-900 text-neutral-500 hover:text-white"
-                              }`}
-                            >
-                              ✓ Approved Test Card
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setTestCardMode("decline");
-                                setCardNumber("4000 0000 0000 0002");
-                                setPaymentErrorMessage(null);
-                              }}
-                              className={`px-2.5 py-1 rounded text-[10px] cursor-pointer transition-colors ${
-                                testCardMode === "decline"
-                                  ? "bg-red-500/20 text-red-300 font-bold border border-red-500/40"
-                                  : "bg-neutral-900 text-neutral-500 hover:text-white"
-                              }`}
-                            >
-                              ✕ Decline Test Card
-                            </button>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="text-neutral-400 block mb-1">Cardholder Name:</label>
-                          <input
-                            type="text"
-                            value={cardName}
-                            onChange={(e) => setCardName(e.target.value)}
-                            className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-white"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-neutral-400 block mb-1">Card Number:</label>
-                          <input
-                            type="text"
-                            value={cardNumber}
-                            onChange={(e) => setCardNumber(e.target.value)}
-                            className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-gold font-bold tracking-widest"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-neutral-400 block mb-1">Expiry Date:</label>
-                            <input
-                              type="text"
-                              value={cardExpiry}
-                              onChange={(e) => setCardExpiry(e.target.value)}
-                              placeholder="MM/YY"
-                              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-white"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-neutral-400 block mb-1">CVC Code:</label>
-                            <input
-                              type="text"
-                              value={cardCvc}
-                              onChange={(e) => setCardCvc(e.target.value)}
-                              placeholder="123"
-                              className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-white"
-                            />
-                          </div>
-                        </div>
-
-                      </div>
-                    )}
-
-                    {/* METHOD 2: APPLE / GOOGLE PAY */}
-                    {paymentMethod === "apple-pay" && (
-                      <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 space-y-4 text-center font-mono">
-                        <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center mx-auto text-xl font-bold">
-                          
-                        </div>
-                        <div className="space-y-1">
-                          <h5 className="text-white font-serif font-bold text-base">One-Touch Biometric Express Pay</h5>
-                          <p className="text-xs text-neutral-400">
-                            Authorize instant payment with Face ID, Touch ID, or Google Wallet key.
-                          </p>
-                        </div>
-                        <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-xl text-xs text-neutral-300">
-                          Total Amount: <strong className="text-gold font-serif font-bold text-sm ml-1">£{cartTotal.toFixed(2)}</strong>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* METHOD 3: KLARNA INSTALLMENTS */}
-                    {paymentMethod === "klarna" && (
-                      <div className="bg-pink-950/20 border border-pink-900/40 rounded-xl p-4 space-y-3 font-mono text-xs">
-                        <div className="flex items-center justify-between border-b border-pink-900/40 pb-2">
-                          <span className="text-pink-300 font-bold flex items-center gap-1.5">
-                            🛍 Klarna Pay in 3 Interest-Free Installments
-                          </span>
-                          <span className="text-[10px] bg-pink-950 text-pink-300 border border-pink-800 px-2 py-0.5 rounded">0% APR</span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 space-y-0.5">
-                            <span className="text-[9px] text-neutral-400 block uppercase">1st Payment Today</span>
-                            <strong className="text-gold block font-serif">£{(cartTotal / 3).toFixed(2)}</strong>
-                          </div>
-                          <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 space-y-0.5">
-                            <span className="text-[9px] text-neutral-400 block uppercase">In 30 Days</span>
-                            <strong className="text-white block font-serif">£{(cartTotal / 3).toFixed(2)}</strong>
-                          </div>
-                          <div className="bg-neutral-900 p-2.5 rounded-lg border border-neutral-800 space-y-0.5">
-                            <span className="text-[9px] text-neutral-400 block uppercase">In 60 Days</span>
-                            <strong className="text-white block font-serif">£{(cartTotal / 3).toFixed(2)}</strong>
-                          </div>
-                        </div>
-
-                        <p className="text-[10px] text-neutral-400">
-                          Instant soft credit check conducted at authorization. No impact on credit score.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* METHOD 4: BACS DIRECT WIRE TRANSFER */}
-                    {paymentMethod === "bank-transfer" && (
-                      <div className="bg-emerald-950/20 border border-emerald-800/40 rounded-xl p-4 space-y-3 font-mono text-xs">
-                        <div className="flex items-center justify-between border-b border-emerald-800/40 pb-2">
-                          <span className="text-emerald-300 font-bold flex items-center gap-1.5">
-                            <Building className="w-4 h-4" /> BACS Direct Wire Transfer (-3% Discount Applied)
-                          </span>
-                          <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-700 px-2 py-0.5 rounded font-bold">
-                            Saved £{paymentDiscount.toFixed(2)}
-                          </span>
-                        </div>
-
-                        <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 space-y-2 text-neutral-300">
-                          <div className="flex justify-between">
-                            <span className="text-neutral-500">Bank Name:</span>
-                            <strong className="text-white">Barclays Commercial Bank, London</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-neutral-500">Account Name:</span>
-                            <strong className="text-white">SMC Stonemasonry Atelier Ltd</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-neutral-500">Sort Code:</span>
-                            <strong className="text-gold">20-00-00</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-neutral-500">Account No:</span>
-                            <strong className="text-gold">88942019</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-neutral-500">IBAN / SWIFT:</span>
-                            <strong className="text-white">GB88 BARC 2000 0088 9420 19</strong>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* METHOD 5: WEB3 CRYPTO */}
-                    {paymentMethod === "crypto" && (
-                      <div className="bg-purple-950/20 border border-purple-800/40 rounded-xl p-4 space-y-3 font-mono text-xs">
-                        <div className="flex items-center justify-between border-b border-purple-800/40 pb-2">
-                          <span className="text-purple-300 font-bold flex items-center gap-1.5">
-                            <Zap className="w-4 h-4 text-purple-400" /> Web3 Crypto Checkout (-2% Discount)
-                          </span>
-                          <div className="flex items-center gap-1">
-                            {(["USDC", "USDT", "ETH"] as const).map((t) => (
-                              <button
-                                key={t}
-                                type="button"
-                                onClick={() => setCryptoToken(t)}
-                                className={`px-2 py-0.5 rounded text-[10px] cursor-pointer ${
-                                  cryptoToken === t ? "bg-purple-600 text-white font-bold" : "bg-neutral-900 text-neutral-400"
-                                }`}
-                              >
-                                {t}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 flex items-center gap-3">
-                          <div className="w-16 h-16 bg-white p-1 rounded-lg flex items-center justify-center shrink-0">
-                            <QrCode className="w-14 h-14 text-black" />
-                          </div>
-                          <div className="space-y-1 flex-1 overflow-hidden">
-                            <span className="text-[10px] text-neutral-500 block uppercase">Send {cryptoToken} to Wallet:</span>
-                            <code className="text-[10px] text-purple-300 font-mono block truncate bg-neutral-900 p-1.5 rounded border border-neutral-800">
-                              0x71C7656EC7ab88b098defB751B7401B5f6d8976F
-                            </code>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText("0x71C7656EC7ab88b098defB751B7401B5f6d8976F");
-                                setCopiedWallet(true);
-                                setTimeout(() => setCopiedWallet(false), 2000);
-                              }}
-                              className="text-[10px] text-gold hover:underline cursor-pointer"
-                            >
-                              {copiedWallet ? "✓ Address Copied!" : "Copy Wallet Address"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     <div className="pt-2 flex justify-between">
                       <button
                         onClick={() => setCheckoutStep("shipping")}
@@ -4794,7 +3753,6 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         <span>Back to Freight</span>
                       </button>
                     </div>
-
                   </div>
                 )}
 
@@ -4817,52 +3775,16 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                           <span className="text-white font-bold block truncate">{item.quantity}x {item.product.name}</span>
                           <span className="text-[10px] text-neutral-400 block">{item.selectedMaterial}</span>
                         </div>
-                        <strong className="text-white text-xs shrink-0">£{item.unitPrice * item.quantity}</strong>
+                        <strong className="text-white text-xs shrink-0">Price on Application</strong>
                       </div>
                     ))}
                   </div>
 
-                  {/* Itemized Financials */}
+                  {/* Pricing */}
                   <div className="space-y-1.5 pt-2 border-t border-neutral-800 text-xs font-mono">
-                    <div className="flex justify-between text-neutral-400">
-                      <span>Artisan Items Subtotal:</span>
-                      <strong className="text-white">£{cartSubtotal.toFixed(2)}</strong>
-                    </div>
-
-                    {paymentDiscount > 0 && (
-                      <div className="flex justify-between text-emerald-400 font-bold">
-                        <span>Payment Discount:</span>
-                        <span>-£{paymentDiscount.toFixed(2)}</span>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between text-neutral-400">
-                      <span>Base Regional Freight ({activeZone.name}):</span>
-                      <strong className="text-white">£{baseFreightCost.toFixed(2)}</strong>
-                    </div>
-
-                    {heavyHandlingFee > 0 && (
-                      <div className="flex justify-between text-amber-400">
-                        <span>Heavy Stone Surcharge:</span>
-                        <strong>+£{heavyHandlingFee.toFixed(2)}</strong>
-                      </div>
-                    )}
-
-                    {includeInsurance && deliveryOption !== "pickup" && (
-                      <div className="flex justify-between text-neutral-400">
-                        <span>Transit Damage Guarantee:</span>
-                        <strong className="text-white">+£15.00</strong>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between text-neutral-400">
-                      <span>UK VAT (20%):</span>
-                      <strong className="text-white">£{vatTax.toFixed(2)}</strong>
-                    </div>
-
-                    <div className="flex justify-between text-white font-bold text-lg pt-2 border-t border-neutral-700 font-serif">
-                      <span>Total Amount Due:</span>
-                      <strong className="text-gold">£{cartTotal.toFixed(2)}</strong>
+                    <div className="flex justify-between text-white font-bold text-lg pt-2 font-serif">
+                      <span>Pricing:</span>
+                      <strong className="text-gold">Price on Application</strong>
                     </div>
                   </div>
                 </div>
@@ -4872,9 +3794,9 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                   <div className="p-3 bg-neutral-950 border border-neutral-800 rounded-xl text-[10px] font-mono text-neutral-400 space-y-1">
                     <div className="flex items-center gap-1.5 text-gold font-bold">
                       <Lock className="w-3.5 h-3.5" />
-                      <span>SMC Encrypted Gateway Ready</span>
+                      <span>Checkout Unavailable</span>
                     </div>
-                    <p>Protected by SMC Trade Guarantee. Certificate of Authenticity & Tax Invoice generated instantly.</p>
+                    <p>Online checkout is not currently available. Contact SMC to arrange payment and confirm pricing for your order.</p>
                   </div>
 
                   <button
@@ -4882,17 +3804,8 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                     disabled={isProcessingPayment}
                     className="w-full py-4 bg-gold hover:bg-amber-400 text-black font-serif font-bold text-base rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xl disabled:opacity-50"
                   >
-                    {isProcessingPayment ? (
-                      <div className="flex items-center gap-2 text-black">
-                        <Clock className="w-5 h-5 animate-spin" />
-                        <span className="font-mono text-xs">Processing Step {processingStepIndex + 1}/4...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <CheckSquare className="w-5 h-5" />
-                        <span>Authorize Payment (£{cartTotal.toFixed(2)})</span>
-                      </>
-                    )}
+                    <CheckSquare className="w-5 h-5" />
+                    <span>Request Quote</span>
                   </button>
                 </div>
 
@@ -5042,34 +3955,16 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                     <span className="truncate max-w-[280px]">
                       {item.quantity}x {item.product.name} ({item.selectedMaterial})
                     </span>
-                    <strong>£{(item.unitPrice * item.quantity).toFixed(2)}</strong>
+                    <strong>Price on Application</strong>
                   </div>
                 ))}
               </div>
 
-              {/* Financial Totals */}
+              {/* Pricing */}
               <div className="space-y-1 pt-2 border-t border-neutral-800 text-neutral-400">
-                <div className="flex justify-between">
-                  <span>Items Subtotal:</span>
-                  <strong className="text-white">£{completedOrder.subtotal.toFixed(2)}</strong>
-                </div>
-                {completedOrder.discount > 0 && (
-                  <div className="flex justify-between text-emerald-400">
-                    <span>Discount:</span>
-                    <strong>-£{completedOrder.discount.toFixed(2)}</strong>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span>Regional Freight & Handling ({completedOrder.totalWeightKg.toFixed(1)}kg):</span>
-                  <strong className="text-white">£{completedOrder.deliveryCost.toFixed(2)}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span>UK VAT (20%):</span>
-                  <strong className="text-white">£{completedOrder.vatTax.toFixed(2)}</strong>
-                </div>
-                <div className="flex justify-between text-sm text-white font-bold pt-1 border-t border-neutral-700">
-                  <span>Total Paid:</span>
-                  <strong className="text-emerald-400">£{completedOrder.total.toFixed(2)}</strong>
+                <div className="flex justify-between text-sm text-white font-bold pt-1">
+                  <span>Pricing:</span>
+                  <strong className="text-emerald-400">Price on Application</strong>
                 </div>
               </div>
 
@@ -5299,33 +4194,19 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
                         <strong className="text-white block">{item.quantity}x {item.product.name}</strong>
                         <span className="text-[10px] text-neutral-400">{item.selectedMaterial} • {item.selectedSize.name}</span>
                       </div>
-                      <strong className="text-white font-serif text-sm">£{(item.unitPrice * item.quantity).toFixed(2)}</strong>
+                      <strong className="text-white font-serif text-sm">Price on Application</strong>
                     </div>
                   ))}
                 </div>
 
                 <div className="pt-3 border-t border-neutral-800 space-y-1 text-neutral-400">
                   <div className="flex justify-between">
-                    <span>Subtotal:</span>
-                    <strong className="text-white">£{completedOrder.subtotal.toFixed(2)}</strong>
-                  </div>
-                  {completedOrder.discount > 0 && (
-                    <div className="flex justify-between text-emerald-400">
-                      <span>Payment Method Discount:</span>
-                      <strong>-£{completedOrder.discount.toFixed(2)}</strong>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span>Regional Courier Freight ({completedOrder.deliveryZoneName}):</span>
-                    <strong className="text-white">£{completedOrder.deliveryCost.toFixed(2)}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>UK VAT (20%):</span>
-                    <strong className="text-white">£{completedOrder.vatTax.toFixed(2)}</strong>
+                    <span>Delivery Zone:</span>
+                    <strong className="text-white">{completedOrder.deliveryZoneName}</strong>
                   </div>
                   <div className="flex justify-between text-base font-bold text-white pt-2 border-t border-neutral-700 font-serif">
-                    <span>Total Amount Paid:</span>
-                    <strong className="text-gold">£{completedOrder.total.toFixed(2)}</strong>
+                    <span>Pricing:</span>
+                    <strong className="text-gold">Price on Application</strong>
                   </div>
                 </div>
               </div>
@@ -5428,7 +4309,7 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
           </div>
           <div className="text-left font-mono text-xs">
             <div className="font-serif font-bold text-sm leading-tight">Artisan Cart</div>
-            <div className="text-[10px] text-neutral-900 font-semibold">£{cartTotal.toFixed(2)} ({cartItems.length} items)</div>
+            <div className="text-[10px] text-neutral-900 font-semibold">{cartItems.length} items</div>
           </div>
         </button>
       )}

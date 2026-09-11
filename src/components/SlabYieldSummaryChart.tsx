@@ -66,22 +66,32 @@ export default function SlabYieldSummaryChart({
     return projects; // all projects including completed
   }, [projects, statusFilter]);
 
-  // Compute yield analytics for each project
+  /**
+   * Phase 5 Gate 0 purge.
+   *
+   * This previously fell back to a fabricated 88.5% yield whenever a
+   * project had no real fabrication log (the `|| 88.5` triggered even
+   * when the honest default was numeric 0, since 0 is falsy), padded
+   * projects with no real dimensions using a fabricated per-index area
+   * list, and fell back to fabricated BS-standard/CNC-machine/orientation
+   * strings. Net area is computed only from a project's own entered
+   * dimensions; yield, gross-slab, and offcut figures are only computed
+   * for projects with a real recorded `fabricationDetails` entry —
+   * everything else is marked as not yet recorded rather than guessed.
+   */
   const projectYieldData = useMemo(() => {
-    return filteredProjects.map((p, idx) => {
+    return filteredProjects.map((p) => {
       const fabDetails = getFabricationDetailsForProject(p);
-      const yieldPct = fabDetails.materialYieldPct || 88.5;
+      const hasRecordedFabrication = Boolean(p.fabricationDetails);
+      const yieldPct = hasRecordedFabrication ? fabDetails.materialYieldPct : 0;
 
-      // Calculate Net Sq Ft from estimates or fallback
-      let netAreaSqFt = p.estimates.reduce((acc, est) => acc + (est.length * est.width / 144), 0);
-      if (netAreaSqFt === 0) {
-        // Realistic default estimate area based on project index/type
-        const defaultAreas = [68.5, 48.0, 54.2, 72.0, 39.5];
-        netAreaSqFt = defaultAreas[idx % defaultAreas.length];
-      }
-
-      const grossSlabSqFt = Math.round((netAreaSqFt / (yieldPct / 100)) * 10) / 10;
-      const offcutSqFt = Math.max(0, Math.round((grossSlabSqFt - netAreaSqFt) * 10) / 10);
+      const netAreaSqFt = p.estimates.reduce((acc, est) => acc + (est.length * est.width / 144), 0);
+      const grossSlabSqFt = hasRecordedFabrication && yieldPct > 0
+        ? Math.round((netAreaSqFt / (yieldPct / 100)) * 10) / 10
+        : netAreaSqFt;
+      const offcutSqFt = hasRecordedFabrication
+        ? Math.max(0, Math.round((grossSlabSqFt - netAreaSqFt) * 10) / 10)
+        : 0;
 
       // Convert to square meters if unitMode is sqm (1 sq ft = 0.092903 sq m)
       const multiplier = unitMode === "sqm" ? 0.092903 : 1;
@@ -90,7 +100,7 @@ export default function SlabYieldSummaryChart({
       const offcutAreaDisp = Math.round(offcutSqFt * multiplier * 10) / 10;
 
       // Get primary material name
-      const primaryMat = p.estimates[0] ? getMaterialById(p.estimates[0].materialId).name : "Calacatta Gold";
+      const primaryMat = p.estimates[0] ? getMaterialById(p.estimates[0].materialId).name : "Not yet selected";
 
       return {
         id: p.id,
@@ -99,10 +109,11 @@ export default function SlabYieldSummaryChart({
         fullName: p.name,
         address: p.address,
         status: p.status,
+        hasRecordedFabrication,
         yieldPct,
-        bsStandard: fabDetails.bsStandardCode || "BS EN 1469",
-        cncMachine: fabDetails.wetCncMachineId || "CNC-WATERJET-01",
-        cuttingOrientation: fabDetails.cuttingOrientation || "Longitudinal Grain Match",
+        bsStandard: fabDetails.bsStandardCode,
+        cncMachine: fabDetails.wetCncMachineId,
+        cuttingOrientation: fabDetails.cuttingOrientation,
         netAreaSqFt,
         grossSlabSqFt,
         offcutSqFt,
@@ -110,44 +121,36 @@ export default function SlabYieldSummaryChart({
         grossAreaDisp,
         offcutAreaDisp,
         primaryMaterial: primaryMat,
-        isCompliant: yieldPct >= 85.0,
-        isHighEfficiency: yieldPct >= 90.0,
-        color: yieldPct >= 90.0 ? "#10B981" : yieldPct >= 85.0 ? "#D4AF37" : "#F59E0B"
+        isCompliant: hasRecordedFabrication && yieldPct >= 85.0,
+        isHighEfficiency: hasRecordedFabrication && yieldPct >= 90.0,
+        color: !hasRecordedFabrication ? "#9CA3AF" : yieldPct >= 90.0 ? "#10B981" : yieldPct >= 85.0 ? "#D4AF37" : "#F59E0B"
       };
     });
   }, [filteredProjects, getFabricationDetailsForProject, getMaterialById, unitMode]);
 
-  // Aggregate summary stats
+  // Aggregate summary stats (computed only from projects with a recorded fabrication log)
   const summaryMetrics = useMemo(() => {
-    if (projectYieldData.length === 0) {
-      return {
-        avgYield: 0,
-        totalNet: 0,
-        totalGross: 0,
-        totalOffcut: 0,
-        compliantCount: 0,
-        totalCount: 0,
-        compliancePct: 0
-      };
-    }
+    const recordedData = projectYieldData.filter((p) => p.hasRecordedFabrication);
 
     const totalNetSqFt = projectYieldData.reduce((acc, p) => acc + p.netAreaSqFt, 0);
-    const totalGrossSqFt = projectYieldData.reduce((acc, p) => acc + p.grossSlabSqFt, 0);
-    const totalOffcutSqFt = projectYieldData.reduce((acc, p) => acc + p.offcutSqFt, 0);
-    const weightedAvgYield = Math.round((totalNetSqFt / totalGrossSqFt) * 1000) / 10;
+    const totalGrossSqFt = recordedData.reduce((acc, p) => acc + p.grossSlabSqFt, 0);
+    const totalOffcutSqFt = recordedData.reduce((acc, p) => acc + p.offcutSqFt, 0);
+    const weightedAvgYield = totalGrossSqFt > 0 ? Math.round((recordedData.reduce((acc, p) => acc + p.netAreaSqFt, 0) / totalGrossSqFt) * 1000) / 10 : 0;
 
-    const compliantCount = projectYieldData.filter(p => p.isCompliant).length;
+    const compliantCount = recordedData.filter(p => p.isCompliant).length;
+    const recordedCount = recordedData.length;
     const totalCount = projectYieldData.length;
-    const compliancePct = Math.round((compliantCount / totalCount) * 100);
+    const compliancePct = recordedCount > 0 ? Math.round((compliantCount / recordedCount) * 100) : 0;
 
     const multiplier = unitMode === "sqm" ? 0.092903 : 1;
 
     return {
-      avgYield: weightedAvgYield || 89.2,
+      avgYield: weightedAvgYield,
       totalNet: Math.round(totalNetSqFt * multiplier * 10) / 10,
       totalGross: Math.round(totalGrossSqFt * multiplier * 10) / 10,
       totalOffcut: Math.round(totalOffcutSqFt * multiplier * 10) / 10,
       compliantCount,
+      recordedCount,
       totalCount,
       compliancePct
     };
@@ -172,9 +175,9 @@ export default function SlabYieldSummaryChart({
           <div className="grid grid-cols-2 gap-2 pt-1 font-mono">
             <div className="bg-neutral-900/80 p-2 rounded border border-neutral-800">
               <span className="text-[9px] text-neutral-400 uppercase block">Yield Rate</span>
-              <span className="text-sm font-bold text-gold">{data.yieldPct}%</span>
+              <span className="text-sm font-bold text-gold">{data.hasRecordedFabrication ? `${data.yieldPct}%` : "—"}</span>
               <span className="text-[9px] text-emerald-400 block mt-0.5">
-                {data.yieldPct >= 85 ? "✓ BS EN 1469 Pass" : "⚠ Below Benchmark"}
+                {!data.hasRecordedFabrication ? "Not yet recorded" : data.yieldPct >= 85 ? "✓ Meets BS Standard" : "⚠ Below Benchmark"}
               </span>
             </div>
 
@@ -190,14 +193,18 @@ export default function SlabYieldSummaryChart({
               <span>Net Utilized Area:</span>
               <strong className="text-white">{data.netAreaDisp} {unitMode === "sqft" ? "sq ft" : "m²"}</strong>
             </div>
-            <div className="flex justify-between text-neutral-300">
-              <span>Gross Slab Total:</span>
-              <strong className="text-neutral-300">{data.grossAreaDisp} {unitMode === "sqft" ? "sq ft" : "m²"}</strong>
-            </div>
-            <div className="flex justify-between text-neutral-300">
-              <span>Reclaimable Offcut:</span>
-              <strong className="text-amber-400">{data.offcutAreaDisp} {unitMode === "sqft" ? "sq ft" : "m²"}</strong>
-            </div>
+            {data.hasRecordedFabrication && (
+              <>
+                <div className="flex justify-between text-neutral-300">
+                  <span>Gross Slab Total:</span>
+                  <strong className="text-neutral-300">{data.grossAreaDisp} {unitMode === "sqft" ? "sq ft" : "m²"}</strong>
+                </div>
+                <div className="flex justify-between text-neutral-300">
+                  <span>Reclaimable Offcut:</span>
+                  <strong className="text-amber-400">{data.offcutAreaDisp} {unitMode === "sqft" ? "sq ft" : "m²"}</strong>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="text-[9px] text-neutral-400 font-sans italic border-t border-neutral-800 pt-1.5 mt-1">
@@ -374,7 +381,9 @@ export default function SlabYieldSummaryChart({
             {summaryMetrics.compliancePct}%
           </div>
           <p className="text-[10px] text-neutral-500 font-mono">
-            {summaryMetrics.compliantCount} of {summaryMetrics.totalCount} files meet ≥85% threshold
+            {summaryMetrics.recordedCount > 0
+              ? `${summaryMetrics.compliantCount} of ${summaryMetrics.recordedCount} recorded files meet ≥85% threshold`
+              : `0 of ${summaryMetrics.totalCount} files have recorded fabrication data`}
           </p>
         </div>
       </div>
@@ -570,7 +579,7 @@ export default function SlabYieldSummaryChart({
                   <p className="text-[10px] text-neutral-400 font-mono truncate">{item.address}</p>
                 </div>
                 <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-neutral-900 text-gold border border-gold/30 shrink-0">
-                  {item.yieldPct}% Yield
+                  {item.hasRecordedFabrication ? `${item.yieldPct}% Yield` : "Not yet recorded"}
                 </span>
               </div>
 
@@ -578,14 +587,19 @@ export default function SlabYieldSummaryChart({
               <div className="space-y-1">
                 <div className="flex justify-between items-center text-[9px] font-mono">
                   <span className="text-neutral-500">
-                    Net: <strong className="text-neutral-800">{item.netAreaDisp} {unitLabel}</strong> / Gross: <strong className="text-neutral-600">{item.grossAreaDisp} {unitLabel}</strong>
+                    Net: <strong className="text-neutral-800">{item.netAreaDisp} {unitLabel}</strong>
+                    {item.hasRecordedFabrication && (
+                      <> / Gross: <strong className="text-neutral-600">{item.grossAreaDisp} {unitLabel}</strong></>
+                    )}
                   </span>
-                  <span className="text-amber-600 font-bold">-{item.offcutAreaDisp} {unitLabel} offcut</span>
+                  {item.hasRecordedFabrication && (
+                    <span className="text-amber-600 font-bold">-{item.offcutAreaDisp} {unitLabel} offcut</span>
+                  )}
                 </div>
                 <div className="w-full bg-neutral-200/70 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, item.yieldPct)}%`, backgroundColor: item.color }}
+                    style={{ width: `${item.hasRecordedFabrication ? Math.min(100, item.yieldPct) : 0}%`, backgroundColor: item.color }}
                   />
                 </div>
               </div>

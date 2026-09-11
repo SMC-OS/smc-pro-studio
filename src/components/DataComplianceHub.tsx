@@ -28,35 +28,18 @@ interface AuditLogEntry {
   status: "VERIFIED" | "COMPLIANT";
 }
 
-const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
-  {
-    id: "LOG-2026-9941",
-    timestamp: "2026-07-30 13:42:10 UTC",
-    action: "AES-256 Key Rotation & CAD Blueprint Vault Backup",
-    userRef: "SYSTEM_AUTOMATED_JOB",
-    ipAddress: "185.120.44.12 (London HQ)",
-    securityLevel: "HIGH",
-    status: "VERIFIED"
-  },
-  {
-    id: "LOG-2026-9812",
-    timestamp: "2026-07-30 11:15:04 UTC",
-    action: "Stripe Tokenized Payment Handshake",
-    userRef: "CLIENT_TRADE_VIP",
-    ipAddress: "86.14.92.110 (Mayfair)",
-    securityLevel: "ENCRYPTED",
-    status: "COMPLIANT"
-  },
-  {
-    id: "LOG-2026-9740",
-    timestamp: "2026-07-29 16:30:22 UTC",
-    action: "DSAR Consent Telemetry Refresh",
-    userRef: "DPO_OFFICER_PANEL",
-    ipAddress: "185.120.44.12",
-    securityLevel: "STANDARD",
-    status: "VERIFIED"
-  }
-];
+/**
+ * Phase 5 Gate 0 purge.
+ *
+ * This seed previously contained three fabricated audit-log entries,
+ * including a fake IP-attributed "Stripe Tokenized Payment Handshake"
+ * event with a "COMPLIANT" status, presented as a real-time cryptographic
+ * audit trail. No such logging pipeline exists. The audit-trail table
+ * structure is genuinely reusable, so it is kept; the seed data is
+ * emptied so the log starts honestly empty until real events are
+ * recorded by a production audit pipeline.
+ */
+const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [];
 
 export default function DataComplianceHub() {
   const [activeTab, setActiveTab] = useState<"security" | "dsar" | "cookies" | "logs">("security");
@@ -135,9 +118,6 @@ export default function DataComplianceHub() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30 px-3 py-1 rounded-full text-[10px] font-mono uppercase font-bold tracking-widest flex items-center gap-1.5">
               <Lock className="w-3 h-3" /> PRIVACY & DATA REQUEST CENTER
-            </span>
-            <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-mono uppercase font-bold tracking-widest">
-              ICO REGISTERED: ZB394019
             </span>
           </div>
 
@@ -258,7 +238,7 @@ export default function DataComplianceHub() {
               </div>
               <div className="bg-black/40 p-3 rounded-xl border border-neutral-800">
                 <span className="text-neutral-500 block text-[10px]">ICO Registration</span>
-                <span className="text-white font-bold">ZB394019</span>
+                <span className="text-white font-bold">Not yet registered</span>
               </div>
               <div className="bg-black/40 p-3 rounded-xl border border-neutral-800">
                 <span className="text-neutral-500 block text-[10px]">Transport Protocol</span>
@@ -266,7 +246,7 @@ export default function DataComplianceHub() {
               </div>
               <div className="bg-black/40 p-3 rounded-xl border border-neutral-800">
                 <span className="text-neutral-500 block text-[10px]">Security Audit</span>
-                <span className="text-emerald-400 font-bold">Passed (07/2026)</span>
+                <span className="text-white font-bold">Not yet audited</span>
               </div>
             </div>
           </div>
@@ -358,7 +338,7 @@ export default function DataComplianceHub() {
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Lord Alastair Crawford"
+                    placeholder="Full name"
                     className="w-full bg-[#252525] border border-neutral-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
@@ -370,7 +350,7 @@ export default function DataComplianceHub() {
                     required
                     value={userEmail}
                     onChange={(e) => setUserEmail(e.target.value)}
-                    placeholder="e.g. alastair@kensington-estates.co.uk"
+                    placeholder="you@example.co.uk"
                     className="w-full bg-[#252525] border border-neutral-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
@@ -463,7 +443,7 @@ export default function DataComplianceHub() {
               <div>
                 <h3 className="font-serif text-base font-bold text-white">Exhibition & Trade Offers</h3>
                 <p className="text-xs text-neutral-400 mt-1 max-w-xl">
-                  Allows VIP notifications for exclusive slab warehouse releases and trade discount events.
+                  Allows notifications about exhibition events and trade communications from SMC.
                 </p>
               </div>
               <input
@@ -493,11 +473,11 @@ export default function DataComplianceHub() {
                 Security Activity Preview
               </h2>
               <p className="text-xs text-neutral-400 mt-0.5">
-                Real-time cryptographic audit log of application events for compliance verification.
+                Audit log of application events for compliance verification. Populated once a production audit pipeline is configured.
               </p>
             </div>
             <button
-              onClick={() => showToast("Security audit log exported in CSV format.")}
+              onClick={() => showToast("Audit log export is not currently available.")}
               className="bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700 font-mono text-xs uppercase px-4 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-[#D4AF37]" />
@@ -505,38 +485,44 @@ export default function DataComplianceHub() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left font-mono text-xs">
-              <thead>
-                <tr className="border-b border-neutral-800 text-neutral-500 text-[10px] uppercase">
-                  <th className="py-3 px-4">Event ID</th>
-                  <th className="py-3 px-4">Timestamp</th>
-                  <th className="py-3 px-4">Event Description</th>
-                  <th className="py-3 px-4">User Ref</th>
-                  <th className="py-3 px-4">Level</th>
-                  <th className="py-3 px-4">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-800 text-neutral-300">
-                {INITIAL_AUDIT_LOGS.map((log) => (
-                  <tr key={log.id} className="hover:bg-neutral-900/50">
-                    <td className="py-3.5 px-4 font-bold text-[#D4AF37]">{log.id}</td>
-                    <td className="py-3.5 px-4 text-neutral-400">{log.timestamp}</td>
-                    <td className="py-3.5 px-4 text-white font-sans">{log.action}</td>
-                    <td className="py-3.5 px-4 text-neutral-400">{log.userRef}</td>
-                    <td className="py-3.5 px-4">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                        log.securityLevel === "HIGH" ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
-                      }`}>
-                        {log.securityLevel}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-emerald-400 font-bold">● {log.status}</td>
+          {INITIAL_AUDIT_LOGS.length === 0 ? (
+            <div className="py-8 text-center text-neutral-500 text-xs font-mono">
+              No audit events recorded yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left font-mono text-xs">
+                <thead>
+                  <tr className="border-b border-neutral-800 text-neutral-500 text-[10px] uppercase">
+                    <th className="py-3 px-4">Event ID</th>
+                    <th className="py-3 px-4">Timestamp</th>
+                    <th className="py-3 px-4">Event Description</th>
+                    <th className="py-3 px-4">User Ref</th>
+                    <th className="py-3 px-4">Level</th>
+                    <th className="py-3 px-4">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-neutral-800 text-neutral-300">
+                  {INITIAL_AUDIT_LOGS.map((log) => (
+                    <tr key={log.id} className="hover:bg-neutral-900/50">
+                      <td className="py-3.5 px-4 font-bold text-[#D4AF37]">{log.id}</td>
+                      <td className="py-3.5 px-4 text-neutral-400">{log.timestamp}</td>
+                      <td className="py-3.5 px-4 text-white font-sans">{log.action}</td>
+                      <td className="py-3.5 px-4 text-neutral-400">{log.userRef}</td>
+                      <td className="py-3.5 px-4">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                          log.securityLevel === "HIGH" ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
+                        }`}>
+                          {log.securityLevel}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-emerald-400 font-bold">● {log.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>

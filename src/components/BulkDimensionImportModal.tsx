@@ -347,9 +347,6 @@ export const BulkDimensionImportModal: React.FC<BulkDimensionImportModalProps> =
               <span className="text-[10px] font-mono font-bold uppercase tracking-widest bg-[#D4AF37]/20 text-[#D4AF37] px-2 py-0.5 rounded border border-[#D4AF37]/30">
                 CSV / Excel Clipboard Utility
               </span>
-              <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded">
-                BS EN 1469 Verified Data Pipeline
-              </span>
             </div>
             <h3 className="font-serif text-2xl font-bold text-white tracking-tight mt-1">
               Bulk Dimension Data Import & QA Validation

@@ -5,7 +5,6 @@ import {
   Save,
   Send,
   AlertCircle,
-  CheckCircle,
   HelpCircle,
   Layers,
   Sparkles,
@@ -120,12 +119,16 @@ export default function QuoteSummary({
     setTimeout(() => setBindSuccess(null), 6000);
   };
 
+  /**
+   * Phase 5 Gate 0 purge: this previously faked a 2-second "sending"
+   * delay and then always reported success, claiming a PDF quote had
+   * been emailed to the client and archived — no such email or archive
+   * pipeline exists. Dispatch is disabled until a real email-sending
+   * backend is configured.
+   */
   const handleDispatchClient = () => {
-    setDispatchStatus("sending");
-    setTimeout(() => {
-      setDispatchStatus("success");
-      setTimeout(() => setDispatchStatus("idle"), 5000);
-    }, 2000);
+    setDispatchStatus("error");
+    setTimeout(() => setDispatchStatus("idle"), 5000);
   };
 
   const handlePrint = () => {
@@ -183,7 +186,7 @@ export default function QuoteSummary({
             className="bg-neutral-900 hover:bg-gold hover:text-white text-white px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
-            {dispatchStatus === "sending" ? "Dispatching..." : dispatchStatus === "success" ? "Dispatched!" : "Dispatch to Client"}
+            {dispatchStatus === "sending" ? "Dispatching..." : dispatchStatus === "error" ? "Unavailable" : "Dispatch to Client"}
           </button>
         </div>
       </div>
@@ -207,7 +210,7 @@ export default function QuoteSummary({
               type="text"
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
-              placeholder="e.g. Lansdowne Residences SW7"
+              placeholder="Project or site name"
               className="w-full bg-white border border-neutral-200 focus:border-gold focus:ring-1 focus:ring-gold/30 rounded px-3 py-2 text-xs font-semibold transition-all"
             />
           </div>
@@ -218,7 +221,7 @@ export default function QuoteSummary({
               type="text"
               value={clientContact}
               onChange={(e) => setClientContact(e.target.value)}
-              placeholder="e.g. James Sterling MRICS"
+              placeholder="Contact name"
               className="w-full bg-white border border-neutral-200 focus:border-gold focus:ring-1 focus:ring-gold/30 rounded px-3 py-2 text-xs font-medium transition-all"
             />
           </div>
@@ -229,7 +232,7 @@ export default function QuoteSummary({
               type="email"
               value={clientEmail}
               onChange={(e) => setClientEmail(e.target.value)}
-              placeholder="e.g. j.sterling@sterlingconstruction.co.uk"
+              placeholder="client@example.co.uk"
               className="w-full bg-white border border-neutral-200 focus:border-gold focus:ring-1 focus:ring-gold/30 rounded px-3 py-2 text-xs font-medium transition-all"
             />
           </div>
@@ -257,11 +260,11 @@ export default function QuoteSummary({
       )}
 
       {/* FEEDBACK BANNERS */}
-      {dispatchStatus === "success" && (
-        <div className="no-print p-4 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl text-xs flex items-center gap-2.5 animate-fade-in">
-          <CheckCircle className="w-4.5 h-4.5 text-emerald-600 flex-shrink-0 animate-bounce" />
+      {dispatchStatus === "error" && (
+        <div className="no-print p-4 bg-amber-50 border border-amber-100 text-amber-800 rounded-xl text-xs flex items-center gap-2.5 animate-fade-in">
+          <AlertCircle className="w-4.5 h-4.5 text-amber-600 flex-shrink-0" />
           <div>
-            <strong>Client Copy Dispatched!</strong> A detailed PDF-rendered technical quote has been successfully sent to <span className="font-bold underline">{clientEmail}</span> and archived in your SMC system.
+            <strong>Dispatch unavailable.</strong> Emailing this quote is not currently available. Use "Print/Save PDF" or contact SMC to send it to the client directly.
           </div>
         </div>
       )}
@@ -335,16 +338,14 @@ export default function QuoteSummary({
             </div>
             
             <div className="text-xs text-neutral-500 font-medium space-y-0.5 font-sans">
-              <p>Stone Measurement & Cutting Solutions Ltd</p>
-              <p>Battersea Design District, Unit 4C</p>
-              <p>London, SW11 4BB • United Kingdom</p>
-              <p className="font-mono text-[10px] text-neutral-400 mt-1">VAT: GB 928 4102 38 • TEL: +44 (0) 20 7412 9000</p>
+              <p>SMC Pro Studio</p>
+              <p className="font-mono text-[10px] text-neutral-400 mt-1">Company registration and VAT details to be confirmed.</p>
             </div>
           </div>
 
           <div className="text-right md:text-right space-y-1 md:self-stretch flex flex-col justify-between">
             <div>
-              <span className="text-[10px] font-mono text-gold font-bold tracking-widest uppercase block">OFFICIAL VALUATION</span>
+              <span className="text-[10px] font-mono text-gold font-bold tracking-widest uppercase block">PROVISIONAL ESTIMATE</span>
               <h1 className="font-serif text-4xl font-light text-neutral-900 gold-glow">
                 EST-{quoteNumber}
               </h1>
@@ -352,7 +353,6 @@ export default function QuoteSummary({
             <div className="text-xs text-neutral-500 font-mono space-y-0.5 mt-4 md:mt-0">
               <p>DATE: {issueDate}</p>
               <p>VALID UNTIL: {validUntil}</p>
-              <p>REPRESENTATIVE ID: PRO-SMC-4902</p>
             </div>
           </div>
         </div>
@@ -372,10 +372,6 @@ export default function QuoteSummary({
             <span className="text-[9px] font-mono text-neutral-400 font-bold tracking-widest uppercase block">SYSTEM ESTIMATION REPORT</span>
             <div className="p-4 bg-[#FBFBFA] border border-neutral-150 rounded-xl space-y-1 font-mono text-[11px] leading-relaxed">
               <div className="flex justify-between">
-                <span className="text-neutral-500">ALGORITHM CORE:</span>
-                <span className="text-neutral-800 font-bold">Prism-Core™ OCR v4.2.1</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-neutral-500">SECTIONS DEFINED:</span>
                 <span className="text-neutral-800 font-bold">{estimateParts.length} Slab Blocks</span>
               </div>
@@ -384,8 +380,8 @@ export default function QuoteSummary({
                 <span className="text-neutral-800 font-bold">GBP (£) - Sterling</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-neutral-500">FABRICATION STATUS:</span>
-                <span className="text-neutral-800 text-gold font-bold">Plausible Ledger</span>
+                <span className="text-neutral-500">STATUS:</span>
+                <span className="text-neutral-800 text-gold font-bold">Provisional Estimate</span>
               </div>
             </div>
           </div>
@@ -481,7 +477,7 @@ export default function QuoteSummary({
                 {quoteNotes}
               </p>
               <div className="pt-2 text-[10px] text-neutral-400 font-mono leading-relaxed space-y-1">
-                <p>• Slabs reserved matching sequence codes: B8492-V2-A / B8492-V2-B for ultimate bookmatch alignment.</p>
+                <p>• Slab reservation and bookmatch sequencing are confirmed by SMC once this estimate is accepted.</p>
                 <p>• Recommended cutting path: dual-phase diamond circular blade with water pressure &gt;250 bar.</p>
               </div>
             </div>
@@ -542,12 +538,12 @@ export default function QuoteSummary({
         {/* Legal Footer Info */}
         <div className="pt-8 border-t border-neutral-150 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-[10px] font-mono text-neutral-400">
           <div>
-            <p>SMC PRO ADVANCED DIGITAL BLUEPRINT ESTIMATION LEDGER</p>
-            <p className="mt-0.5">TERMS: 50% DEPOSIT PRIOR TO MATERIAL HARVEST, BALANCE UPON SITE SIGN-OFF.</p>
+            <p>SMC PRO DIGITAL ESTIMATION LEDGER</p>
+            <p className="mt-0.5">This is a provisional estimate only. Payment terms will be confirmed in a formal quotation from SMC.</p>
           </div>
           <div className="text-right">
-            <p>APPROVED BY: SMC ALGORITHM CORE</p>
-            <p className="mt-0.5 text-gold font-bold">DIGITALLY SECURED WORKSPACE</p>
+            <p>SYSTEM-GENERATED ESTIMATE</p>
+            <p className="mt-0.5 text-neutral-500">Not yet reviewed by SMC</p>
           </div>
         </div>
 

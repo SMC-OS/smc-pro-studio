@@ -3,7 +3,6 @@ import {
   Menu,
   User,
   CheckCircle,
-  Download,
   Sparkles,
   Layers,
   Compass,
@@ -377,7 +376,7 @@ export default function ExhibitionWalkthroughView({
                 <span className="font-mono text-xs text-neutral-400 mb-1 block font-bold">Phase IV</span>
                 <h4 className="font-serif text-xl text-black mb-2 font-semibold">The Archive</h4>
                 <p className="font-sans text-xs text-[#1A1A1A]/70 leading-relaxed">
-                  Digital sign-off, immutable 3D archive preservation, warranty certificates, and comprehensive daily logs.
+                  Digital sign-off, immutable 3D archive preservation, and comprehensive daily logs.
                 </p>
               </div>
             </div>
@@ -418,22 +417,11 @@ export default function ExhibitionWalkthroughView({
               <ShieldCheck className="w-6 h-6" />
             </div>
             <h3 className="font-serif text-xl font-bold text-black">
-              Architectural Package Authorized
+              Exhibition Walkthrough Complete
             </h3>
             <p className="font-sans text-xs text-neutral-600 leading-relaxed">
-              All specs, CAD files, slab telemetry logs, and warranty certificates for <span className="font-mono font-bold text-black">{userEmail}</span> have been compiled into an immutable digital package.
+              Contact SMC to request the specs, CAD files, and slab telemetry logs on file for <span className="font-mono font-bold text-black">{userEmail}</span>.
             </p>
-
-            <div className="bg-[#F7F6F2] p-3 rounded font-mono text-[11px] text-left border border-black/5 space-y-1">
-              <div className="flex justify-between">
-                <span className="text-neutral-500">Package Hash:</span>
-                <span className="font-bold text-black">SMC-EXHIBIT-2026-99A</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-500">Timestamp:</span>
-                <span>{new Date().toISOString().split("T")[0]} 19:15 GMT</span>
-              </div>
-            </div>
 
             <div className="flex gap-3 pt-2">
               <button
@@ -441,16 +429,6 @@ export default function ExhibitionWalkthroughView({
                 className="flex-1 bg-black text-white hover:bg-[#D4AF37] hover:text-black py-3 rounded text-xs font-mono tracking-wider font-bold transition-all cursor-pointer"
               >
                 CLOSE
-              </button>
-              <button
-                onClick={() => {
-                  alert("Architectural Specs Package downloaded successfully.");
-                  setShowExportModal(false);
-                }}
-                className="flex-1 bg-[#D4AF37] text-black hover:bg-black hover:text-white py-3 rounded text-xs font-mono tracking-wider font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                <span>DOWNLOAD</span>
               </button>
             </div>
           </div>

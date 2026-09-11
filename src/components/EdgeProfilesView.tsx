@@ -1336,26 +1336,24 @@ Date: July 2026`;
                 />
                 <div className="p-6 bg-white border-t border-neutral-200 flex justify-between items-center">
                   <span className="font-mono text-xs font-bold text-neutral-600">Ref: SMC-W-22</span>
-                  <span className="px-3 py-1 border border-[#D4AF37] text-[#D4AF37] font-mono text-[10px] font-bold uppercase tracking-widest rounded-full">
-                    SMC Certified
-                  </span>
                 </div>
               </div>
 
             </div>
           </section>
 
-          {/* SMC MASTER STANDARD (CERTIFICATION) */}
+          {/* SUBSTRATE VERIFICATION REQUIREMENT */}
           <section className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 md:p-14 relative overflow-hidden text-center text-white shadow-xl">
             <div className="relative z-10 max-w-3xl mx-auto space-y-6">
               <span className="font-mono text-xs font-bold text-[#D4AF37] uppercase tracking-[0.25em] block">
-                STRUCTURAL WARRANTY
+                SUBSTRATE VERIFICATION
               </span>
               <h3 className="font-serif text-3xl md:text-5xl text-white italic font-normal">
-                SMC Master Standard
+                SMC Installation Standard
               </h3>
               <p className="text-xs md:text-sm text-neutral-300 leading-relaxed max-w-2xl mx-auto">
-                All substrates MUST be verified by a certified SMC technician prior to stone installation to maintain the 15-year structural warranty.
+                All substrates must be verified by SMC prior to stone installation. Contact SMC for the warranty
+                terms applicable to your project.
               </p>
 
               <div className="flex flex-wrap gap-4 justify-center py-2">

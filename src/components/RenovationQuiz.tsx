@@ -162,29 +162,8 @@ export default function RenovationQuiz({ onNavigate, onAddVaultPoints }: Renovat
             Renovation Technical Mastery
           </h2>
           <p className="text-xs md:text-sm text-neutral-400 max-w-xl leading-relaxed font-sans">
-            Test your knowledge on natural stone, sintered porcelain, miter fabrication, and surface care to unlock exclusive trade vault points.
+            Test your knowledge on natural stone, sintered porcelain, miter fabrication, and surface care.
           </p>
-        </div>
-
-        {/* Current Reward Badge */}
-        <div className="z-10 bg-black/60 backdrop-blur-md border border-gold/40 rounded-2xl p-5 space-y-2 min-w-[220px] shadow-xl w-full md:w-auto">
-          <div className="flex justify-between items-center text-[10px] font-mono text-neutral-400 uppercase tracking-wider">
-            <span>Quiz Reward</span>
-            <span className="text-gold font-bold flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-gold" /> +50 PTS / Q
-            </span>
-          </div>
-
-          <div className="flex items-baseline gap-2">
-            <span className="font-serif text-3xl font-bold text-gold font-mono">
-              +350
-            </span>
-            <span className="text-xs font-mono font-bold text-neutral-300 uppercase">MAX PTS</span>
-          </div>
-
-          <div className="text-[10px] font-mono text-emerald-400 font-bold flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3" /> Includes 100 Pts Perfect Bonus
-          </div>
         </div>
       </div>
 
@@ -371,26 +350,12 @@ export default function RenovationQuiz({ onNavigate, onAddVaultPoints }: Renovat
           </div>
 
           <div className="space-y-2">
-            <span className="text-[10px] font-mono font-bold px-3 py-1 bg-gold/20 text-gold rounded-full border border-gold/40 uppercase tracking-widest">
-              CERTIFICATE OF MASTERY
-            </span>
             <h3 className="font-serif text-3xl md:text-4xl text-white font-medium">
               Quiz Completed!
             </h3>
             <p className="text-xs md:text-sm text-neutral-400 font-sans">
               You scored <span className="text-gold font-bold">{score} out of {totalQuestions}</span> questions correctly.
             </p>
-          </div>
-
-          <div className="bg-black/60 border border-neutral-800 rounded-2xl p-6 grid grid-cols-2 gap-4 text-center">
-            <div>
-              <span className="text-[10px] font-mono text-neutral-400 uppercase block">Earned Vault Points</span>
-              <span className="font-serif text-3xl font-bold text-gold font-mono">+{earnedVaultPoints}</span>
-            </div>
-            <div>
-              <span className="text-[10px] font-mono text-neutral-400 uppercase block">Trade Rank Achieved</span>
-              <span className="font-serif text-xl font-bold text-emerald-400">Master Surface Specialist</span>
-            </div>
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -400,15 +365,6 @@ export default function RenovationQuiz({ onNavigate, onAddVaultPoints }: Renovat
             >
               <RotateCcw className="w-4 h-4" /> Retry Quiz
             </button>
-
-            {onNavigate && (
-              <button
-                onClick={() => onNavigate("vault")}
-                className="px-8 py-3 rounded-xl bg-gold hover:bg-amber-400 text-neutral-950 font-mono text-xs font-bold uppercase tracking-widest transition-all shadow-lg shadow-gold/20 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4" /> Go To Treasure Vault
-              </button>
-            )}
           </div>
         </div>
       )}

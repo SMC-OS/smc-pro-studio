@@ -30,56 +30,20 @@ export interface StaffMember {
   email: string;
 }
 
-const INITIAL_STAFF: StaffMember[] = [
-  {
-    id: "STF-01",
-    name: "James Sterling",
-    role: "Master Mason",
-    cscsCardNumber: "CSCS-9842019",
-    cscsExpiry: "2028-11-15",
-    status: "Active - On Site",
-    assignedProject: "Kensington Residence (Phillimore Gardens)",
-    weeklyHoursLogged: 38.5,
-    phone: "+44 7700 900123",
-    email: "james.sterling@smcpro.co.uk"
-  },
-  {
-    id: "STF-02",
-    name: "David Vance",
-    role: "3D Templater",
-    cscsCardNumber: "CSCS-4820192",
-    cscsExpiry: "2027-04-20",
-    status: "Active - On Site",
-    assignedProject: "Spencer Hall Estate (Cotswolds)",
-    weeklyHoursLogged: 42.0,
-    phone: "+44 7700 900456",
-    email: "david.vance@smcpro.co.uk"
-  },
-  {
-    id: "STF-03",
-    name: "Viktor Kowalski",
-    role: "CNC Waterjet Operator",
-    cscsCardNumber: "CSCS-1928402",
-    cscsExpiry: "2026-09-30", // expiring soon alert
-    status: "Available - In Shop",
-    assignedProject: "Fabrication Shop Bay 2",
-    weeklyHoursLogged: 40.0,
-    phone: "+44 7700 900789",
-    email: "viktor.k@smcpro.co.uk"
-  },
-  {
-    id: "STF-04",
-    name: "Mark Reynolds",
-    role: "Senior Fitter",
-    cscsCardNumber: "CSCS-7712940",
-    cscsExpiry: "2029-01-10",
-    status: "Active - On Site",
-    assignedProject: "Chelsea Design Studio (Kings Rd)",
-    weeklyHoursLogged: 36.0,
-    phone: "+44 7700 900321",
-    email: "mark.r@smcpro.co.uk"
-  }
-];
+/**
+ * Phase 5 Gate 0 purge (correction pass).
+ *
+ * This seed previously listed four fabricated staff members ("James
+ * Sterling", "David Vance", "Viktor Kowalski", "Mark Reynolds") with
+ * invented CSCS card numbers, invented phone numbers and emails, and
+ * fabricated project assignments (including "Spencer Hall Estate", the
+ * same fabricated project reused across other seeds this purge already
+ * removed). None of it was ever a real employee record. The crew grid,
+ * search/filter, and contact-action structure are genuinely reusable, so
+ * they are kept; the seed is emptied so the roster starts honestly empty
+ * until real staff are registered.
+ */
+const INITIAL_STAFF: StaffMember[] = [];
 
 export default function StaffCrewManagementView() {
   const [staffList, setStaffList] = useState<StaffMember[]>(INITIAL_STAFF);
@@ -106,8 +70,8 @@ export default function StaffCrewManagementView() {
             <span className="text-[10px] font-mono text-gold uppercase font-bold tracking-widest bg-gold/10 px-2 py-0.5 rounded border border-gold/30">
               SMC PRO WORKFORCE OPERATIONS
             </span>
-            <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800">
-              CSCS COMPLIANCE VERIFIED
+            <span className="text-[10px] font-mono text-neutral-400 font-bold bg-neutral-800/60 px-2 py-0.5 rounded border border-neutral-700">
+              CSCS COMPLIANCE: NOT YET VERIFIED
             </span>
           </div>
           <h2 className="font-serif text-2xl sm:text-3xl font-bold text-white tracking-tight">
@@ -158,6 +122,12 @@ export default function StaffCrewManagementView() {
 
       {/* Staff Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredStaff.length === 0 && (
+          <div className="md:col-span-2 lg:col-span-3 p-8 text-center bg-neutral-900 border border-neutral-800 rounded-2xl text-neutral-400 space-y-2">
+            <Users className="w-8 h-8 mx-auto text-neutral-600" />
+            <p className="text-xs font-mono">No staff registered yet.</p>
+          </div>
+        )}
         {filteredStaff.map((member) => (
           <div
             key={member.id}
