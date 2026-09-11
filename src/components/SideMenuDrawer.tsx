@@ -257,9 +257,6 @@ export default function SideMenuDrawer({
               </div>
               <div className="overflow-hidden">
                 <span className="text-xs font-semibold text-neutral-200 block truncate max-w-[160px]">{userEmail}</span>
-                <span className="text-[9px] font-mono text-gold flex items-center gap-1 font-bold">
-                  <ShieldCheck className="w-3 h-3 text-gold" /> VIP Trade Partner
-                </span>
               </div>
             </div>
           </div>
@@ -817,7 +814,6 @@ export default function SideMenuDrawer({
                 <Award className="w-4 h-4 text-emerald-400" />
                 <span>Referral Command Center</span>
               </div>
-              <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-bold">£250 Bonus</span>
             </button>
 
             <button
@@ -847,7 +843,6 @@ export default function SideMenuDrawer({
                 <Award className="w-4 h-4 text-amber-400" />
                 <span>Renovation Quiz</span>
               </div>
-              <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold">+350 PTS</span>
             </button>
           </div>
 

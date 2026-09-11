@@ -614,19 +614,11 @@ export const BetaDeploymentPortal: React.FC<BetaDeploymentPortalProps> = ({ onCl
                         <span className="text-neutral-400">Trade Tier</span>
                         <span className="font-bold text-gold">{authResult.tradeTier}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-neutral-800">
-                        <span className="text-neutral-400">Approved Credit Line</span>
-                        <span className="font-bold text-emerald-400">£{authResult.creditAccount.creditLimitGbp.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-neutral-800">
-                        <span className="text-neutral-400">Payment Terms</span>
-                        <span className="font-medium text-white">{authResult.creditAccount.paymentTerms}</span>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-neutral-800">
-                        <span className="text-neutral-400">Master Mason Advisor</span>
-                        <span className="font-medium text-white">{authResult.creditAccount.dedicatedMasonAdvisor}</span>
-                      </div>
                     </div>
+                    <p className="text-[11px] text-neutral-500 leading-relaxed">
+                      Trade credit account details are not set up on this endpoint. Contact SMC for account and
+                      payment terms.
+                    </p>
 
                     <div>
                       <span className="text-xs font-semibold text-neutral-300 block mb-2">Active Trade Benefits</span>

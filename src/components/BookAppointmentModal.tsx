@@ -177,7 +177,7 @@ export default function BookAppointmentModal({ isOpen, onClose }: BookAppointmen
                   required
                   value={clientName}
                   onChange={(e) => setClientName(e.target.value)}
-                  placeholder="e.g. Alexander Wright"
+                  placeholder="Full name"
                   className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-xs font-sans text-neutral-800 focus:border-gold focus:ring-1 focus:ring-gold/30"
                 />
               </div>

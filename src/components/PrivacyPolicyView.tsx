@@ -58,13 +58,13 @@ export default function PrivacyPolicyView({
         <div className="relative z-10 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <span className="bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30 px-3 py-1 rounded-full text-[10px] font-mono uppercase font-bold tracking-widest flex items-center gap-1.5">
-              <Lock className="w-3 h-3" /> UK GDPR & DPA 2018 COMPLIANT
+              <Lock className="w-3 h-3" /> UK GDPR & DPA 2018 — REVIEW PENDING
             </span>
             <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full text-[10px] font-mono uppercase font-bold tracking-widest">
               PRODUCTION CONTROLS PENDING
             </span>
             <span className="text-neutral-500 text-xs font-mono">
-              Effective Date: March 30, 2026 • v4.2.0
+              Draft — not yet in effect
             </span>
           </div>
 
@@ -170,15 +170,18 @@ export default function PrivacyPolicyView({
           {openSection === "section-1" && (
             <div className="p-6 pt-0 space-y-4 text-xs text-neutral-300 leading-relaxed border-t border-neutral-800/60 mt-2">
               <p>
-                Simo Marble & Construction UK Ltd (&quot;SMC Pro Studio&quot;, &quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) operates as the Data Controller responsible for personal data processed through our online web application, mobile AR survey tools, CNC manufacturing telemetry links, and WhatsApp messaging concierge.
+                SMC Pro Studio (&quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) is the Data Controller responsible for personal data processed through our online web application, mobile AR survey tools, CNC manufacturing telemetry links, and WhatsApp messaging concierge.
               </p>
               <div className="bg-black/50 p-4 rounded-lg border border-neutral-800 space-y-2 font-mono text-[11px]">
-                <div><span className="text-[#D4AF37]">Data Controller Name:</span> Simo Marble & Construction UK Ltd</div>
-                <div><span className="text-[#D4AF37]">UK Companies House Ref:</span> 08924102</div>
-                <div><span className="text-[#D4AF37]">ICO Registration Ref:</span> ZB394019</div>
-                <div><span className="text-[#D4AF37]">Registered Head Office:</span> 12 Hans Crescent, Knightsbridge, London, SW1X 0LZ</div>
+                <div><span className="text-[#D4AF37]">Data Controller Name:</span> Not yet registered</div>
+                <div><span className="text-[#D4AF37]">UK Companies House Ref:</span> Not yet registered</div>
+                <div><span className="text-[#D4AF37]">ICO Registration Ref:</span> Not yet registered</div>
+                <div><span className="text-[#D4AF37]">Registered Head Office:</span> Not yet confirmed</div>
                 <div><span className="text-[#D4AF37]">Data Protection Officer (DPO):</span> <button onClick={copyDpoContact} className="underline hover:text-white text-emerald-400 cursor-pointer">dpo@smcpro.co.uk</button></div>
               </div>
+              <p className="text-neutral-500 text-[11px]">
+                These company registration details are pending final UK legal review and will be confirmed before this policy takes effect.
+              </p>
             </div>
           )}
         </div>
@@ -280,7 +283,7 @@ export default function PrivacyPolicyView({
                 </div>
                 <div className="bg-black/40 p-3.5 rounded-lg border border-neutral-800">
                   <span className="text-[#D4AF37] font-mono font-bold block mb-1">3D LiDAR Survey Scans</span>
-                  <p>Laser point cloud meshes retained for 25 years to service lifetime stone warranty claims and future repairs.</p>
+                  <p>Laser point cloud meshes are retained to support future service and repair requests. Retention period to be confirmed.</p>
                 </div>
                 <div className="bg-black/40 p-3.5 rounded-lg border border-neutral-800">
                   <span className="text-[#D4AF37] font-mono font-bold block mb-1">WhatsApp Telemetry</span>

@@ -25,7 +25,6 @@ interface RecentEstimate {
   name: string;
   material: string;
   sqft: number;
-  price: number;
   status: "Draft" | "Finalized" | "Expired";
   date: string;
 }
@@ -39,75 +38,44 @@ interface OnlineQuoteHubProps {
   formatCurrency?: (val: number) => string;
 }
 
-const DEFAULT_RECENT_ESTIMATES: RecentEstimate[] = [
-  {
-    id: "EST-2026-8842",
-    name: "Residence 4A Kitchen Island & Waterfall",
-    material: "Calacatta Gold Quartz",
-    sqft: 152,
-    price: 24850,
-    status: "Finalized",
-    date: "Jul 30, 2026"
-  },
-  {
-    id: "EST-2026-4092",
-    name: "Lobby Reception Counter",
-    material: "Absolute Black Granite",
-    sqft: 120,
-    price: 18200,
-    status: "Draft",
-    date: "Jul 28, 2026"
-  },
-  {
-    id: "EST-2026-3901",
-    name: "Penthouse Master Bath Vanity",
-    material: "Taj Mahal Quartzite",
-    sqft: 85,
-    price: 14900,
-    status: "Expired",
-    date: "Jun 30, 2026"
-  }
-];
-
+/**
+ * Phase 5 Gate 0 purge.
+ *
+ * This hub previously seeded three fabricated "recent estimates" with
+ * invented client project names and invented total prices (£24,850,
+ * £18,200, £14,900) presented as real quote history, and computed a
+ * fabricated "Calculated Live Estimate" / "Estimated Total Investment"
+ * from an invented £/m² pricing formula that fed directly into a live
+ * "Pay Deposit (Stripe)" button and a "Reserve Slabs" action that claimed
+ * a confirmed 14-day slab reservation. None of it was ever approved
+ * pricing or a real reservation system. Per the approved Gate 0 decision,
+ * the seed data and pricing formula are removed and the Pay/Reserve
+ * actions are disabled — see tasks/todo.md's Gate 0 entry.
+ */
 export default function OnlineQuoteHub({
   onInitializeNewQuote,
   onTriggerAiScan,
   onFocusManualEntry,
   onSelectRecentEstimate,
-  onOpenStripePayment,
   formatCurrency = (v) => `£${v.toLocaleString()}`
 }: OnlineQuoteHubProps) {
   const [activeStep, setActiveStep] = useState<number>(1);
-  const [recentEstimates, setRecentEstimates] = useState<RecentEstimate[]>(DEFAULT_RECENT_ESTIMATES);
+  const [recentEstimates] = useState<RecentEstimate[]>([]);
   const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<string>("all");
-  
+
   // Step 2 Form States
   const [selectedMaterial, setSelectedMaterial] = useState<"marble" | "granite" | "quartz">("granite");
   const [widthMm, setWidthMm] = useState<number>(3200);
   const [lengthMm, setLengthMm] = useState<number>(1450);
   const [thicknessMm, setThicknessMm] = useState<number>(20);
   const [edgeProfile, setEdgeProfile] = useState<"bullnose" | "mitred" | "waterfall">("mitred");
-  const [siteAddress, setSiteAddress] = useState<string>("42 Mayfair Square, London W1J 8AJ");
-  const [isReserved, setIsReserved] = useState<boolean>(false);
+  const [siteAddress, setSiteAddress] = useState<string>("");
   const [showNotification, setShowNotification] = useState<string | null>(null);
 
   const filteredEstimates = recentEstimates.filter((est) => {
     if (selectedArchiveFilter === "all") return true;
     return est.status.toLowerCase() === selectedArchiveFilter.toLowerCase();
   });
-
-  const calculateStepPrice = () => {
-    let basePerSqM = 350;
-    if (selectedMaterial === "marble") basePerSqM = 520;
-    if (selectedMaterial === "quartz") basePerSqM = 450;
-    
-    const areaSqM = (widthMm * lengthMm) / 1000000;
-    const thicknessMultiplier = thicknessMm === 30 ? 1.3 : thicknessMm === 12 ? 0.85 : 1.0;
-    const edgeMultiplier = edgeProfile === "mitred" ? 1.25 : edgeProfile === "waterfall" ? 1.35 : 1.1;
-
-    const estimatedTotal = Math.round(areaSqM * basePerSqM * thicknessMultiplier * edgeMultiplier * 2.2);
-    return Math.max(3200, estimatedTotal);
-  };
 
   const triggerToast = (msg: string) => {
     setShowNotification(msg);
@@ -137,7 +105,7 @@ export default function OnlineQuoteHub({
             Online Quote
           </h1>
           <p className="text-sm text-neutral-400 mt-1 max-w-2xl">
-            Authoritative estimates for Marble, Granite, and Quartz in technical steps.
+            Request a quote for Marble, Granite, and Quartz in a few technical steps.
           </p>
         </div>
 
@@ -404,6 +372,11 @@ export default function OnlineQuoteHub({
 
             {/* List of Recent Estimates */}
             <div className="space-y-3">
+              {filteredEstimates.length === 0 && (
+                <div className="text-center py-10 text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-lg">
+                  No estimates yet. Start a new specification above.
+                </div>
+              )}
               {filteredEstimates.map((est) => (
                 <div
                   key={est.id}
@@ -446,8 +419,8 @@ export default function OnlineQuoteHub({
                   </div>
 
                   <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-neutral-800">
-                    <div className="font-mono text-base font-bold text-white tracking-tight">
-                      {formatCurrency(est.price)}
+                    <div className="font-mono text-xs font-bold text-white tracking-tight">
+                      Price on Application
                     </div>
 
                     <div
@@ -474,8 +447,6 @@ export default function OnlineQuoteHub({
         <div className="space-y-12 animate-fade-in">
           <div className="flex flex-col gap-3 border-b border-neutral-800 pb-4">
             <div className="flex items-center gap-2 text-xs font-mono text-[#D4AF37]">
-              <span>QUOTE #8492-B</span>
-              <span>•</span>
               <span>TECHNICAL PARAMETERS</span>
             </div>
             <h2 className="font-serif text-2xl md:text-3xl text-white font-semibold">
@@ -739,7 +710,7 @@ export default function OnlineQuoteHub({
                     placeholder="Enter site delivery address..."
                   />
                   <p className="text-xs text-neutral-500 pt-1">
-                    Calculates delivery tonnage, crane access requirements, and regional UK fabrication routing.
+                    Used to confirm delivery access and routing when your quote is prepared.
                   </p>
                 </div>
               </div>
@@ -750,10 +721,10 @@ export default function OnlineQuoteHub({
           <div className="bg-[#1A1A1A] border border-neutral-800 rounded-xl p-6 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-xl">
             <div>
               <span className="text-xs font-mono text-neutral-400 uppercase tracking-wider block">
-                Calculated Live Estimate
+                Pricing
               </span>
-              <div className="font-mono text-2xl font-bold text-[#D4AF37]">
-                {formatCurrency(calculateStepPrice())}
+              <div className="font-mono text-xl font-bold text-[#D4AF37]">
+                Price on Application
               </div>
             </div>
 
@@ -785,13 +756,6 @@ export default function OnlineQuoteHub({
               <h2 className="font-serif text-3xl text-white font-semibold">
                 Project Estimate Summary
               </h2>
-              <div className="flex items-center gap-3 mt-1.5 font-mono text-xs text-neutral-400">
-                <span>REF: EST-2026-8842-PX</span>
-                <span>•</span>
-                <span className="px-2 py-0.5 bg-neutral-800 rounded text-neutral-300">
-                  VALID UNTIL: 2026-08-30
-                </span>
-              </div>
             </div>
 
             <button
@@ -809,46 +773,23 @@ export default function OnlineQuoteHub({
             <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
               <div>
                 <span className="font-mono text-xs text-neutral-400 uppercase tracking-wider block mb-1">
-                  Estimated Total Investment
+                  Pricing
                 </span>
-                <div className="font-serif text-4xl md:text-5xl text-[#D4AF37] font-bold tracking-tight">
-                  {formatCurrency(calculateStepPrice() * 5.85)}
+                <div className="font-serif text-3xl md:text-4xl text-[#D4AF37] font-bold tracking-tight">
+                  Price on Application
                 </div>
                 <p className="text-xs text-neutral-400 mt-2">
-                  Includes templating, precision fabrication, edge detailing & UK white-glove installation.
+                  Confirmed by our team based on your specification.
                 </p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                {onOpenStripePayment && (
-                  <button
-                    onClick={onOpenStripePayment}
-                    className="bg-emerald-500 hover:bg-emerald-400 text-black font-mono text-xs font-bold uppercase tracking-wider px-6 py-3.5 rounded transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg"
-                  >
-                    <ShoppingBag className="w-4 h-4" />
-                    <span>Pay Deposit (Stripe)</span>
-                  </button>
-                )}
                 <button
-                  onClick={() => {
-                    setIsReserved(true);
-                    triggerToast("Slabs successfully reserved for 14 days!");
-                  }}
-                  className={`px-6 py-3.5 rounded font-mono text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md ${
-                    isReserved
-                      ? "bg-emerald-500 text-black"
-                      : "bg-[#D4AF37] hover:bg-white text-black"
-                  }`}
+                  onClick={() => triggerToast("Request sent — our team will follow up with your quote.")}
+                  className="bg-[#D4AF37] hover:bg-white text-black px-6 py-3.5 rounded font-mono text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>{isReserved ? "Slabs Reserved" : "Reserve Slabs"}</span>
-                </button>
-                <button
-                  onClick={() => triggerToast("Downloading PDF technical specification...")}
-                  className="bg-transparent border border-[#D4AF37] text-white hover:bg-neutral-800 px-6 py-3.5 rounded font-mono text-xs font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download PDF</span>
+                  <span>Request Quote</span>
                 </button>
               </div>
             </div>
@@ -864,7 +805,7 @@ export default function OnlineQuoteHub({
                   <div className="w-full sm:w-1/3 h-44 rounded-lg overflow-hidden border border-neutral-800 relative shrink-0">
                     <img
                       src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80"
-                      alt="Calacatta Gold Quartz"
+                      alt={selectedMaterial}
                       className="w-full h-full object-cover absolute inset-0"
                     />
                   </div>
@@ -873,12 +814,9 @@ export default function OnlineQuoteHub({
                     <span className="font-mono text-[10px] text-[#D4AF37] bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-2.5 py-1 rounded inline-block uppercase font-bold tracking-wider">
                       SELECTED MATERIAL CORE
                     </span>
-                    <h3 className="font-serif text-2xl text-white font-medium">
-                      Calacatta Gold Quartz
+                    <h3 className="font-serif text-2xl text-white font-medium capitalize">
+                      {selectedMaterial}
                     </h3>
-                    <p className="text-xs text-neutral-400 leading-relaxed">
-                      Premium grade engineered stone. Exceptional thermal resistance, stain-proof non-porous surface structure.
-                    </p>
 
                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-neutral-800">
                       <div>
@@ -910,22 +848,18 @@ export default function OnlineQuoteHub({
                   <tbody className="font-mono text-xs divide-y divide-neutral-800">
                     <tr>
                       <td className="py-4 px-6 text-white font-medium">Total Surface Area</td>
-                      <td className="py-4 px-6 text-right text-[#D4AF37] font-bold">14.2 m²</td>
+                      <td className="py-4 px-6 text-right text-[#D4AF37] font-bold">{((widthMm * lengthMm) / 1000000).toFixed(1)} m²</td>
                     </tr>
                     <tr>
-                      <td className="py-4 px-6 text-white font-medium">Linear Edge (Polished)</td>
-                      <td className="py-4 px-6 text-right text-[#D4AF37] font-bold">18.5 lm</td>
-                    </tr>
-                    <tr>
-                      <td className="py-4 px-6 text-white font-medium">Edge Profile Precision</td>
+                      <td className="py-4 px-6 text-white font-medium">Edge Profile</td>
                       <td className="py-4 px-6 text-right text-neutral-300">
-                        Signature {edgeProfile.toUpperCase()} (±0.05mm)
+                        {edgeProfile.toUpperCase()}
                       </td>
                     </tr>
                     <tr>
-                      <td className="py-4 px-6 text-white font-medium">CNC Waterjet Pathing</td>
+                      <td className="py-4 px-6 text-white font-medium">Slab Thickness</td>
                       <td className="py-4 px-6 text-right text-neutral-300">
-                        Complex (4 Cutouts & Sink Recess)
+                        {thicknessMm}mm
                       </td>
                     </tr>
                   </tbody>
@@ -933,42 +867,19 @@ export default function OnlineQuoteHub({
               </div>
             </div>
 
-            {/* Right Column: AI Optimization */}
+            {/* Right Column: Next Steps */}
             <div className="md:col-span-4 space-y-6">
               <div className="bg-[#1A1A1A] border border-neutral-800 rounded-xl p-6 h-full flex flex-col justify-between relative overflow-hidden">
                 <div className="space-y-4 relative z-10">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-[#D4AF37]" />
                     <h3 className="font-mono text-xs text-white font-bold uppercase tracking-wider">
-                      AI OPTIMIZATION
+                      Next Steps
                     </h3>
                   </div>
 
-                  {/* Circular Progress Meter */}
-                  <div className="py-6 flex flex-col items-center justify-center text-center">
-                    <div className="w-32 h-32 rounded-full border-4 border-neutral-800 flex items-center justify-center relative mb-3">
-                      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="46" fill="none" stroke="#262626" strokeWidth="8" />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="46"
-                          fill="none"
-                          stroke="#D4AF37"
-                          strokeWidth="8"
-                          strokeDasharray="289"
-                          strokeDashoffset="63"
-                        />
-                      </svg>
-                      <div className="flex flex-col items-center">
-                        <span className="font-serif text-3xl text-white font-bold">22%</span>
-                      </div>
-                    </div>
-                    <span className="font-mono text-xs text-neutral-400">Material Saved</span>
-                  </div>
-
-                  <p className="font-mono text-xs text-neutral-400 leading-relaxed pt-4 border-t border-neutral-800">
-                    Our proprietary nesting algorithm has optimized slab layout, reducing expected waste by 22% compared to standard fabrication methods.
+                  <p className="font-mono text-xs text-neutral-400 leading-relaxed pt-2">
+                    Our team will review your specification and confirm slab layout, pricing, and fabrication timeline.
                   </p>
                 </div>
 
