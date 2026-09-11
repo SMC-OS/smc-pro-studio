@@ -53,8 +53,8 @@ export default function MaterialCompareModal({
   const matA = materials.find((m) => m.id === materialAId) || materials[0];
   const matB = materials.find((m) => m.id === materialBId) || materials[1] || materials[0];
 
-  const stockA = materialsStock[matA.id] ?? matA.stockSqFt ?? 0;
-  const stockB = materialsStock[matB.id] ?? matB.stockSqFt ?? 0;
+  const stockA = materialsStock[matA.id] ?? 0;
+  const stockB = materialsStock[matB.id] ?? 0;
 
   // Helper properties derived from material classification
   const getHeatRating = (mat: Material) => {
@@ -106,10 +106,6 @@ export default function MaterialCompareModal({
   const acidA = getAcidRating(matA);
   const acidB = getAcidRating(matB);
 
-  // Price difference calculation
-  const priceDiff = matA.price - matB.price;
-  const pricePctDiff = matB.price > 0 ? Math.round((Math.abs(priceDiff) / matB.price) * 100) : 0;
-
   return (
     <div className="fixed inset-0 bg-black/55 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 z-[100] animate-fade-in overflow-y-auto">
       <div className="bg-white border border-neutral-200 rounded-xl max-w-5xl w-full my-auto shadow-2xl flex flex-col overflow-hidden max-h-[92vh]">
@@ -129,7 +125,7 @@ export default function MaterialCompareModal({
               Side-by-Side Material Spec Comparison
             </h3>
             <p className="text-xs text-neutral-400 max-w-2xl">
-              Compare Mohs hardness, porosity, thermal tolerances, and price per sqft to present technical options directly to clients.
+              Compare Mohs hardness, porosity, and thermal tolerances to present technical options directly to clients.
             </p>
           </div>
 
@@ -165,9 +161,6 @@ export default function MaterialCompareModal({
                 <span className="text-[10px] font-mono uppercase font-bold tracking-widest text-gold">
                   MATERIAL A (LEFT)
                 </span>
-                <span className="text-xs font-bold text-neutral-900 bg-neutral-100 px-2.5 py-0.5 rounded font-mono">
-                  £{matA.price} / sqft
-                </span>
               </div>
 
               {/* Selector Dropdown A */}
@@ -179,7 +172,7 @@ export default function MaterialCompareModal({
                 >
                   {materials.map((m) => (
                     <option key={m.id} value={m.id} disabled={m.id === matB.id}>
-                      {m.name} ({m.class}) - £{m.price}/sqft
+                      {m.name} ({m.class})
                     </option>
                   ))}
                 </select>
@@ -234,9 +227,6 @@ export default function MaterialCompareModal({
                 <span className="text-[10px] font-mono uppercase font-bold tracking-widest text-neutral-500">
                   MATERIAL B (RIGHT)
                 </span>
-                <span className="text-xs font-bold text-neutral-900 bg-neutral-100 px-2.5 py-0.5 rounded font-mono">
-                  £{matB.price} / sqft
-                </span>
               </div>
 
               {/* Selector Dropdown B */}
@@ -248,7 +238,7 @@ export default function MaterialCompareModal({
                 >
                   {materials.map((m) => (
                     <option key={m.id} value={m.id} disabled={m.id === matA.id}>
-                      {m.name} ({m.class}) - £{m.price}/sqft
+                      {m.name} ({m.class})
                     </option>
                   ))}
                 </select>
@@ -299,44 +289,18 @@ export default function MaterialCompareModal({
 
           </div>
 
-          {/* PRICE COMPARISON SUMMARY CARD */}
-          <div className="bg-white border border-neutral-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-800 font-mono">
-                  Price Valuation Delta
-                </h4>
-                <p className="text-xs text-neutral-600 mt-0.5">
-                  {priceDiff === 0 ? (
-                    <span>Both materials are priced identically at <strong className="font-bold">£{matA.price} / sq ft</strong>.</span>
-                  ) : priceDiff < 0 ? (
-                    <span>
-                      <strong className="text-emerald-700 font-bold">{matA.name}</strong> is{" "}
-                      <strong className="text-emerald-700 font-bold">£{Math.abs(priceDiff)}/sqft ({pricePctDiff}%) lower cost</strong>{" "}
-                      than {matB.name}.
-                    </span>
-                  ) : (
-                    <span>
-                      <strong className="text-emerald-700 font-bold">{matB.name}</strong> is{" "}
-                      <strong className="text-emerald-700 font-bold">£{priceDiff}/sqft ({pricePctDiff}%) lower cost</strong>{" "}
-                      than {matA.name}.
-                    </span>
-                  )}
-                </p>
-              </div>
+          {/* PRICING NOTICE CARD */}
+          <div className="bg-white border border-neutral-200 rounded-xl p-4 flex items-center gap-3 shadow-2xs">
+            <div className="w-10 h-10 rounded-full bg-gold/10 text-gold flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5" />
             </div>
-
-            <div className="flex items-center gap-2 shrink-0 font-mono text-xs">
-              <span className={`px-3 py-1 rounded font-bold ${priceDiff <= 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-neutral-100 text-neutral-700"}`}>
-                A: £{matA.price}/sqft
-              </span>
-              <span className="text-neutral-300">vs</span>
-              <span className={`px-3 py-1 rounded font-bold ${priceDiff >= 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-neutral-100 text-neutral-700"}`}>
-                B: £{matB.price}/sqft
-              </span>
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-800 font-mono">
+                Pricing
+              </h4>
+              <p className="text-xs text-neutral-600 mt-0.5">
+                Price on Application — confirmed by our team based on your specification.
+              </p>
             </div>
           </div>
 
@@ -348,7 +312,7 @@ export default function MaterialCompareModal({
                 Technical Specifications Table
               </h4>
               <span className="text-[10px] font-mono text-neutral-400">
-                LAB CERTIFIED PARAMETERS
+                TECHNICAL PARAMETERS
               </span>
             </div>
 

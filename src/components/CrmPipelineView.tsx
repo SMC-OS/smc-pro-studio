@@ -39,87 +39,20 @@ export interface CrmLead {
   notes: string[];
 }
 
-const INITIAL_LEADS: CrmLead[] = [
-  {
-    id: "CRM-101",
-    clientName: "Alexander Wright",
-    companyName: "Kensington Luxury Living",
-    email: "alexander.wright@kensington.co.uk",
-    phone: "+44 20 7946 0912",
-    projectAddress: "14 Phillimore Gardens, Kensington, London W8 7QG",
-    stage: "Fabrication",
-    dealValue: 48500,
-    materialPreference: "Calacatta Gold Quartzite (30mm)",
-    source: "Architect Referral",
-    assignedManager: "James Sterling (Senior Mason)",
-    lastContactDate: "2026-08-02",
-    nextAction: "Final CNC cut verification & edge polish sign-off",
-    notes: ["Architect requested 45-degree miter waterfall edge.", "Client paid 50% deposit via bank transfer."]
-  },
-  {
-    id: "CRM-102",
-    clientName: "Lady Sarah Spencer",
-    companyName: "Spencer Hall Estate",
-    email: "s.spencer@spencerhall.co.uk",
-    phone: "+44 1865 482910",
-    projectAddress: "Spencer Hall, Cotswolds, Oxfordshire OX7 3HE",
-    stage: "Site Survey",
-    dealValue: 92000,
-    materialPreference: "Statuario Extra Marble & Verde Alpi",
-    source: "Showroom Visit",
-    assignedManager: "David Vance (Chief Templater)",
-    lastContactDate: "2026-08-01",
-    nextAction: "3D LiDAR Scanner survey appointment scheduled for Thursday 10:00 AM",
-    notes: ["Heritage Grade II listed building.", "Substrate laser levelling required."]
-  },
-  {
-    id: "CRM-103",
-    clientName: "Marcus Vance",
-    companyName: "Mayfair Penthouse Developments",
-    email: "m.vance@mayfairdevs.com",
-    phone: "+44 20 7123 4567",
-    projectAddress: "Penthouse B, 42 Grosvenor Square, Mayfair, London W1K 2HP",
-    stage: "Quote",
-    dealValue: 64000,
-    materialPreference: "Nero Marquina & Arabescato Porcelain",
-    source: "Website AI Estimator",
-    assignedManager: "Sophie Taylor (Sales Director)",
-    lastContactDate: "2026-08-03",
-    nextAction: "Send revised PDF quote with integrated LED channel lighting allowance",
-    notes: ["Generated quote via AI Estimator in 45 seconds.", "Requested bookmatched island slab layout."]
-  },
-  {
-    id: "CRM-104",
-    clientName: "Dr. Oliver Harris",
-    email: "oliver.harris@harleyst.co.uk",
-    phone: "+44 20 7987 6543",
-    projectAddress: "88 Harley Street, Marylebone, London W1G 7HN",
-    stage: "Contract",
-    dealValue: 29500,
-    materialPreference: "Concrete Matte Porcelain (12mm)",
-    source: "Trade Portal",
-    assignedManager: "James Sterling (Senior Mason)",
-    lastContactDate: "2026-07-30",
-    nextAction: "Awaiting e-signature on British Stonework Contract v4.2",
-    notes: ["Medical clinic reception desk.", "Requires ultra-hygienic zero-porosity surface."]
-  },
-  {
-    id: "CRM-105",
-    clientName: "Victoria Sterling",
-    companyName: "Chelsea Design Studio",
-    email: "victoria@chelseadesign.co.uk",
-    phone: "+44 20 8111 2233",
-    projectAddress: "22 Kings Road, Chelsea, London SW3 4RP",
-    stage: "Installation",
-    dealValue: 38000,
-    materialPreference: "Taj Mahal Quartzite (20mm)",
-    source: "Instagram / Social",
-    assignedManager: "Mark Reynolds (Site Lead)",
-    lastContactDate: "2026-08-03",
-    nextAction: "Site installation team en-route with A-frame transport truck",
-    notes: ["Crane lift booked for 08:30 AM.", "Road closure permit secured from Chelsea council."]
-  }
-];
+/**
+ * Phase 5 Gate 0 purge.
+ *
+ * This seed previously contained five fabricated named clients (e.g.
+ * "Alexander Wright", "Lady Sarah Spencer") with invented companies,
+ * emails, UK phone numbers, specific addresses, deal values summing to a
+ * fabricated "£271,500" pipeline total, and fabricated assigned-manager
+ * staff names. None of it corresponds to a real client or a real deal.
+ * The pipeline board, search/filter, stage management, and note-taking
+ * structure are all genuinely reusable, so they are kept; the seed data
+ * is emptied so the board starts honestly empty until real leads are
+ * entered through the "Add New Lead" form.
+ */
+const INITIAL_LEADS: CrmLead[] = [];
 
 const STAGES: CrmLead["stage"][] = [
   "Lead",
@@ -137,7 +70,7 @@ export default function CrmPipelineView() {
   const [leads, setLeads] = useState<CrmLead[]>(INITIAL_LEADS);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStage, setSelectedStage] = useState<string>("all");
-  const [selectedLead, setSelectedLead] = useState<CrmLead | null>(INITIAL_LEADS[0]);
+  const [selectedLead, setSelectedLead] = useState<CrmLead | null>(null);
   const [newNoteInput, setNewNoteInput] = useState("");
   const [showAddLeadModal, setShowAddLeadModal] = useState(false);
 
@@ -203,7 +136,9 @@ export default function CrmPipelineView() {
         <div className="flex items-center gap-4">
           <div className="bg-black/60 border border-neutral-800 px-4 py-3 rounded-xl text-right">
             <span className="text-[10px] font-mono text-neutral-400 block uppercase">Total Pipeline Value</span>
-            <span className="font-serif text-2xl font-bold text-gold">£{totalPipelineValue.toLocaleString()}</span>
+            <span className="font-serif text-2xl font-bold text-gold">
+              {leads.length > 0 ? `£${totalPipelineValue.toLocaleString()}` : "No leads yet"}
+            </span>
           </div>
           <button
             onClick={() => setShowAddLeadModal(true)}
@@ -466,10 +401,10 @@ export default function CrmPipelineView() {
                   phone: formData.get("phone") as string,
                   projectAddress: formData.get("projectAddress") as string,
                   stage: "Lead",
-                  dealValue: Number(formData.get("dealValue") || 25000),
+                  dealValue: Number(formData.get("dealValue") || 0),
                   materialPreference: formData.get("materialPreference") as string,
                   source: "Website AI Estimator",
-                  assignedManager: "James Sterling (Senior Mason)",
+                  assignedManager: (formData.get("assignedManager") as string) || "Not yet assigned",
                   lastContactDate: new Date().toISOString().split("T")[0],
                   nextAction: "Initial consultation & sample request",
                   notes: ["Registered manually via SMC Pro CRM Portal."]
@@ -482,7 +417,7 @@ export default function CrmPipelineView() {
             >
               <div>
                 <label className="text-[10px] font-mono text-neutral-400 block mb-1">Client Full Name *</label>
-                <input required name="clientName" placeholder="e.g. Lord Rupert Kensington" className="w-full bg-black border border-neutral-800 rounded-lg p-2 text-white" />
+                <input required name="clientName" placeholder="Full name" className="w-full bg-black border border-neutral-800 rounded-lg p-2 text-white" />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -501,12 +436,16 @@ export default function CrmPipelineView() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] font-mono text-neutral-400 block mb-1">Estimated Deal Value (£) *</label>
-                  <input required name="dealValue" type="number" defaultValue="35000" className="w-full bg-black border border-neutral-800 rounded-lg p-2 text-white font-mono" />
+                  <input required name="dealValue" type="number" placeholder="0" className="w-full bg-black border border-neutral-800 rounded-lg p-2 text-white font-mono" />
                 </div>
                 <div>
                   <label className="text-[10px] font-mono text-neutral-400 block mb-1">Material Preference</label>
-                  <input name="materialPreference" defaultValue="Calacatta Gold Quartzite" className="w-full bg-black border border-neutral-800 rounded-lg p-2 text-white" />
+                  <input name="materialPreference" placeholder="e.g. Calacatta Gold Quartzite" className="w-full bg-black border border-neutral-800 rounded-lg p-2 text-white" />
                 </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-mono text-neutral-400 block mb-1">Assigned Manager</label>
+                <input name="assignedManager" placeholder="Staff member name" className="w-full bg-black border border-neutral-800 rounded-lg p-2 text-white" />
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-800">

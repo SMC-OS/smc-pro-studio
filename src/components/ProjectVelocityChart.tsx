@@ -160,9 +160,6 @@ export default function ProjectVelocityChart({
               <Calendar className="w-3.5 h-3.5 text-gold" />
               {label} ({dataItem.dateStr})
             </span>
-            <span className="px-2 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800 rounded text-[10px] font-bold">
-              +100% BS Guild Certified
-            </span>
           </div>
 
           <div className="space-y-1.5 text-neutral-300">

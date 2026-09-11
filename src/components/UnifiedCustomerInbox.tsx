@@ -35,79 +35,36 @@ export interface ConversationThread {
   messages: ThreadMessage[];
 }
 
-const INITIAL_THREADS: ConversationThread[] = [
-  {
-    id: "TH-1",
-    clientName: "Alexander Wright",
-    projectTitle: "Kensington Residence",
-    lastMessage: "Hi James, confirmed the 45-degree miter edge for the island slab.",
-    unread: true,
-    channel: "WhatsApp",
-    updatedAt: "10:14 AM",
-    messages: [
-      {
-        id: "m1",
-        sender: "system",
-        channel: "Email Quote",
-        senderName: "SMC Pro System",
-        text: "Automated Estimate SMC-EST-8842 dispatched via PDF email link.",
-        timestamp: "Yesterday 16:30"
-      },
-      {
-        id: "m2",
-        sender: "client",
-        channel: "WhatsApp",
-        senderName: "Alexander Wright",
-        text: "Hi James, confirmed the 45-degree miter edge for the island slab.",
-        timestamp: "10:14 AM"
-      }
-    ]
-  },
-  {
-    id: "TH-2",
-    clientName: "Lady Sarah Spencer",
-    projectTitle: "Spencer Hall Estate",
-    lastMessage: "Can you re-confirm the 3D laser survey arrival time tomorrow?",
-    unread: false,
-    channel: "Client Portal",
-    updatedAt: "Yesterday",
-    messages: [
-      {
-        id: "m3",
-        sender: "client",
-        channel: "Client Portal",
-        senderName: "Lady Sarah Spencer",
-        text: "Can you re-confirm the 3D laser survey arrival time tomorrow?",
-        timestamp: "Yesterday 14:10"
-      },
-      {
-        id: "m4",
-        sender: "staff",
-        channel: "Client Portal",
-        senderName: "David Vance (3D Templater)",
-        text: "Good afternoon Lady Spencer. Our LiDAR team will arrive at 10:00 AM sharp with our mobile scanner.",
-        timestamp: "Yesterday 14:45"
-      }
-    ]
-  }
-];
+/**
+ * Phase 5 Gate 0 purge.
+ *
+ * This seed previously contained two fabricated conversation threads for
+ * invented clients ("Alexander Wright", "Lady Sarah Spencer") with
+ * fabricated project names, a fabricated auto-dispatched estimate
+ * reference, and fabricated named staff ("David Vance (3D Templater)").
+ * None of it was ever a real client or a real conversation. The inbox
+ * layout, thread list, and reply form are genuinely reusable, so they are
+ * kept; the seed is emptied so the inbox starts honestly empty until real
+ * conversations arrive.
+ */
+const INITIAL_THREADS: ConversationThread[] = [];
 
 export default function UnifiedCustomerInbox() {
   const [threads, setThreads] = useState<ConversationThread[]>(INITIAL_THREADS);
-  const [activeThreadId, setActiveThreadId] = useState<string>("TH-1");
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
 
-  const activeThread = threads.find((t) => t.id === activeThreadId) || threads[0];
+  const activeThread = threads.find((t) => t.id === activeThreadId) || null;
 
   const handleSendReply = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyText.trim()) return;
+    if (!replyText.trim() || !activeThread) return;
 
     const newMsg: ThreadMessage = {
       id: "m-" + Date.now(),
       sender: "staff",
       channel: activeThread.channel,
-      senderName: "James Sterling (SMC Pro)",
+      senderName: "SMC Pro Staff",
       text: replyText.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     };
@@ -160,6 +117,11 @@ export default function UnifiedCustomerInbox() {
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-neutral-800/60 custom-scrollbar">
+            {threads.length === 0 && (
+              <div className="p-6 text-center text-xs text-neutral-500 font-mono">
+                No conversations yet.
+              </div>
+            )}
             {threads.map((th) => (
               <div
                 key={th.id}
@@ -186,69 +148,75 @@ export default function UnifiedCustomerInbox() {
 
         {/* Right 2 Columns: Chat Thread */}
         <div className="md:col-span-2 flex flex-col h-full bg-neutral-900">
-          
-          {/* Thread Top Header */}
-          <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/40">
-            <div>
-              <h3 className="font-serif font-bold text-lg text-white">{activeThread.clientName}</h3>
-              <p className="text-xs font-mono text-gold">{activeThread.projectTitle} • via {activeThread.channel}</p>
-            </div>
-          </div>
+          {activeThread ? (
+            <>
+              {/* Thread Top Header */}
+              <div className="p-4 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/40">
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-white">{activeThread.clientName}</h3>
+                  <p className="text-xs font-mono text-gold">{activeThread.projectTitle} • via {activeThread.channel}</p>
+                </div>
+              </div>
 
-          {/* Messages Area */}
-          <div className="flex-1 p-4 overflow-y-auto space-y-3 custom-scrollbar">
-            {activeThread.messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${
-                  msg.sender === "staff"
-                    ? "items-end"
-                    : msg.sender === "system"
-                    ? "items-center"
-                    : "items-start"
-                }`}
-              >
-                {msg.sender === "system" ? (
-                  <div className="p-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-center text-xs font-mono text-gold max-w-md my-1">
-                    ⚡ {msg.text}
-                  </div>
-                ) : (
+              {/* Messages Area */}
+              <div className="flex-1 p-4 overflow-y-auto space-y-3 custom-scrollbar">
+                {activeThread.messages.map((msg) => (
                   <div
-                    className={`max-w-md p-3.5 rounded-2xl space-y-1 text-xs font-sans ${
+                    key={msg.id}
+                    className={`flex flex-col ${
                       msg.sender === "staff"
-                        ? "bg-gold text-neutral-950 rounded-br-xs font-medium shadow-md"
-                        : "bg-neutral-800 text-white rounded-bl-xs border border-neutral-700"
+                        ? "items-end"
+                        : msg.sender === "system"
+                        ? "items-center"
+                        : "items-start"
                     }`}
                   >
-                    <div className="flex items-center justify-between text-[10px] font-mono opacity-80 gap-3 border-b border-black/10 pb-1">
-                      <span>{msg.senderName}</span>
-                      <span>{msg.timestamp}</span>
-                    </div>
-                    <p className="leading-snug">{msg.text}</p>
+                    {msg.sender === "system" ? (
+                      <div className="p-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-center text-xs font-mono text-gold max-w-md my-1">
+                        ⚡ {msg.text}
+                      </div>
+                    ) : (
+                      <div
+                        className={`max-w-md p-3.5 rounded-2xl space-y-1 text-xs font-sans ${
+                          msg.sender === "staff"
+                            ? "bg-gold text-neutral-950 rounded-br-xs font-medium shadow-md"
+                            : "bg-neutral-800 text-white rounded-bl-xs border border-neutral-700"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[10px] font-mono opacity-80 gap-3 border-b border-black/10 pb-1">
+                          <span>{msg.senderName}</span>
+                          <span>{msg.timestamp}</span>
+                        </div>
+                        <p className="leading-snug">{msg.text}</p>
+                      </div>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* Input Bar */}
-          <form onSubmit={handleSendReply} className="p-3 border-t border-neutral-800 flex items-center gap-2 bg-neutral-950/60">
-            <input
-              type="text"
-              placeholder={`Reply to ${activeThread.clientName} via ${activeThread.channel}...`}
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-gold font-sans"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 bg-gold hover:bg-amber-400 text-neutral-950 font-mono text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>Send</span>
-            </button>
-          </form>
-
+              {/* Input Bar */}
+              <form onSubmit={handleSendReply} className="p-3 border-t border-neutral-800 flex items-center gap-2 bg-neutral-950/60">
+                <input
+                  type="text"
+                  placeholder={`Reply to ${activeThread.clientName} via ${activeThread.channel}...`}
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-gold font-sans"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-gold hover:bg-amber-400 text-neutral-950 font-mono text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send</span>
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-center text-xs text-neutral-500 font-mono p-6">
+              Select a conversation to view messages, or wait for a new one to arrive.
+            </div>
+          )}
         </div>
 
       </div>

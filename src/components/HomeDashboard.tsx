@@ -33,7 +33,6 @@ import {
   Maximize2,
   Minimize2,
   ChevronRight,
-  ShieldCheck,
   Play,
   Pause,
   Repeat,
@@ -43,7 +42,6 @@ import {
   DollarSign,
   Check,
   ExternalLink,
-  CloudSun,
   Gift,
   ThumbsUp,
   Bot,
@@ -153,7 +151,7 @@ export default function HomeDashboard({
   const lowStockMaterials = useMemo(() => {
     const catalog = materialsCatalog && materialsCatalog.length > 0 ? materialsCatalog : MATERIALS_CATALOG;
     return catalog.filter((m) => {
-      const currentStock = materialsStock ? (materialsStock[m.id] ?? m.stockSqFt) : m.stockSqFt;
+      const currentStock = materialsStock ? (materialsStock[m.id] ?? 0) : 0;
       return currentStock < 20;
     });
   }, [materialsCatalog, materialsStock]);
@@ -162,7 +160,7 @@ export default function HomeDashboard({
   useEffect(() => {
     const catalog = materialsCatalog && materialsCatalog.length > 0 ? materialsCatalog : MATERIALS_CATALOG;
     catalog.forEach((m) => {
-      const currentStock = materialsStock ? (materialsStock[m.id] ?? m.stockSqFt) : m.stockSqFt;
+      const currentStock = materialsStock ? (materialsStock[m.id] ?? 0) : 0;
       prevStockRef.current[m.id] = currentStock;
     });
   }, [materialsCatalog, materialsStock]);
@@ -182,7 +180,7 @@ export default function HomeDashboard({
 
   const handleBatchRestock = () => {
     lowStockMaterials.forEach((m) => {
-      const current = materialsStock ? (materialsStock[m.id] ?? m.stockSqFt) : m.stockSqFt;
+      const current = materialsStock ? (materialsStock[m.id] ?? 0) : 0;
       if (onUpdateMaterialStock) {
         onUpdateMaterialStock(m.id, current + 50);
       }
@@ -282,49 +280,19 @@ export default function HomeDashboard({
     }
   ];
 
-  // Document list
-  const recentDocuments = [
-    { name: "Quote_SMC_8821_Kensington.pdf", type: "Quote", date: "15 Jun 2026", size: "2.4 MB" },
-    { name: "SMC_Client_Contract_Signoff.pdf", type: "Contract", date: "20 Jun 2026", size: "1.8 MB" },
-    { name: "Deposit_Invoice_INV_9042.pdf", type: "Invoice", date: "01 Jul 2026", size: "980 KB" },
-    { name: "BS_EN_1469_Warranty_Certificate.pdf", type: "Warranty", date: "05 Aug 2026", size: "3.1 MB" }
-  ];
+  /**
+   * Phase 5 Gate 0 purge: these previously seeded a fabricated "recent
+   * documents" list (invented contract/invoice/warranty-certificate PDF
+   * names implying a real signed contract and a real paid deposit exist)
+   * and a fabricated notifications timeline (a named mason, a specific
+   * fake "Payment Received (£4,250.00)" transaction, and a claim that
+   * slabs were reserved in a warehouse). None of it was ever real. Both
+   * lists start empty; the cards that render them are unchanged and will
+   * show real documents/notifications once a real backend supplies them.
+   */
+  const recentDocuments: { name: string; type: string; date: string; size: string }[] = [];
 
-  // Notifications timeline
-  const notifications = [
-    {
-      id: "n1",
-      title: "Installation Digital Sign-off Available",
-      desc: "Your project status is completed. Please review and digitally sign off.",
-      time: "10 mins ago",
-      icon: PenTool,
-      color: "text-emerald-500 bg-emerald-50"
-    },
-    {
-      id: "n2",
-      title: "Fabrication Milestone Completed",
-      desc: "Edge profiling and surface sealing finished at Mayfair Workshop.",
-      time: "2 hours ago",
-      icon: CheckCircle2,
-      color: "text-blue-500 bg-blue-50"
-    },
-    {
-      id: "n3",
-      title: "Laser Survey Scheduled",
-      desc: "Senior Mason Marco Bellini assigned for Thursday 10:00 AM.",
-      time: "Yesterday",
-      icon: Calendar,
-      color: "text-amber-500 bg-amber-50"
-    },
-    {
-      id: "n4",
-      title: "Payment Received (£4,250.00)",
-      desc: "Deposit confirmed. Calacatta Gold slabs reserved in warehouse.",
-      time: "3 days ago",
-      icon: ShieldCheck,
-      color: "text-purple-500 bg-purple-50"
-    }
-  ];
+  const notifications: { id: string; title: string; desc: string; time: string; icon: typeof PenTool; color: string }[] = [];
 
   const [isPlayingVideo, setIsPlayingVideo] = useState(true);
   const [isMutedVideo, setIsMutedVideo] = useState(true);
@@ -441,16 +409,6 @@ export default function HomeDashboard({
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Weather Card */}
-            <div
-              className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 text-xs font-mono ${
-                isDark ? "bg-neutral-900 border-neutral-800 text-neutral-300" : "bg-white border-neutral-200 text-neutral-700 shadow-xs"
-              }`}
-            >
-              <CloudSun className="w-4 h-4 text-amber-500" />
-              <span>London, UK: <strong>22°C</strong> Clear</span>
-            </div>
-
             {/* Dark / Light Mode Switcher */}
             <button
               onClick={() => setThemeMode(isDark ? "light" : "dark")}
@@ -693,12 +651,9 @@ export default function HomeDashboard({
                 name: "Calacatta Gold Italian Porcelain",
                 category: "porcelain",
                 categoryName: "Porcelain & Quartz",
-                price: "£240/m²",
                 finish: "Silk Polish",
                 thickness: "20mm",
                 mohs: "Mohs 7",
-                origin: "Tuscany, Italy",
-                stock: "120 m² Available",
                 image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
                 badge: "Best Seller"
               },
@@ -707,12 +662,9 @@ export default function HomeDashboard({
                 name: "Statuario Extra Bookmatched Marble",
                 category: "slabs",
                 categoryName: "Natural Slabs",
-                price: "£380/m²",
                 finish: "Bookmatched",
                 thickness: "30mm",
                 mohs: "Mohs 4",
-                origin: "Carrara, Italy",
-                stock: "48 Slabs Quarried",
                 image: "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=800&q=80",
                 badge: "Quarried Italy"
               },
@@ -721,12 +673,9 @@ export default function HomeDashboard({
                 name: "Nero Marquina Velvet Marble",
                 category: "slabs",
                 categoryName: "Natural Slabs",
-                price: "£290/m²",
                 finish: "Honed Satin",
                 thickness: "20mm",
                 mohs: "Mohs 4",
-                origin: "Basque, Spain",
-                stock: "32 Slabs In Stock",
                 image: "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=800&q=80",
                 badge: "Deep Black"
               },
@@ -735,12 +684,9 @@ export default function HomeDashboard({
                 name: "Taj Mahal Brazilian Quartzite",
                 category: "slabs",
                 categoryName: "Natural Slabs",
-                price: "£420/m²",
                 finish: "Leathered Finish",
                 thickness: "30mm",
                 mohs: "Mohs 7.5",
-                origin: "Ceará, Brazil",
-                stock: "26 Slabs In Stock",
                 image: "https://images.unsplash.com/photo-1600585152220-90363fe7e115?auto=format&fit=crop&w=800&q=80",
                 badge: "Scratchproof"
               },
@@ -749,12 +695,9 @@ export default function HomeDashboard({
                 name: "Patagonian Crystal Quartzite",
                 category: "slabs",
                 categoryName: "Natural Slabs",
-                price: "£510/m²",
                 finish: "Polished Translucent",
                 thickness: "20mm",
                 mohs: "Mohs 7",
-                origin: "Patagonia",
-                stock: "14 Slabs Rare",
                 image: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=800&q=80",
                 badge: "Backlit Ready"
               },
@@ -763,12 +706,9 @@ export default function HomeDashboard({
                 name: "Hand-Carved Carrara Marble Sink",
                 category: "artisan",
                 categoryName: "Artisan Stone Crafts",
-                price: "£850",
                 finish: "Honed & Sealed",
                 thickness: "Solid Block",
                 mohs: "Carved Block",
-                origin: "Mayfair Workshop",
-                stock: "4 Units In Stock",
                 image: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=800&q=80",
                 badge: "Limited Edition"
               },
@@ -777,12 +717,9 @@ export default function HomeDashboard({
                 name: "Brass Inlaid Marble Coaster Set",
                 category: "artisan",
                 categoryName: "Artisan Stone Crafts",
-                price: "£140",
                 finish: "Polished & Inlaid",
                 thickness: "Set of 6",
                 mohs: "Calacatta & Nero",
-                origin: "SMC Artisan Studio",
-                stock: "18 Sets Available",
                 image: "https://images.unsplash.com/photo-1615529182904-14819c35db37?auto=format&fit=crop&w=800&q=80",
                 badge: "Gift Boxed"
               },
@@ -791,12 +728,9 @@ export default function HomeDashboard({
                 name: "Cascading Waterfall Kitchen Island",
                 category: "islands",
                 categoryName: "Waterfall Islands",
-                price: "£3,200",
                 finish: "Double Miter Apron",
                 thickness: "30mm Mitered",
                 mohs: "Custom Fit",
-                origin: "Kensington Workshop",
-                stock: "Custom Bespoke",
                 image: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=800&q=80",
                 badge: "Master Mason"
               }
@@ -827,19 +761,13 @@ export default function HomeDashboard({
                       </span>
                     </div>
 
-                    {/* Price Overlay */}
-                    <div className="absolute bottom-3 right-3 z-10">
-                      <span className="px-3 py-1 rounded-xl bg-gold text-neutral-950 font-mono text-xs font-bold shadow-lg">
-                        {prod.price}
-                      </span>
-                    </div>
                   </div>
 
                   {/* Product Details */}
                   <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
                     <div className="space-y-1">
                       <span className="text-[10px] font-mono text-gold uppercase tracking-wider font-bold">
-                        {prod.categoryName} • {prod.origin}
+                        {prod.categoryName}
                       </span>
                       <h3 className="font-serif font-bold text-base text-neutral-900 dark:text-neutral-100 leading-snug line-clamp-1 group-hover:text-gold transition-colors">
                         {prod.name}
@@ -852,15 +780,12 @@ export default function HomeDashboard({
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> {prod.stock}
-                      </span>
+                    <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-end gap-2">
                       <button
                         onClick={() => onNavigateTab("artisan-shop")}
                         className="px-3 py-1.5 rounded-lg bg-neutral-900 dark:bg-neutral-800 hover:bg-gold hover:text-neutral-950 text-gold border border-gold/30 font-mono text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1"
                       >
-                        <span>Reserve</span>
+                        <span>View in Shop</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -950,7 +875,7 @@ export default function HomeDashboard({
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {lowStockMaterials.map((mat) => {
-                  const currentStock = materialsStock ? (materialsStock[mat.id] ?? mat.stockSqFt) : mat.stockSqFt;
+                  const currentStock = materialsStock ? (materialsStock[mat.id] ?? 0) : 0;
                   const shortage = Math.max(0, 20 - currentStock);
                   const progressPct = Math.min(100, Math.round((currentStock / 20) * 100));
                   const isLowInventory = currentStock < 20;
@@ -983,7 +908,7 @@ export default function HomeDashboard({
                           </div>
                           <div>
                             <span className="text-[9px] font-mono text-amber-600 dark:text-gold uppercase tracking-wider font-bold block">
-                              {mat.class} • £{mat.price}/sq ft
+                              {mat.class}
                             </span>
                             <h3 className="font-serif font-bold text-sm text-neutral-900 dark:text-neutral-100 leading-tight">
                               {mat.name}
@@ -1024,13 +949,7 @@ export default function HomeDashboard({
 
                         <div className="flex justify-between items-center text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
                           <span>Shortage: <strong className="text-amber-600 dark:text-gold font-bold">-{shortage} sq ft</strong></span>
-                          {mat.awaitingTransitSqFt && mat.awaitingTransitSqFt > 0 ? (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                              <Truck className="w-3 h-3" /> {mat.awaitingTransitSqFt} sq ft in transit
-                            </span>
-                          ) : (
-                            <span className="text-neutral-400">No transit order active</span>
-                          )}
+                          <span className="text-neutral-400">No transit order active</span>
                         </div>
                       </div>
 
@@ -1053,7 +972,7 @@ export default function HomeDashboard({
                           <div className="flex items-center justify-between border border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-100 dark:bg-neutral-800 px-1">
                             <button
                               onClick={() => {
-                                const curr = materialsStock ? (materialsStock[mat.id] ?? mat.stockSqFt) : mat.stockSqFt;
+                                const curr = materialsStock ? (materialsStock[mat.id] ?? 0) : 0;
                                 const nextStock = Math.max(0, curr - 5);
                                 if (onUpdateMaterialStock) onUpdateMaterialStock(mat.id, nextStock);
                                 if (nextStock < 20) {
@@ -1223,10 +1142,10 @@ export default function HomeDashboard({
             {/* Right Column: 4 Luxury Selector Cards */}
             <div className="lg:col-span-5 space-y-2.5 flex flex-col justify-center">
               {[
-                { title: "Calacatta Oro Gold", desc: "Warm gold veining on bright Italian porcelain canvas.", price: "£380/m²" },
-                { title: "Nero Marquina Velvet", desc: "Deep Spanish black marble with white lightning veining.", price: "£340/m²" },
-                { title: "Patagonian Quartzite", desc: "Translucent crystal quartzite with backlighting options.", price: "£520/m²" },
-                { title: "Statuario Extra Bookmatched", desc: "Symmetrical Carrara masterpiece for kitchen islands.", price: "£460/m²" }
+                { title: "Calacatta Oro Gold", desc: "Warm gold veining on bright Italian porcelain canvas." },
+                { title: "Nero Marquina Velvet", desc: "Deep black marble with white lightning veining." },
+                { title: "Patagonian Quartzite", desc: "Translucent crystal quartzite with backlighting options." },
+                { title: "Statuario Extra Bookmatched", desc: "Symmetrical bookmatched marble for kitchen islands." }
               ].map((item, idx) => (
                 <button
                   key={item.title}
@@ -1248,9 +1167,6 @@ export default function HomeDashboard({
                       {item.desc}
                     </p>
                   </div>
-                  <span className="text-xs font-mono font-bold text-amber-400 shrink-0 ml-2">
-                    {item.price}
-                  </span>
                 </button>
               ))}
             </div>
@@ -1330,7 +1246,7 @@ export default function HomeDashboard({
                 </h2>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-1 mt-0.5">
                   <MapPin className="w-3.5 h-3.5 text-gold" />
-                  {primaryProject.address || "14 Kensington Palace Gardens, London"}
+                  {primaryProject.address || "Address not yet set"}
                 </p>
               </div>
 
@@ -1390,17 +1306,17 @@ export default function HomeDashboard({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 text-xs">
                 <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-xl border border-neutral-200/60 dark:border-neutral-800">
                   <span className="text-[10px] font-mono text-neutral-400 uppercase block">Estimated Completion</span>
-                  <strong className="text-neutral-900 dark:text-neutral-100 font-serif">12 August 2026</strong>
+                  <strong className="text-neutral-900 dark:text-neutral-100 font-serif">Not yet set</strong>
                 </div>
 
                 <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-xl border border-neutral-200/60 dark:border-neutral-800">
                   <span className="text-[10px] font-mono text-neutral-400 uppercase block">Next Scheduled Appointment</span>
-                  <strong className="text-amber-600 dark:text-amber-400 font-serif">Thursday 10:00 AM (Templating)</strong>
+                  <strong className="text-amber-600 dark:text-amber-400 font-serif">Not yet scheduled</strong>
                 </div>
 
                 <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-xl border border-neutral-200/60 dark:border-neutral-800 sm:col-span-2 lg:col-span-1">
                   <span className="text-[10px] font-mono text-neutral-400 uppercase block">Material Specification</span>
-                  <strong className="text-neutral-900 dark:text-neutral-100 font-serif">Calacatta Gold Porcelain (20mm)</strong>
+                  <strong className="text-neutral-900 dark:text-neutral-100 font-serif">Not yet selected</strong>
                 </div>
               </div>
             </div>
@@ -1573,33 +1489,19 @@ export default function HomeDashboard({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="space-y-1">
                   <span className="text-[10px] font-mono text-neutral-400 block uppercase">Visit Type &amp; Time</span>
                   <strong className="text-neutral-900 dark:text-neutral-100 block font-semibold">
-                    Digital Laser Templating
+                    Not yet scheduled
                   </strong>
-                  <span className="text-amber-600 dark:text-amber-400 font-mono font-bold">
-                    Thursday 10:00 AM - 11:30 AM
-                  </span>
                 </div>
 
                 <div className="space-y-1">
                   <span className="text-[10px] font-mono text-neutral-400 block uppercase">Assigned Mason</span>
                   <strong className="text-neutral-900 dark:text-neutral-100 block font-semibold">
-                    Marco Bellini
+                    Not yet assigned
                   </strong>
-                  <span className="text-neutral-500 text-[10px]">Senior Master Mason</span>
-                </div>
-
-                <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-xl border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 space-y-1">
-                  <div className="flex items-center gap-1 font-bold text-[11px]">
-                    <CloudSun className="w-3.5 h-3.5 text-amber-600" />
-                    Appointment Weather
-                  </div>
-                  <p className="text-[10px] leading-tight text-amber-800 dark:text-amber-300">
-                    Dry 22°C expected. Ideal for unloading precision laser equipment.
-                  </p>
                 </div>
               </div>
             </div>
@@ -1665,6 +1567,11 @@ export default function HomeDashboard({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {recentDocuments.length === 0 && (
+                  <div className="sm:col-span-2 py-6 text-center text-xs text-neutral-400 font-mono">
+                    No documents yet.
+                  </div>
+                )}
                 {recentDocuments.map((doc, idx) => (
                   <div
                     key={idx}
@@ -1723,7 +1630,7 @@ export default function HomeDashboard({
                     Thank you for your feedback!
                   </strong>
                   <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                    Your 5-star review has been recorded under warranty file SMC-PRO-8842.
+                    Your review has been recorded.
                   </p>
                 </div>
               ) : (
@@ -1761,7 +1668,7 @@ export default function HomeDashboard({
                     onClick={() => setReviewSubmitted(true)}
                     className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-gold border border-gold/40 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all"
                   >
-                    Submit Review &amp; Unlock Extended Warranty
+                    Submit Review
                   </button>
                 </div>
               )}
@@ -1833,6 +1740,11 @@ export default function HomeDashboard({
               </div>
 
               <div className="space-y-3">
+                {notifications.length === 0 && (
+                  <div className="py-6 text-center text-xs text-neutral-400 font-mono">
+                    No activity yet.
+                  </div>
+                )}
                 {notifications.map((item) => {
                   const IconComp = item.icon;
                   return (
@@ -1869,26 +1781,24 @@ export default function HomeDashboard({
                 </h3>
               </div>
 
+              {/*
+                Phase 5 Gate 0 purge: this card previously advertised a
+                fabricated "15% Off Waterfall Edge Profiles" promotion and a
+                fabricated "£250 Credit Per Referred Client" reward — the
+                same fabricated cash-referral figure already removed from
+                ReferralsModal.tsx. Neither was ever a real offer. Per that
+                same approved decision, no unsupported promotion is shown
+                here; the entry point to the (already-purged) referrals
+                feature is kept without asserting a reward amount.
+              */}
               <div className="space-y-3">
-                <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-gold/10 to-amber-500/10 border border-gold/40 space-y-1">
-                  <span className="text-[9px] font-mono text-gold font-bold uppercase tracking-widest block">
-                    Summer Quartz Collection
-                  </span>
-                  <strong className="text-xs font-bold text-neutral-900 dark:text-neutral-100 block">
-                    15% Off Waterfall Edge Profiles
-                  </strong>
-                  <p className="text-[10px] text-neutral-600 dark:text-neutral-400">
-                    Upgrade kitchen islands with seamless double mitered aprons.
-                  </p>
-                </div>
-
                 <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 space-y-1">
                   <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-widest block">
-                    Trade Referral Rewards
+                    Trade Referrals
                   </span>
-                  <strong className="text-xs font-bold text-neutral-900 dark:text-neutral-100 block">
-                    Earn £250 Credit Per Referred Client
-                  </strong>
+                  <p className="text-[10px] text-neutral-600 dark:text-neutral-400">
+                    Refer a client and share your link — contact SMC for current terms.
+                  </p>
                   <button
                     onClick={onOpenReferralsModal}
                     className="text-[10px] text-gold font-mono font-bold hover:underline block pt-1"
@@ -1954,7 +1864,7 @@ export default function HomeDashboard({
               <div>
                 <strong className="text-sm font-bold block">Invite Friends &amp; Architects</strong>
                 <p className="text-[11px] text-neutral-300 mt-0.5">
-                  Friends Referred: <strong>3</strong> • Credits Earned: <strong className="text-gold">£750.00</strong>
+                  Share your referral link with SMC to invite friends and architects.
                 </p>
               </div>
               <button

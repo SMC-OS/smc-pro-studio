@@ -83,7 +83,7 @@ export default function AccountView({
   const [waPersona, setWaPersona] = useState<string>(() => {
     return localStorage.getItem("smc_wa_persona") || "concierge";
   });
-  const defaultGreetingText = "Welcome to *SMC Pro Studio*! 🏛️✨\nHow can we assist with your project today?\n\n• *Instant Worktop Quote* (£/m²)\n• *Laser Survey Booking*\n• *Slab Stock & Gallery*";
+  const defaultGreetingText = "Welcome to *SMC Pro Studio*! 🏛️✨\nHow can we assist with your project today?\n\n• *Request a Quote*\n• *Laser Survey Booking*\n• *Slab Gallery*";
   const [waGreeting, setWaGreeting] = useState<string>(() => {
     return localStorage.getItem("smc_wa_greeting") || defaultGreetingText;
   });
@@ -94,11 +94,17 @@ export default function AccountView({
     return localStorage.getItem("smc_wa_hours") || "24/7 Automated AI Gateway";
   });
 
-  // User Profile States
-  const [fullName, setFullName] = useState("Alexander Wright");
-  const [companyName, setCompanyName] = useState("Kensington Architectural Studio");
-  const [phone, setPhone] = useState("+44 7700 900882");
-  const [roleTitle, setRoleTitle] = useState("Principal Architect & VIP Partner");
+  /**
+   * Phase 5 Gate 0 purge: these profile fields previously defaulted to a
+   * fabricated identity ("Alexander Wright", "Kensington Architectural
+   * Studio") that would silently pre-fill a real user's own account
+   * settings. They now default empty until the user enters their own
+   * details.
+   */
+  const [fullName, setFullName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [roleTitle, setRoleTitle] = useState("");
   const [preferredLang, setPreferredLang] = useState("English (UK)");
   const [avatarIndex, setAvatarIndex] = useState(0);
 
@@ -339,10 +345,10 @@ export default function AccountView({
               </span>
             </div>
             <p className="text-xs text-neutral-400 font-mono">
-              {companyName ? `${companyName} • ` : ""}{userEmail || "alexander.wright@kensington-arch.co.uk"}
+              {companyName ? `${companyName} • ` : ""}{userEmail || "No email on file"}
             </p>
             <span className="text-[10px] font-mono text-neutral-500 block">
-              Role: {roleTitle}
+              Role: {roleTitle || "Not set"}
             </span>
           </div>
         </div>
@@ -375,7 +381,7 @@ export default function AccountView({
             className="bg-gold hover:bg-amber-400 text-[#1A1A1A] px-3.5 py-2 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
           >
             <Award className="w-3.5 h-3.5" />
-            <span>Rewards (£500)</span>
+            <span>Referrals</span>
           </button>
         </div>
       </div>
@@ -535,7 +541,7 @@ export default function AccountView({
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. Alexander Wright"
+                  placeholder="Full name"
                   className="w-full px-3.5 py-2.5 border border-neutral-300 rounded-xl text-xs font-sans text-neutral-800 focus:border-gold focus:ring-1 focus:ring-gold/30"
                 />
               </div>
@@ -546,7 +552,7 @@ export default function AccountView({
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="e.g. Kensington Architectural Ltd"
+                  placeholder="Company name (optional)"
                   className="w-full px-3.5 py-2.5 border border-neutral-300 rounded-xl text-xs font-sans text-neutral-800 focus:border-gold focus:ring-1 focus:ring-gold/30"
                 />
               </div>
@@ -556,7 +562,7 @@ export default function AccountView({
                 <input
                   type="email"
                   disabled
-                  value={userEmail || "alexander.wright@kensington-arch.co.uk"}
+                  value={userEmail || "No email on file"}
                   className="w-full px-3.5 py-2.5 border border-neutral-200 bg-neutral-100 rounded-xl text-xs font-sans text-neutral-500 cursor-not-allowed font-mono"
                 />
               </div>
@@ -679,19 +685,7 @@ export default function AccountView({
               <div className="space-y-3 font-mono text-xs text-neutral-600">
                 <div className="flex justify-between items-center py-2 border-b border-neutral-200/60">
                   <span>Active Sites:</span>
-                  <strong className="text-neutral-900 font-bold">2 Locations</strong>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-neutral-200/60">
-                  <span>Saved Quotes:</span>
-                  <strong className="text-neutral-900 font-bold">12 Quotations</strong>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-neutral-200/60">
-                  <span>Tier Rating:</span>
-                  <strong className="text-gold font-bold">VIP Tier 1 Trade</strong>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-neutral-200/60">
-                  <span>Approved Credit:</span>
-                  <strong className="text-emerald-600 font-bold">£50,000 Facility</strong>
+                  <strong className="text-neutral-900 font-bold">{addresses.length} Location{addresses.length === 1 ? "" : "s"}</strong>
                 </div>
               </div>
 
@@ -1068,18 +1062,9 @@ export default function AccountView({
             </thead>
             <tbody className="text-xs font-sans divide-y divide-neutral-100">
               <tr>
-                <td className="p-4 font-mono font-bold text-neutral-900">#SMC-8821</td>
-                <td className="p-4 font-bold text-neutral-800">Kensington Penthouse Kitchen</td>
-                <td className="p-4 text-neutral-600">Calacatta Gold Quartz 30mm</td>
-                <td className="p-4"><span className="bg-amber-100 text-amber-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded">Fabrication</span></td>
-                <td className="p-4 text-right font-mono font-bold text-neutral-900">£12,450</td>
-              </tr>
-              <tr>
-                <td className="p-4 font-mono font-bold text-neutral-900">#SMC-7710</td>
-                <td className="p-4 font-bold text-neutral-800">Chelsea Riverside Suite Bath</td>
-                <td className="p-4 text-neutral-600">Emerald Quartzite 20mm</td>
-                <td className="p-4"><span className="bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold px-2 py-0.5 rounded">Completed</span></td>
-                <td className="p-4 text-right font-mono font-bold text-neutral-900">£8,900</td>
+                <td className="p-4 text-neutral-500" colSpan={5}>
+                  No quotes or contracts yet. They will appear here once available.
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1372,7 +1357,7 @@ export default function AccountView({
                   </p>
                   <div className="bg-neutral-100 p-2.5 rounded-lg text-[11px] font-mono text-neutral-700 border border-neutral-200">
                     <span className="text-neutral-400 block text-[9px] uppercase font-bold">Sample Reply Tone:</span>
-                    "Good afternoon! I would be delighted to calculate an instant quote for your Calacatta Gold kitchen island..."
+                    "Good afternoon! I would be delighted to help you arrange a quote for your Calacatta Gold kitchen island..."
                   </div>
                 </div>
 
@@ -1426,7 +1411,7 @@ export default function AccountView({
                       </div>
                       <div>
                         <h5 className="font-bold text-xs text-neutral-900">Commercial Quantity Surveyor</h5>
-                        <span className="text-[10px] font-mono text-amber-700 font-semibold">Fast £/m² Rates & Cost Transparency</span>
+                        <span className="text-[10px] font-mono text-amber-700 font-semibold">Cost Breakdown & Transparency</span>
                       </div>
                     </div>
                     {waPersona === "estimator" && (
@@ -1440,7 +1425,7 @@ export default function AccountView({
                   </p>
                   <div className="bg-neutral-100 p-2.5 rounded-lg text-[11px] font-mono text-neutral-700 border border-neutral-200">
                     <span className="text-neutral-400 block text-[9px] uppercase font-bold">Sample Reply Tone:</span>
-                    "Base material rate is £185/m² + £350 fabricationLabour + £220 survey fee. Total estimate is £2,145 + VAT..."
+                    "I can walk you through the material rate, fabrication and survey fee breakdown once we have your specification — let me arrange a formal quote..."
                   </div>
                 </div>
 

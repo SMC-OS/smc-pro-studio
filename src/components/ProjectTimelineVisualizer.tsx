@@ -209,7 +209,7 @@ const extractTimelineMilestones = (projects: Project[]): TimelineMilestone[] => 
       bgBadge: STAGE_CONFIGS.templating.bgBadge,
       borderBadge: STAGE_CONFIGS.templating.borderBadge,
       iconName: "Sparkles",
-      techLead: "Marcus L. (LiDAR Specialist)",
+      techLead: "LiDAR Survey Team",
       notes: "3D point cloud survey scan & substrate deflection verification."
     });
 
@@ -235,7 +235,7 @@ const extractTimelineMilestones = (projects: Project[]): TimelineMilestone[] => 
       bgBadge: STAGE_CONFIGS.fabrication.bgBadge,
       borderBadge: STAGE_CONFIGS.fabrication.borderBadge,
       iconName: "Wrench",
-      techLead: "M. Davies (Master Mason)",
+      techLead: "Fabrication Team",
       notes: "Waterjet 60k PSI cutting, 50mm mitered apron polishing & sink cutout."
     });
 
@@ -292,7 +292,7 @@ const extractTimelineMilestones = (projects: Project[]): TimelineMilestone[] => 
       borderBadge: STAGE_CONFIGS.completed.borderBadge,
       iconName: "CheckCircle2",
       techLead: "SMC Quality Director",
-      notes: "Laser signature signoff, BS 8298 structural audit & warranty issuance."
+      notes: "Laser signature signoff and BS 8298 structural audit."
     });
   });
 

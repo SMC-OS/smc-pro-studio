@@ -2,14 +2,16 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import SocialApp from './social/SocialApp.tsx';
-import {SOCIAL_SHELL_ENABLED} from './social/flags.ts';
+import {LEGACY_APP_OPT_IN} from './social/flags.ts';
 import './index.css';
 
-// SOCIAL_SHELL_ENABLED defaults to false, so this keeps rendering the
-// existing production App unless an environment explicitly opts in via
-// VITE_SOCIAL_SHELL_ENABLED=true. See src/social/flags.ts.
+// Phase 5 Gate 0: the social shell is now the safe default. The legacy App
+// (fabricated pricing/stock/certification/testimonial content — see
+// tasks/todo.md's Gate 0 inventory) renders only via an explicit,
+// development-only opt-in that production cannot be tricked into honouring
+// — see src/social/flags.ts for the fail-closed mechanism.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {SOCIAL_SHELL_ENABLED ? <SocialApp /> : <App />}
+    {LEGACY_APP_OPT_IN ? <App /> : <SocialApp />}
   </StrictMode>,
 );

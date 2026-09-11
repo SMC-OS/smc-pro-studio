@@ -95,7 +95,7 @@ export default function JointDetailsView({
         setTimeout(() => {
           setUploadedPhoto(reader.result as string);
           setIsUploading(false);
-          triggerToast("Joint verification photo uploaded. Analysis score: 99.4% compliant.");
+          triggerToast("Photo uploaded. Awaiting review by SMC.");
         }, 1000);
       };
       reader.readAsDataURL(file);
@@ -455,10 +455,9 @@ export default function JointDetailsView({
                     <img src={uploadedPhoto} alt="Uploaded Joint Verification" className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-3 text-center">
                       <div className="space-y-1">
-                        <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
-                          VERIFIED: TIGHT SEAM PASS (0.3mm)
+                        <span className="text-[10px] font-mono font-bold text-neutral-300 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-700">
+                          Awaiting review by SMC
                         </span>
-                        <p className="text-[10px] font-mono text-neutral-300">Remote sign-off ticket #SMC-CHK-904</p>
                       </div>
                     </div>
                     <button

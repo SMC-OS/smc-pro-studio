@@ -68,7 +68,7 @@ export const WhatsAppAgentModal: React.FC<WhatsAppAgentModalProps> = ({
   const [waPersona, setWaPersona] = useState("concierge");
   const [waPhone, setWaPhone] = useState("+44 (0)20 7946 0912");
 
-  const defaultGreeting = "Welcome to *SMC Pro Studio*! 🏛️✨\nHow can we assist with your project today?\n\n• *Instant Worktop Quote* (£/m²)\n• *Laser Survey Booking*\n• *Slab Stock & Gallery*";
+  const defaultGreeting = "Welcome to *SMC Pro Studio*! 🏛️✨\nHow can we assist with your project today?\n\n• *Request a Quote*\n• *Laser Survey Booking*\n• *Slab Gallery*";
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [threads, setThreads] = useState<ClientThread[]>([]);
@@ -274,10 +274,9 @@ export const WhatsAppAgentModal: React.FC<WhatsAppAgentModalProps> = ({
   };
 
   const quickPrompts = [
-    "💬 Request Instant Worktop Quote",
-    "📐 Book 48h Laser Templating",
-    "🪨 Check Calacatta Gold Stock",
-    "🚚 Track Project #PROJ-2026-LON-08",
+    "💬 Request a Quote",
+    "📐 Book Laser Templating",
+    "🪨 Ask About Calacatta Gold",
     "🧼 Quartz vs Porcelain Specs"
   ];
 
@@ -301,13 +300,9 @@ export const WhatsAppAgentModal: React.FC<WhatsAppAgentModalProps> = ({
               <div className="flex items-center gap-1.5">
                 <WhatsAppIcon className="w-5 h-5 text-emerald-400 shrink-0" />
                 <h3 className="font-semibold text-sm sm:text-base text-white">WhatsApp</h3>
-                <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-mono px-1.5 py-0.5 rounded border border-emerald-500/30 font-bold flex items-center gap-1">
-                  <Sparkles className="w-2.5 h-2.5" /> VERIFIED
-                </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono">
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Online • +44 20 7946 0912</span>
+                <span>{waPhone}</span>
               </div>
             </div>
           </div>
@@ -473,7 +468,7 @@ export const WhatsAppAgentModal: React.FC<WhatsAppAgentModalProps> = ({
             {/* Input Bar */}
             <div className="bg-[#111b21] p-3 border-t border-neutral-800 flex items-center gap-2 shrink-0">
               <button
-                onClick={() => handleSendMessage("Book a 48h site survey for laser templating.")}
+                onClick={() => handleSendMessage("Book a site survey for laser templating.")}
                 className="p-2 text-neutral-400 hover:text-gold transition-colors"
                 title="Quick Book Survey"
               >
@@ -582,64 +577,13 @@ export const WhatsAppAgentModal: React.FC<WhatsAppAgentModalProps> = ({
           <div className="flex-1 p-6 overflow-y-auto flex flex-col items-center justify-center text-center space-y-6 bg-[#0b141a]">
             <div className="max-w-md w-full bg-[#111b21] border border-neutral-800 rounded-2xl p-6 shadow-xl space-y-5">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold/10 text-gold border border-gold/20 text-xs font-mono font-bold">
-                <Volume2 className="w-3.5 h-3.5" /> Stonemason Audio Updates
+                <Volume2 className="w-3.5 h-3.5" /> Voice Updates
               </div>
 
               <h3 className="font-serif text-xl text-white font-bold">Voice Note Dispatch</h3>
-              <p className="text-xs text-neutral-300 leading-relaxed">
-                Receive direct voice note briefings from Senior Stonemason Marco Bellini regarding slab cutting, vein matching, and site templating progress.
+              <p className="text-xs text-neutral-300 leading-relaxed" role="status">
+                Voice note briefings are not available yet. Contact SMC for updates on your project.
               </p>
-
-              {/* WhatsApp Voice Player Box */}
-              <div className="bg-[#202c33] border border-neutral-700/80 rounded-2xl p-4 text-left space-y-3">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setIsPlayingVoice(!isPlayingVoice)}
-                    className="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center transition-all cursor-pointer shadow-md shrink-0"
-                  >
-                    {isPlayingVoice ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
-                  </button>
-
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="text-gold font-bold">Marco Bellini (Senior Mason)</span>
-                      <span className="text-neutral-400">0:24</span>
-                    </div>
-
-                    {/* Waveform visual */}
-                    <div className="h-4 flex items-center gap-0.5 w-full bg-neutral-900/60 p-1 rounded-sm overflow-hidden">
-                      {Array.from({ length: 32 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`w-1 rounded-full transition-all ${
-                            (i / 32) * 100 <= voiceProgress ? "bg-emerald-400" : "bg-neutral-600"
-                          }`}
-                          style={{
-                            height: `${Math.sin(i * 0.7) * 40 + 60}%`
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-neutral-900/80 p-3 rounded-xl border border-neutral-800 text-xs text-neutral-300 font-sans leading-relaxed">
-                  <span className="font-mono font-bold text-gold text-[10px] block mb-1">AUTOMATED AUDIO TRANSCRIPT:</span>
-                  "Hi there! This is Marco from Thames Bay 04. We've just finished laser scanning your Calacatta Gold slab. The vein continuity across your island apron is a 99% match. Waterjet mitring starts at 08:00 tomorrow."
-                </div>
-              </div>
-
-              <div className="pt-2">
-                <button
-                  onClick={() => {
-                    setActiveTab("chat");
-                    handleSendMessage("I listened to the voice note. Please confirm waterjet timing.");
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-gold hover:bg-amber-400 text-[#1A1A1A] font-mono text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
-                >
-                  <WhatsAppIcon className="w-4 h-4 text-[#1A1A1A]" /> Reply to Audio Briefing
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -881,7 +825,7 @@ export const WhatsAppAgentModal: React.FC<WhatsAppAgentModalProps> = ({
                 }}
                 className="hover:text-gold transition-colors underline cursor-pointer"
               >
-                Instant Quote
+                Request a Quote
               </button>
             )}
           </div>

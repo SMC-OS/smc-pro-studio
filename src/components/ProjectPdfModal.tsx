@@ -59,7 +59,6 @@ export interface Material {
   thicknesses: string[];
   finishes: string[];
   application: string[];
-  price: number;
   technicalDetails: string;
   fabricationNotes: string;
   hasSpecialImage?: boolean;
@@ -84,53 +83,24 @@ export const ProjectPdfModal: React.FC<ProjectPdfModalProps> = ({
 
   if (!project) return null;
 
-  // Calculate detailed pricing elements
+  // Phase 5 Gate 0: pricing removed. This previously computed a per-part and
+  // project "grand total valuation" from a fabricated pricing formula (an
+  // unverified £/sqft material rate, invented edge-profile rates, invented
+  // cutout fees, and invented difficulty surcharges) that was never approved
+  // by SMC. The geometry (areas, sqft) is real arithmetic on the project's
+  // own entered dimensions and is kept; there is no price to compute from.
   const itemsBreakdown = project.estimates.map((part) => {
     const mat = getMaterialById(part.materialId);
     const mainAreaSqFt = (part.length * part.width) / 144;
     const bsAreaSqFt = (part.backsplashLength * part.backsplashHeight) / 144;
     const totalSqFt = mainAreaSqFt + bsAreaSqFt;
 
-    let baseStoneCost = totalSqFt * mat.price;
-    let thicknessMultiplier = 1.0;
-    if (part.thickness === "12mm") thicknessMultiplier = 0.90;
-    if (part.thickness === "30mm") thicknessMultiplier = 1.25;
-    baseStoneCost = baseStoneCost * thicknessMultiplier;
-
-    let edgeCostPerFoot = 0;
-    switch (part.edgeProfile) {
-      case "Mitered Apron (2 in)": edgeCostPerFoot = 25; break;
-      case "Mitered Apron (3 in)": edgeCostPerFoot = 35; break;
-      case "Demi-Bullnose": edgeCostPerFoot = 15; break;
-      case "Ogee": edgeCostPerFoot = 20; break;
-      default: edgeCostPerFoot = 0;
-    }
-    const edgeCost = part.edgeLength * edgeCostPerFoot;
-
-    const cutoutsCost = (part.sinkCutouts * 250) + (part.cooktopCutouts * 200) + (part.faucetHoles * 40);
-
-    let diffSurchargePct = 0;
-    if (mat.class === "Porcelain") diffSurchargePct = 0.15;
-    else if (mat.id === "taj-mahal") diffSurchargePct = 0.20;
-    else if (mat.class === "Natural Stone" && mat.id === "bianco-carrara") diffSurchargePct = 0.10;
-
-    const subtotalBeforeSurcharge = baseStoneCost + edgeCost + cutoutsCost;
-    const surchargeAmount = subtotalBeforeSurcharge * diffSurchargePct;
-    const partTotalCost = subtotalBeforeSurcharge + surchargeAmount;
-
     return {
       part,
       mat,
-      totalSqFt,
-      baseStoneCost,
-      edgeCost,
-      cutoutsCost,
-      surchargeAmount,
-      partTotalCost
+      totalSqFt
     };
   });
-
-  const totalProjectValue = itemsBreakdown.reduce((acc, item) => acc + item.partTotalCost, 0);
 
   // Generate jsPDF File
   const handleDownloadPDF = () => {
@@ -207,7 +177,6 @@ export const ProjectPdfModal: React.FC<ProjectPdfModalProps> = ({
       doc.text("MATERIAL & THICKNESS", margin + 140, y + 14);
       doc.text("DIMENSIONS & EDGE", margin + 280, y + 14);
       doc.text("APERTURES", margin + 400, y + 14);
-      doc.text("EST. VALUE", pageWidth - margin - 60, y + 14);
 
       y += 22;
 
@@ -248,11 +217,6 @@ export const ProjectPdfModal: React.FC<ProjectPdfModalProps> = ({
         // Cutouts
         const cutoutsText = `${item.part.sinkCutouts} Sink / ${item.part.cooktopCutouts} Cooktop`;
         doc.text(cutoutsText, margin + 400, y + 14);
-
-        // Price
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(26, 26, 26);
-        doc.text(formatCurrency(item.partTotalCost), pageWidth - margin - 60, y + 20);
 
         doc.setDrawColor(240, 240, 240);
         doc.line(margin, y + 36, pageWidth - margin, y + 36);
@@ -300,21 +264,21 @@ export const ProjectPdfModal: React.FC<ProjectPdfModalProps> = ({
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(100, 100, 100);
-      doc.text("GRAND TOTAL VALUATION", totalBoxX + 15, y + 22);
+      doc.text("PRICING", totalBoxX + 15, y + 22);
 
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(18);
+      doc.setFontSize(16);
       doc.setTextColor(26, 26, 26);
-      doc.text(formatCurrency(totalProjectValue), totalBoxX + 15, y + 46);
+      doc.text("Price on Application", totalBoxX + 15, y + 46);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
-      doc.text("Includes CNC fabrication, edge profiles & fitting", totalBoxX + 15, y + 58);
+      doc.text("Confirmed by SMC based on your specification", totalBoxX + 15, y + 58);
 
       y += 90;
 
-      // Guarantee & Signature Footer
+      // Notes Footer
       if (y > 720) {
         doc.addPage();
         y = 50;
@@ -323,26 +287,15 @@ export const ProjectPdfModal: React.FC<ProjectPdfModalProps> = ({
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(212, 175, 55);
-      doc.text("ATELIER QUALITY ASSURANCE & WARRANTY", margin, y);
+      doc.text("INSPECTION NOTES", margin, y);
 
       y += 12;
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(100, 100, 100);
-      doc.text("1. All natural stone slabs inspected with 3D digital laser scanner for vein continuity.", margin, y);
+      doc.text("All natural stone slabs inspected with 3D digital laser scanner for vein continuity.", margin, y);
       y += 10;
-      doc.text("2. 10-Year Stain & Structural Integrity Warranty provided upon installation completion.", margin, y);
-      y += 10;
-      doc.text("3. High-precision waterjet aperture cutouts with reinforced fiber rod under-supports.", margin, y);
-
-      y += 35;
-      doc.setDrawColor(200, 200, 200);
-      doc.line(margin, y, margin + 180, y);
-      doc.line(pageWidth - margin - 180, y, pageWidth - margin, y);
-
-      y += 12;
-      doc.text("Authorized Fabrication Manager", margin, y);
-      doc.text("Client Acceptance Signature", pageWidth - margin - 180, y);
+      doc.text("High-precision waterjet aperture cutouts with reinforced fiber rod under-supports.", margin, y);
 
       // Save PDF
       const safeFilename = project.name.replace(/[^a-z0-9]/gi, "_").toLowerCase();
@@ -371,10 +324,9 @@ ESTIMATE PARTS BREAKDOWN:
 ${itemsBreakdown.map((i, idx) => `${idx + 1}. ${i.part.name}
    Material: ${i.mat.name} (${i.mat.class} ${i.part.thickness})
    Dimensions: ${i.part.length}" x ${i.part.width}" (${i.totalSqFt.toFixed(1)} sq ft)
-   Edge: ${i.part.edgeProfile} (${i.part.edgeLength} linear ft)
-   Value: ${formatCurrency(i.partTotalCost)}`).join("\n\n")}
+   Edge: ${i.part.edgeProfile} (${i.part.edgeLength} linear ft)`).join("\n\n")}
 
-TOTAL PORTFOLIO INVESTMENT: ${formatCurrency(totalProjectValue)}
+PRICING: Price on Application
 Notes: ${project.notes || "N/A"}`;
 
     navigator.clipboard.writeText(text);
@@ -445,7 +397,7 @@ Notes: ${project.notes || "N/A"}`;
               <p className="text-xs text-neutral-400">Precision Waterjet & CNC Slab Fabrication • London, UK</p>
             </div>
             <div className="text-left sm:text-right space-y-1 font-mono text-xs border-t sm:border-t-0 border-neutral-800 pt-3 sm:pt-0 w-full sm:w-auto">
-              <div className="text-gold font-bold">{formatCurrency(totalProjectValue)}</div>
+              <div className="text-gold font-bold">Price on Application</div>
               <div className="text-neutral-400 text-[11px]">{project.estimates.length} Slab Part(s) Included</div>
               <div className="text-neutral-500 text-[10px]">Date: {project.createdAt}</div>
             </div>
@@ -499,7 +451,6 @@ Notes: ${project.notes || "N/A"}`;
                     <th className="px-4 py-3 font-bold">Dimensions & Area</th>
                     <th className="px-4 py-3 font-bold">Edge Profile</th>
                     <th className="px-4 py-3 font-bold">Apertures</th>
-                    <th className="px-4 py-3 font-bold text-right">Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 font-sans">
@@ -539,10 +490,6 @@ Notes: ${project.notes || "N/A"}`;
                           <span className="text-neutral-400 italic">None</span>
                         )}
                       </td>
-
-                      <td className="px-4 py-3 text-right font-mono font-bold text-neutral-900 text-sm">
-                        {formatCurrency(item.partTotalCost)}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -550,7 +497,7 @@ Notes: ${project.notes || "N/A"}`;
             </div>
           </div>
 
-          {/* Notes & Quality Guarantee Grid */}
+          {/* Notes & Process Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
             {/* Shop Notes */}
@@ -564,20 +511,16 @@ Notes: ${project.notes || "N/A"}`;
               </p>
             </div>
 
-            {/* Quality Assurance Terms */}
+            {/* Process Notes */}
             <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-2.5 shadow-2xs">
               <h5 className="font-serif text-sm font-bold text-neutral-800 flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-gold" />
-                Atelier Guarantee & Craft Standards
+                Fabrication Process
               </h5>
               <ul className="text-[11px] text-neutral-600 space-y-1.5 font-sans">
                 <li className="flex items-start gap-1.5">
                   <span className="text-gold font-bold">•</span>
-                  <span><strong>10-Year Stain & Seal Warranty</strong> applied to all porous natural stone surfaces.</span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-gold font-bold">•</span>
-                  <span><strong>Precision 3D Laser Templating</strong> on site ensures seamless wall scribing (&lt;1mm tolerance).</span>
+                  <span><strong>3D Laser Templating</strong> on site before cutting begins.</span>
                 </li>
                 <li className="flex items-start gap-1.5">
                   <span className="text-gold font-bold">•</span>
@@ -588,12 +531,12 @@ Notes: ${project.notes || "N/A"}`;
 
           </div>
 
-          {/* Bottom Total Valuation Box */}
+          {/* Bottom Pricing Box */}
           <div className="bg-neutral-900 text-white rounded-xl p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-md border border-neutral-800">
             <div className="space-y-1">
-              <span className="text-[10px] font-mono text-gold font-bold uppercase tracking-wider">TOTAL CLIENT INVESTMENT</span>
-              <h3 className="font-serif text-3xl font-bold text-white">{formatCurrency(totalProjectValue)}</h3>
-              <p className="text-xs text-neutral-400">All prices include material supply, CNC fabrication, edge polish, and delivery.</p>
+              <span className="text-[10px] font-mono text-gold font-bold uppercase tracking-wider">Pricing</span>
+              <h3 className="font-serif text-2xl font-bold text-white">Price on Application</h3>
+              <p className="text-xs text-neutral-400">Confirmed by SMC based on your specification.</p>
             </div>
 
             <div className="flex gap-3 w-full sm:w-auto">

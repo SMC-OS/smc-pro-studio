@@ -28,17 +28,13 @@ export interface CuratorStone {
   id: string;
   name: string;
   category: "Marble" | "Quartzite" | "Granite" | "Porcelain" | "Onyx" | "Quartz";
-  origin: string;
   thickness: string;
   finishes: string[];
   mohs: number;
   waterAbsorption: string;
-  flexuralStrength: string;
   badge?: "EXCLUSIVE" | "RARE FIND" | "NEW ARRIVAL" | "MUSEUM GRADE" | "LIMITED";
   image: string;
   description: string;
-  pricePerSqFt: number;
-  stockSlabs: number;
   dimensions: string;
   applications: string[];
   veiningType: string;
@@ -49,17 +45,13 @@ export const CURATED_STONES: CuratorStone[] = [
     id: "statuario-supremo",
     name: "Statuario Supremo",
     category: "Marble",
-    origin: "Carrara, Italy",
     thickness: "20mm / 30mm",
     finishes: ["Polished", "Honed"],
     mohs: 3.5,
     waterAbsorption: "0.12%",
-    flexuralStrength: "14.2 MPa",
     badge: "EXCLUSIVE",
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuD5g6eueBnteCes_xB7ivdyqi4mTYnY8S6nkYwABgVqxb3_UcPEG1j2FlTSSXsB8aD-l27V50OLm0icekcj60i66Nvef1yfq-oHP5B6K8JEZO-17gNE2WpZtJ-q7rF0auYczhoi3eZxgyIupZ9VHaL0DdXXF4UcnMROev4nYLzgKYtAfVTPjySOFDxLx13XKbTX9cjXQYy8C_N8ENL0iKrk5AgP8D2es1uanGAnwdMeEUEwvNrvMTG_",
     description: "Extracted from the prestigious Mount Altissimo in Carrara. Features a luminous white background fractured by bold, dramatic graphite veining.",
-    pricePerSqFt: 145,
-    stockSlabs: 6,
     dimensions: "3250 × 1880 mm",
     applications: ["Kitchen Worktops", "Master Bathrooms", "Feature Walls", "Book-matched Fireplaces"],
     veiningType: "Dramatic Feathered Graphite"
@@ -68,17 +60,13 @@ export const CURATED_STONES: CuratorStone[] = [
     id: "nero-marquina",
     name: "Nero Marquina",
     category: "Marble",
-    origin: "Markina, Spain",
     thickness: "30mm",
     finishes: ["Polished", "Leathered"],
     mohs: 4.0,
     waterAbsorption: "0.18%",
-    flexuralStrength: "12.8 MPa",
     badge: "MUSEUM GRADE",
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuAHP-kkLXRS8ZmE9e21VXBSRPgAiL-LNVD7Uscs52PrQTChdOdgrtyowvPUFzCrPbZxHLkP2AaIakYTOEb-b0-jZzr1m5WBqNG_Qk49QT5g0mGUeOCcq89VFWfeBedUxoQrDVJ791AVf-m_fsmfVLaMT-LJy3P8rnW98GMMNm8tMIzVe1gCDSjQYEow1SsN0MtUK4QOfDkiy168oTei4r12yXS-nRmrfpNH0zE62J_VVucL-djzF24L",
     description: "Profound, obsidian-black marble fractured by lightning-sharp pure white veins. Photographed in high-definition studio lighting for museum clarity.",
-    pricePerSqFt: 110,
-    stockSlabs: 12,
     dimensions: "3100 × 1750 mm",
     applications: ["Bar Countertops", "Powder Rooms", "Architectural Columns", "Luxury Flooring"],
     veiningType: "Crystalline Fractured White"
@@ -87,17 +75,13 @@ export const CURATED_STONES: CuratorStone[] = [
     id: "azul-bahia",
     name: "Azul Bahia Exotic",
     category: "Granite",
-    origin: "Bahia, Brazil",
     thickness: "20mm",
     finishes: ["Polished"],
     mohs: 6.5,
     waterAbsorption: "0.08%",
-    flexuralStrength: "18.5 MPa",
     badge: "RARE FIND",
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuDMpUnSfUt-xLtCJN3cp4zxQMHa8ebO6qlRdFTR9JKBQrG3ZouFfsBRgPqwIZY3b_PrsWSNYpgzhja7DuOkdkdaQNVRzeFKe01a3Tgq14mlFBE1ZbVVWAKou2oy68xETQfTgp9SP00M_0j_fYvrw3xm_xtLUBTGZcRQWRSMeLnfN2oShvySx25a9enLYXk1SGCFpw1ftdY1F58VhCvkHAQDBvtt2wVdvgwSlMM75U96onM_14a4-iew",
     description: "Mesmerizing natural sodalite granite with deep cobalt and indigo swirls infused with specks of golden pyrite and quartz.",
-    pricePerSqFt: 210,
-    stockSlabs: 4,
     dimensions: "2980 × 1650 mm",
     applications: ["Feature Islands", "Bespoke Bars", "Yacht Interiors"],
     veiningType: "Cobalt Sodalite Swirls"
@@ -106,17 +90,13 @@ export const CURATED_STONES: CuratorStone[] = [
     id: "calacatta-gold-supreme",
     name: "Calacatta Gold Reserve",
     category: "Marble",
-    origin: "Apuan Alps, Italy",
     thickness: "20mm / 30mm",
     finishes: ["Polished", "Honed", "Silk Touch"],
     mohs: 3.5,
     waterAbsorption: "0.10%",
-    flexuralStrength: "15.0 MPa",
     badge: "EXCLUSIVE",
     image: "https://lh3.googleusercontent.com/aida-public/AB6AXuBYqV2IpkNkRG2EXIxFcWcZ2a-Z_lbf6Ax4yIdhsIvcZ3fal5g929ifsWjxejSY5dBFrHGsT0ZdysvQy9KE3_8iPw2iVsg8byM0rMey6a4mnznXz1yQaNLYirFzNeW6BKfaDHqY35pfL2DJRGFG_ZjE9xF4XCowIRhmfnQHRttmsXwd7O-_PRdk9TCSAeBQ0YTEQUtUEDC2qvHlMIqG594U8zEm8yai_7_3iXcU2DHBs9jZZE3EwmAd",
     description: "The crown jewel of Italian quarrying. Warm taupe and champagne gold veins dance across a creamy translucent white marble field.",
-    pricePerSqFt: 185,
-    stockSlabs: 8,
     dimensions: "3300 × 1950 mm",
     applications: ["Chef Countertops", "Waterfall Islands", "Vanity Tops"],
     veiningType: "Warm Gold & Taupe Ribbon"
@@ -125,17 +105,13 @@ export const CURATED_STONES: CuratorStone[] = [
     id: "taj-mahal-quartzite",
     name: "Taj Mahal Translucent",
     category: "Quartzite",
-    origin: "Ceará, Brazil",
     thickness: "20mm / 30mm",
     finishes: ["Leathered", "Polished"],
     mohs: 7.0,
     waterAbsorption: "0.04%",
-    flexuralStrength: "22.1 MPa",
     badge: "NEW ARRIVAL",
     image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80",
     description: "Extreme hardness meeting ethereal ivory translucency. Highly resistant to acids, scratches, and heat. Ideal for heavy culinary use.",
-    pricePerSqFt: 135,
-    stockSlabs: 15,
     dimensions: "3200 × 1850 mm",
     applications: ["High-Traffic Kitchens", "Outdoor Kitchens", "Bar Counters"],
     veiningType: "Subtle Warm Caramel Striations"
@@ -144,17 +120,13 @@ export const CURATED_STONES: CuratorStone[] = [
     id: "patagonia-crystal",
     name: "Patagonia Crystal Quartzite",
     category: "Quartzite",
-    origin: "Brazil",
     thickness: "30mm",
     finishes: ["Polished", "Backlit Honed"],
     mohs: 7.0,
     waterAbsorption: "0.03%",
-    flexuralStrength: "24.0 MPa",
     badge: "LIMITED",
     image: "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=1200&q=80",
     description: "A geological wonder comprising translucent quartz crystals fused with dark basalt inclusions. Spectacular when backlit with warm LED panels.",
-    pricePerSqFt: 245,
-    stockSlabs: 3,
     dimensions: "3150 × 1780 mm",
     applications: ["Backlit Bar Fronts", "Feature Walls", "Reception Desks"],
     veiningType: "Crystalline Translucent Feldspar"
@@ -193,7 +165,6 @@ export default function DigitalCuratorView({
       const matchesCat = selectedCategory === "All" || stone.category === selectedCategory;
       const matchesSearch =
         stone.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        stone.origin.toLowerCase().includes(searchQuery.toLowerCase()) ||
         stone.veiningType.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCat && matchesSearch;
     });
@@ -216,14 +187,14 @@ export default function DigitalCuratorView({
     e.preventDefault();
     if (!curatorAiInput.trim()) return;
     const q = curatorAiInput.toLowerCase();
-    let ans = "As Curator AI, I recommend selecting a 30mm polished slab with wet-cut waterjet joints. Statuario Supremo and Taj Mahal Quartzite match high-traffic luxury specifications with zero maintenance liabilities.";
-    
+    let ans = "As Curator AI, I recommend selecting a 30mm polished slab with wet-cut waterjet joints. Statuario Supremo and Taj Mahal Quartzite suit high-traffic luxury specifications.";
+
     if (q.includes("stain") || q.includes("acid") || q.includes("lemon")) {
-      ans = "Marble (Statuario/Calacatta) requires sealing with hydro-repellent impregnator. For zero acid-stain liability, choose Taj Mahal Quartzite (Mohs 7) or SMC Porcelain series.";
+      ans = "Marble (Statuario/Calacatta) requires sealing with a hydro-repellent impregnator. For higher acid-stain resistance, consider Taj Mahal Quartzite (Mohs 7) or our porcelain range.";
     } else if (q.includes("book") || q.includes("match") || q.includes("vein")) {
-      ans = "Book-matching requires sequential A/B slab quarry pairs. Our Statuario Supremo and Calacatta Gold slabs are mirrored in sequence to ensure 100% continuous veining along 3-meter island drops.";
+      ans = "Book-matching requires sequential A/B slab quarry pairs. Statuario Supremo and Calacatta Gold slabs can be mirrored in sequence for continuous veining along large island drops — vein alignment is confirmed during your survey.";
     } else if (q.includes("price") || q.includes("cost") || q.includes("budget")) {
-      ans = "Curated stone pricing ranges from £110/sqft for Nero Marquina up to £245/sqft for Backlit Patagonia Crystal. Live fabrication estimates include wet CNC cutouts & 45-degree mitered edging.";
+      ans = "Pricing is confirmed by our team based on your specification — use the Calculate Quote action on a stone to request one.";
     }
     
     setCuratorAiResponse(ans);
@@ -294,8 +265,8 @@ export default function DigitalCuratorView({
         <div className="fixed top-24 right-6 z-50 bg-[#1A1A1A] border border-[#D4AF37] text-white p-4 rounded-xl shadow-2xl flex items-center gap-3 animate-slide-in">
           <CheckCircle2 className="w-6 h-6 text-[#D4AF37] shrink-0" />
           <div>
-            <h4 className="text-xs font-bold text-[#D4AF37] uppercase tracking-wider font-mono">Curator Sample Kit Dispatched</h4>
-            <p className="text-xs text-neutral-300">Express courier sample dispatched to your address within 24 hours.</p>
+            <h4 className="text-xs font-bold text-[#D4AF37] uppercase tracking-wider font-mono">Sample Request Received</h4>
+            <p className="text-xs text-neutral-300">Our team will confirm availability and arrange dispatch.</p>
           </div>
         </div>
       )}
@@ -351,10 +322,10 @@ export default function DigitalCuratorView({
             <div className="absolute bottom-6 left-6 right-6 bg-[#1A1A1A]/90 backdrop-blur-md p-5 rounded-lg border border-[#353535] shadow-lg flex justify-between items-end">
               <div>
                 <span className="font-mono text-[10px] text-[#D4AF37] tracking-widest uppercase font-bold block mb-1">
-                  FEATURED QUARRY LOT #8092
+                  Featured Stone
                 </span>
                 <h3 className="font-serif text-xl font-bold text-white">Calacatta Gold Reserve</h3>
-                <p className="font-mono text-xs text-neutral-400">Italy • Translucent Crystalline • 30mm</p>
+                <p className="font-mono text-xs text-neutral-400">Translucent Crystalline • 30mm</p>
               </div>
               <button
                 onClick={() => setSelectedStone(CURATED_STONES[3])}
@@ -415,10 +386,9 @@ export default function DigitalCuratorView({
                 </div>
 
                 <h3 className="font-serif text-lg font-bold text-white group-hover:text-[#D4AF37] transition-colors">{stone.name}</h3>
-                <p className="font-mono text-xs text-neutral-400">{stone.category} • {stone.origin} • {stone.thickness}</p>
+                <p className="font-mono text-xs text-neutral-400">{stone.category} • {stone.thickness}</p>
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-xs font-mono text-[#D4AF37] font-bold">£{stone.pricePerSqFt}/sqft</span>
-                  <span className="text-[10px] font-mono text-neutral-500">{stone.stockSlabs} Slabs in London</span>
+                  <span className="text-xs font-mono text-[#D4AF37] font-bold">Price on Application</span>
                 </div>
               </div>
             ))}
@@ -494,11 +464,8 @@ export default function DigitalCuratorView({
                   )}
 
                   <div className="absolute bottom-3 left-3 right-3 flex justify-between items-end text-white">
-                    <div>
-                      <span className="text-[10px] font-mono text-neutral-300 block">{stone.origin}</span>
-                      <h3 className="font-serif text-xl font-bold">{stone.name}</h3>
-                    </div>
-                    <span className="text-xs font-mono font-bold text-[#D4AF37]">£{stone.pricePerSqFt}/sqft</span>
+                    <h3 className="font-serif text-xl font-bold">{stone.name}</h3>
+                    <span className="text-xs font-mono font-bold text-[#D4AF37]">Price on Application</span>
                   </div>
                 </div>
 
@@ -515,10 +482,6 @@ export default function DigitalCuratorView({
                     <div>
                       <span className="text-neutral-500 uppercase block">Water Absorb</span>
                       <span className="text-white font-bold">{stone.waterAbsorption}</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 uppercase block">Available Stock</span>
-                      <span className="text-[#D4AF37] font-bold">{stone.stockSlabs} Slabs</span>
                     </div>
                     <div>
                       <span className="text-neutral-500 uppercase block">Thickness</span>
@@ -639,10 +602,6 @@ export default function DigitalCuratorView({
 
                 <div className="bg-[#1A1A1A] border border-[#353535] p-4 rounded-xl space-y-2 font-mono text-xs">
                   <div className="flex justify-between border-b border-[#353535] pb-2">
-                    <span className="text-neutral-400">Warehouse Location:</span>
-                    <span className="text-[#D4AF37] font-bold">London Vault #4</span>
-                  </div>
-                  <div className="flex justify-between border-b border-[#353535] pb-2">
                     <span className="text-neutral-400">Slab Dimensions:</span>
                     <span className="text-white font-bold">{selectedStone.dimensions}</span>
                   </div>
@@ -657,7 +616,7 @@ export default function DigitalCuratorView({
               <div className="md:col-span-6 space-y-6 flex flex-col justify-between">
                 <div className="space-y-4">
                   <div>
-                    <span className="font-mono text-xs text-[#D4AF37] uppercase tracking-widest font-bold">{selectedStone.category} • {selectedStone.origin}</span>
+                    <span className="font-mono text-xs text-[#D4AF37] uppercase tracking-widest font-bold">{selectedStone.category}</span>
                     <h2 className="font-serif text-3xl font-normal text-white">{selectedStone.name}</h2>
                   </div>
 
@@ -665,7 +624,7 @@ export default function DigitalCuratorView({
                     {selectedStone.description}
                   </p>
 
-                  <div className="grid grid-cols-3 gap-2 bg-[#1A1A1A] p-3 rounded-lg border border-[#353535] font-mono text-center">
+                  <div className="grid grid-cols-2 gap-2 bg-[#1A1A1A] p-3 rounded-lg border border-[#353535] font-mono text-center">
                     <div>
                       <span className="text-[10px] text-neutral-500 uppercase block">Mohs</span>
                       <span className="text-sm font-bold text-white">{selectedStone.mohs}</span>
@@ -673,10 +632,6 @@ export default function DigitalCuratorView({
                     <div>
                       <span className="text-[10px] text-neutral-500 uppercase block">Water Abs.</span>
                       <span className="text-sm font-bold text-white">{selectedStone.waterAbsorption}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-neutral-500 uppercase block">Strength</span>
-                      <span className="text-sm font-bold text-white">{selectedStone.flexuralStrength}</span>
                     </div>
                   </div>
 
@@ -716,8 +671,8 @@ export default function DigitalCuratorView({
 
                 <div className="space-y-3 pt-4 border-t border-[#353535]">
                   <div className="flex justify-between items-center font-mono">
-                    <span className="text-xs text-neutral-400">Material Cost:</span>
-                    <span className="text-xl font-bold text-[#D4AF37]">£{selectedStone.pricePerSqFt} <span className="text-xs text-neutral-400 font-normal">/ sq ft</span></span>
+                    <span className="text-xs text-neutral-400">Pricing:</span>
+                    <span className="text-lg font-bold text-[#D4AF37]">Price on Application</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

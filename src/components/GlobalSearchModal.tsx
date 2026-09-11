@@ -29,7 +29,7 @@ export default function GlobalSearchModal({
   if (!isOpen) return null;
 
   const quickLinks = [
-    { label: "Quartz & Calacatta Slabs", tab: "artisan-shop", icon: Layers, count: "48 Slabs" },
+    { label: "Quartz & Calacatta Slabs", tab: "artisan-shop", icon: Layers, count: "Browse Slabs" },
     { label: "Instant Kitchen Estimator", tab: "estimator", icon: Calculator, count: "Free Quote" },
     { label: "3D Design Studio", tab: "design-studio", icon: Sparkles, count: "AI Generator" },
     { label: "Digital Curator Vault", tab: "digital-curator", icon: Compass, count: "Lookbook" },
@@ -164,7 +164,7 @@ export default function GlobalSearchModal({
                               {m.name}
                             </span>
                             <span className="text-[10px] font-mono text-neutral-400 block">
-                              {m.type} • {m.finish || "Polished"} • £{m.pricePerSqm}/m²
+                              {m.type} • {m.finish || "Polished"}
                             </span>
                           </div>
                         </div>

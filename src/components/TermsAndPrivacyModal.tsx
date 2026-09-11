@@ -3,20 +3,27 @@ import { X, ShieldCheck, Lock, FileText, CheckCircle2, Sliders, Sparkles, Credit
 import PrivacyPolicyView from "./PrivacyPolicyView";
 import TermsOfServiceView from "./TermsOfServiceView";
 import DataComplianceHub from "./DataComplianceHub";
-import StripePaymentGateway from "./StripePaymentGateway";
 
 interface TermsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: "summary" | "privacy" | "terms" | "compliance" | "stripe";
+  initialTab?: "summary" | "privacy" | "terms" | "compliance";
 }
 
+/**
+ * Phase 5 Gate 0 purge (correction pass): this modal previously had its own
+ * "Stripe Payment Gateway" tab, giving any visitor who opened it (via the
+ * footer Terms/Privacy links or the cookie banner) a direct, un-gated path
+ * to the live payment form regardless of whether TermsOfServiceView's own
+ * trigger was disabled. That tab is removed — payments are not reachable
+ * from this modal at all now, not just disabled once opened.
+ */
 export const TermsAndPrivacyModal: React.FC<TermsModalProps> = ({
   isOpen,
   onClose,
   initialTab = "summary"
 }) => {
-  const [activeTab, setActiveTab] = useState<"summary" | "privacy" | "terms" | "compliance" | "stripe">(initialTab);
+  const [activeTab, setActiveTab] = useState<"summary" | "privacy" | "terms" | "compliance">(initialTab);
 
   if (!isOpen) return null;
 
@@ -81,18 +88,6 @@ export const TermsAndPrivacyModal: React.FC<TermsModalProps> = ({
             <Sliders className="w-3.5 h-3.5" />
             <span>Data Compliance & DSAR</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab("stripe")}
-            className={`px-3.5 py-2 rounded-lg font-mono text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
-              activeTab === "stripe"
-                ? "bg-[#D4AF37] text-black shadow-md"
-                : "bg-neutral-900 text-neutral-400 hover:text-white"
-            }`}
-          >
-            <CreditCard className="w-3.5 h-3.5" />
-            <span>Stripe Payment Gateway</span>
-          </button>
         </div>
 
         {/* Tab Contents */}
@@ -136,14 +131,14 @@ export const TermsAndPrivacyModal: React.FC<TermsModalProps> = ({
                   <CreditCard className="w-4 h-4 text-[#D4AF37]" /> 3. Payment integration pending
                 </h4>
                 <p>
-                  Payments for slab deposits and laser survey reservations are processed via tokenized Stripe endpoints. Raw credit card data never touches SMC Pro servers.
+                  Online payment processing is not currently available. Payment methods and card-data handling will be documented here once a production payment provider is configured.
                 </p>
               </section>
             </div>
 
             <div className="pt-4 flex flex-wrap items-center justify-between gap-4 border-t border-neutral-800">
               <span className="text-[10px] font-mono text-neutral-400">
-                Last Updated: March 2026 • Version 4.2.0
+                Draft — pending final UK legal review
               </span>
               <div className="flex gap-3">
                 <button
@@ -156,7 +151,7 @@ export const TermsAndPrivacyModal: React.FC<TermsModalProps> = ({
                   onClick={onClose}
                   className="bg-[#D4AF37] hover:bg-amber-400 text-black font-mono font-bold text-xs py-2.5 px-6 rounded-xl uppercase tracking-wider cursor-pointer shadow-md transition-all"
                 >
-                  Accept & Close
+                  Close
                 </button>
               </div>
             </div>
@@ -170,19 +165,11 @@ export const TermsAndPrivacyModal: React.FC<TermsModalProps> = ({
         )}
 
         {activeTab === "terms" && (
-          <TermsOfServiceView
-            onOpenStripePayment={() => setActiveTab("stripe")}
-          />
+          <TermsOfServiceView />
         )}
 
         {activeTab === "compliance" && (
           <DataComplianceHub />
-        )}
-
-        {activeTab === "stripe" && (
-          <StripePaymentGateway
-            onClose={onClose}
-          />
         )}
       </div>
     </div>

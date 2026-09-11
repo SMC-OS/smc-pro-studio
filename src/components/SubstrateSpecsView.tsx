@@ -454,18 +454,19 @@ export default function SubstrateSpecsView({
           </div>
         </section>
 
-        {/* SMC Master Standard CTA Section */}
+        {/* SMC Substrate Verification CTA Section */}
         <section className="px-4 md:px-12">
           <div className="bg-black border-2 border-[#D4AF37] p-8 md:p-12 rounded-2xl relative overflow-hidden shadow-2xl flex flex-col lg:flex-row items-center justify-between gap-8">
             <div className="space-y-4 max-w-2xl text-center lg:text-left">
               <span className="text-xs font-mono font-bold text-[#D4AF37] uppercase tracking-widest block">
-                GUARANTEED STRUCTURAL WARRANTY
+                SUBSTRATE VERIFICATION
               </span>
               <h3 className="font-serif text-3xl md:text-4xl font-bold text-[#D4AF37]">
-                SMC Master Standard Certification
+                SMC Installation Standard
               </h3>
               <p className="text-xs md:text-sm text-neutral-300 leading-relaxed font-sans">
-                All substrates MUST be verified by a certified SMC technician prior to stone installation to maintain the 15-year structural warranty against debonding and cracking.
+                All substrates must be verified by SMC prior to stone installation. Contact SMC for the warranty
+                terms applicable to your project.
               </p>
 
               <div className="flex flex-wrap gap-3 justify-center lg:justify-start font-mono text-[11px] text-neutral-400">

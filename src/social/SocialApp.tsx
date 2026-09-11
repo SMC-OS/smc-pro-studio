@@ -26,10 +26,10 @@ import OtpPreviewRoute from "./routes/OtpPreviewRoute";
 import InteractionPreviewRoute from "./routes/InteractionPreviewRoute";
 
 /**
- * Phase 3 social shell. Mounted instead of the legacy `App` only when
- * VITE_SOCIAL_SHELL_ENABLED=true (see src/social/flags.ts and main.tsx) —
- * the existing production experience is unaffected until this is
- * deliberately turned on per environment.
+ * Phase 3 social shell — now the default mounted app everywhere (Phase 5
+ * Gate 0). The legacy `App` only renders through an explicit,
+ * development-only opt-in that production cannot honour — see
+ * src/social/flags.ts and main.tsx.
  */
 export default function SocialApp() {
   useEffect(() => {

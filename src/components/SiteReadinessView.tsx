@@ -14,7 +14,6 @@ import {
   Layers,
   ShieldCheck,
   X,
-  RefreshCw,
   Info,
   Sparkles,
   ChevronDown
@@ -61,8 +60,6 @@ export default function SiteReadinessView({
   const [alertAcknowledged, setAlertAcknowledged] = useState(false);
   const [showSpecModal, setShowSpecModal] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanComplete, setScanComplete] = useState(false);
   const [ambientTemp, setAmbientTemp] = useState(21);
   const [ambientHumidity, setAmbientHumidity] = useState(45);
   const [substrateType, setSubstrateType] = useState("Steel Reinforced Concrete");
@@ -155,18 +152,17 @@ export default function SiteReadinessView({
 
   const currentProjectObj = projects.find(p => p.id === selectedProject) || projects[0];
 
-  const handleSimulateScan = () => {
-    setIsScanning(true);
-    setScanComplete(false);
-    setTimeout(() => {
-      setIsScanning(false);
-      setScanComplete(true);
-      // Auto check the floor leveling item
-      setChecklist(prev =>
-        prev.map(item => (item.id === "check-1" ? { ...item, checked: true } : item))
-      );
-    }, 2500);
-  };
+  /**
+   * Phase 5 Gate 0 purge (correction pass): this previously ran a 2.5s
+   * fake "scan" (named `handleSimulateScan`) that always reported success
+   * with a fabricated precise measurement ("±1.4mm variance confirmed
+   * within specification") from a fictitious "Master Mason Vision AI",
+   * regardless of any real photo, and silently auto-checked a real
+   * readiness-checklist item as if it had been genuinely verified. No
+   * such scanning/analysis backend exists, so the function and the
+   * checklist item it fabricated a pass for are removed rather than left
+   * dormant.
+   */
 
   const handleSaveReport = () => {
     const text = `[SITE READINESS REPORT v4.2]: ${completionPercentage}% Readiness Score (${completedItems}/${totalItems} Verified). ${criticalHolds} Critical Holds. Ambient Temp: ${ambientTemp}°C, Humidity: ${ambientHumidity}%. Substrate: ${substrateType}. Generated on ${new Date().toLocaleDateString()}.`;
@@ -707,7 +703,7 @@ export default function SiteReadinessView({
                 &quot;Precision is the foundation of luxury.&quot;
               </p>
               <p className="text-xs text-neutral-400 leading-relaxed font-sans">
-                Ensure all checklist items are verified at least 48 hours prior to the installation window. Verified site readiness reports guarantee SMC 15-year structural stone warranty coverage.
+                Ensure all checklist items are verified at least 48 hours prior to the installation window. Contact SMC for the warranty terms applicable to your project.
               </p>
             </div>
 
@@ -771,61 +767,17 @@ export default function SiteReadinessView({
               </button>
             </div>
 
-            {scanComplete ? (
-              <div className="py-6 text-center space-y-4">
-                <CheckCircle2 className="w-14 h-14 text-gold mx-auto animate-bounce" />
-                <div className="space-y-1">
-                  <h4 className="font-serif text-xl font-medium text-neutral-900">Scan Analyzed Successfully!</h4>
-                  <p className="text-xs text-neutral-600 leading-relaxed max-w-sm mx-auto font-sans">
-                    Master Mason Vision AI has calibrated your substrate photo. Substrate Leveling <strong className="text-neutral-900">(±1.4mm variance)</strong> confirmed within specification!
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setScanComplete(false);
-                    setShowUploadModal(false);
-                  }}
-                  className="bg-neutral-900 text-white px-8 py-3 rounded-xl font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
-                >
-                  Return to Checklist
-                </button>
-              </div>
-            ) : isScanning ? (
-              <div className="py-12 text-center space-y-6">
-                <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
-                  <RefreshCw className="w-12 h-12 text-gold animate-spin" />
-                  <Camera className="w-6 h-6 text-neutral-900 absolute" />
-                </div>
-                <div className="space-y-1">
-                  <p className="font-mono text-xs font-bold text-neutral-900 uppercase tracking-wider">
-                    Analyzing Substrate Surface Vectors...
-                  </p>
-                  <p className="text-[11px] text-neutral-500 font-sans">Calculating surface coplanarity & deflection load limits...</p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="border-2 border-dashed border-neutral-300 hover:border-gold rounded-2xl p-8 text-center space-y-3 bg-neutral-50 transition-colors cursor-pointer group">
-                  <UploadCloud className="w-12 h-12 text-neutral-400 group-hover:text-gold mx-auto transition-colors" />
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold text-neutral-800">
-                      Drag & Drop Site Photography or LiDAR Point Clouds
-                    </p>
-                    <p className="text-[10px] text-neutral-500 font-mono">Supports JPG, PNG, RAW, LAS, OBJ (Max 50MB)</p>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center text-xs text-neutral-500 font-mono">
-                  <span>Simulate Instant Camera Scan</span>
-                  <button
-                    onClick={handleSimulateScan}
-                    className="bg-gold hover:bg-amber-400 text-neutral-950 px-5 py-2.5 rounded-xl font-bold uppercase tracking-wider shadow-sm cursor-pointer"
-                  >
-                    Run AI Vision Scan
-                  </button>
-                </div>
-              </div>
-            )}
+            <div className="py-6 text-center space-y-4">
+              <p className="text-sm text-neutral-600 leading-relaxed max-w-sm mx-auto font-sans" role="status">
+                Automatic substrate scanning and analysis is not currently available. Please verify checklist items on site and record results manually.
+              </p>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="bg-neutral-900 text-white px-8 py-3 rounded-xl font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Return to Checklist
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -152,19 +152,25 @@ import { DataSafetyDisclosureModal } from "./components/DataSafetyDisclosureModa
 import { AiContentBadge } from "./components/AiContentBadge";
 
 // Global Static Slabs Dataset for AI vision AR and Logistics tracking
+/**
+ * Phase 5 Gate 0 purge: `origin` (specific claimed countries of quarry
+ * origin) and `weight` (specific per-slab kg figures) have been removed —
+ * neither was ever sourced from a real slab or supplier record. `lot`
+ * remains only as the internal tag id the AR/QR demo scanner matches
+ * against; it is not presented as a verified provenance or certification
+ * number. `mohs`/`absorption` are kept as generic material-class
+ * properties, with the invented per-slab marketing descriptors removed.
+ */
 const VISION_SLABS = [
   {
     id: "calacatta-borghini",
     name: "Calacatta Borghini",
     class: "Sintered Porcelain",
     lot: "B8492-V2",
-    origin: "Carrara, Italy",
     dims: "320 x 190 x 2 cm",
-    weight: "324 kg",
-    mohs: "8.0 / Diamond-Infused Sintered",
-    absorption: "0.00% / absolute impervious",
+    mohs: "8.0",
+    absorption: "0.00%",
     desc: "Featuring rare 'Phoenix Gold' dramatic golden-amber veins paired with subtle charcoal-grey accents over an ultra-white base.",
-    price: 4250,
     img: "https://lh3.googleusercontent.com/aida-public/AB6AXuD2Jn-ukLJM65n2PE7Vm35Qvx3kDEyQHAEOdMgDmgj0x58vftic2lXxfwziw3w5fNGxpZHVIk2o-6suPpwcvQloIXQVkEPs8AfCQvRIvHjW97VYc98I50Xnxx8CWmwcSzdGMSPs56xDvhtsauwBK8h5R4jT6juMN1lbgBnZZCx-VY-dsa_a6r82h9zXVMyoFBtoWCztuUu7jzRCQ9mm_h9FZ7Z69dY8f7rE3jIT8x4VfYKCD-iujarM_c7iHByKQOn3Ohual6E430U"
   },
   {
@@ -172,13 +178,10 @@ const VISION_SLABS = [
     name: "Emerald Quartzite",
     class: "Natural Quartzite",
     lot: "Q7729-M5",
-    origin: "Minas Gerais, Brazil",
     dims: "315 x 185 x 2 cm",
-    weight: "318 kg",
-    mohs: "7.0 / Quartzite-Dense",
-    absorption: "0.15% / standard sealed",
+    mohs: "7.0",
+    absorption: "0.15%",
     desc: "Stunning deep emerald-green layers infused with gold dust and crystallised quartz veins, offering high architectural resistance.",
-    price: 5420,
     img: "https://lh3.googleusercontent.com/aida-public/AB6AXuDjow7LpgCNrWW-amp7a9qGTOtVV3OcF2JM0wQ1QFTHjfU0SK-YDIFZxTvzBiQKbHQOV7x9ZKHipzKgFSEpYsFP3rVXyzfNDsqkte8s6qTBgSN-U6OUBjOMVUZVYxpecuRzynB1LrDiYR0jbWKoVYK17vbApPjSt2rZvhyH8xK5XiVx3XIxiH3L_Tv04Yx0GsgCyPo_2BYGhiSDIrr6DB2npPQ3CJdTjxbIAx8Rp6hFLEV8MqyJJtf0BA-Z6vYv-M8zewIwgDdWuV4"
   },
   {
@@ -186,13 +189,10 @@ const VISION_SLABS = [
     name: "Nero Marquina",
     class: "Natural Fine Marble",
     lot: "N3910-S1",
-    origin: "Markina, Spain",
     dims: "330 x 195 x 2 cm",
-    weight: "332 kg",
-    mohs: "4.0 / Fine-Grain Classic",
-    absorption: "0.18% / mineral impregnated",
+    mohs: "4.0",
+    absorption: "0.18%",
     desc: "A compact obsidian black background accented by stark white calcitic veins and micro-fossils polished to a mirror-like high gloss.",
-    price: 3950,
     img: "https://lh3.googleusercontent.com/aida-public/AB6AXuC03k3n5v5u2Nu-eC7WQGEld_BgUvAzDUbPaN5WTXCb8d3HfqH0Ni19LncFZC3RZAzHVqgf6DcKROaFb00cqcEYjIiGixkMMJbXh82JRKh5OjN29rwQZQQDUbF691Jdp2ii5DRpvt_k6HTd6afyDsPlqBrSwjyU8dyC7571OomGlR6bUn5jAOp79W9Cj9RgQeixTX1hQe3uN2x1nnosVowsJONOr23VnsElp5EKXqcPU9FWmRYrQDcbRt59V15Yoj-VYPFtyY_hX34"
   },
   {
@@ -200,13 +200,10 @@ const VISION_SLABS = [
     name: "Taj Mahal",
     class: "Natural Quartzite",
     lot: "T1048-A9",
-    origin: "Ceará, Brazil",
     dims: "325 x 190 x 2 cm",
-    weight: "321 kg",
-    mohs: "7.0 / Metamorphic Premium",
-    absorption: "0.12% / standard sealed",
+    mohs: "7.0",
+    absorption: "0.12%",
     desc: "An ultra-creamy translucent ivory backdrop with flowing layers of golden honey, warm caramel, and mineral grey veins.",
-    price: 4850,
     img: "https://lh3.googleusercontent.com/aida-public/AB6AXuAu0R7npq7s-ZS9cjo8D6Ei0uf1JHlXLqHVXfPLkneJk5FNBIKy_XbncmasxXSP5HcVTrspwJgJGtKA2s6mLlrn-cuWBXZQPKKlgf2rxV2MyWF1nF7rixjpnjpgYALHiF_SKgYddkpsE1LhmaY6WvazkHw2q3jGgFSW4DslhBg7Fndx4bYVdKvRz1ducnKMkQF4EvDXRyyzYRghvK4NJvlcJ2fo2ZSkHYC7N6C1jY9wq2kX1KDaqicypfFW0BdLZBYTU8HEMT6E_tY"
   }
 ];
@@ -221,9 +218,11 @@ export interface Material {
   thicknesses: string[];
   finishes: string[];
   application: string[];
-  price: number;
-  stockSqFt: number; // Current warehouse inventory stock level in sq ft
-  awaitingTransitSqFt?: number; // In-transit inventory awaiting shipment
+  // Phase 5 Gate 0: `price`, `stockSqFt` and `awaitingTransitSqFt` were removed —
+  // none of MATERIALS_CATALOG's per-item £ prices or stock/in-transit figures
+  // below were ever sourced from a real price list or warehouse system. Pricing
+  // is "Request Quote" / "Price on Application" throughout the app; there is no
+  // live stock feed to report a quantity from. See tasks/todo.md's Gate 0 entry.
   technicalDetails: string;
   fabricationNotes: string;
   hasSpecialImage?: boolean;
@@ -432,103 +431,36 @@ export const getDefaultMilestonesForProject = (proj: Project): ProjectMilestones
   };
 };
 
+/**
+ * Phase 5 Gate 0 purge.
+ *
+ * This previously returned fabricated fabrication-audit records for two
+ * specific project ids (and a generic fallback for every other project):
+ * invented named staff members ("M. Davies (Master Mason)", "A. Hughes
+ * (Edge Finishing Specialist)", "S. Patel (Quality Assurance Inspector)",
+ * "C. Thorne (Sintered Stone Tech)", "R. Sterling (CNC Operator)") with
+ * invented approval timestamps, invented material yield percentages,
+ * invented BS certification codes, and invented CNC machine ids — all
+ * presented as real quality-control history. None of it was ever recorded
+ * by a real technician. Per the approved Gate 0 decision, this now returns
+ * a single honest "not yet recorded" default with no fabricated identities
+ * or certifications, rather than per-project fabricated content — see
+ * tasks/todo.md's Gate 0 entry.
+ */
 export const getFabricationDetailsForProject = (proj: Project): FabricationDetails => {
   if (proj.fabricationDetails) {
     return proj.fabricationDetails;
   }
 
-  if (proj.id === "proj-1") {
-    return {
-      materialYieldPct: 89.2,
-      bsStandardCode: "BS EN 1469 / BS 8298-1",
-      cuttingOrientation: "Bookmatch Continuous Longitudinal (Vein aligned 45° CCW across 50mm mitered apron)",
-      grainContinuityVerified: true,
-      subframeToleranceMm: 1.0,
-      wetCncMachineId: "CNC-WATERJET-01",
-      cuttingSequenceNotes: "2.5mm diamond continuous rim blade; wet CNC cut path executed at 1200mm/min feed rate with stress-relief corner radii.",
-      edgeFinishingLogs: [
-        {
-          id: "log-1-1",
-          timestamp: "2026-07-19 08:30",
-          technician: "M. Davies (Master Mason)",
-          step: "Laser Template Verification & CNC Bridge Saw Slab Alignment",
-          profile: "Raw 30mm Square Edge",
-          gritSequence: "50-Grit Diamond Blade",
-          status: "Approved"
-        },
-        {
-          id: "log-1-2",
-          timestamp: "2026-07-20 11:15",
-          technician: "A. Hughes (Edge Finishing Specialist)",
-          step: "Mitered Apron Edge Assembly & Polishing",
-          profile: "50mm Mitered Apron Edge",
-          gritSequence: "200 -> 800 -> 1500 -> 3000 -> Diamond Felt",
-          status: "Approved"
-        },
-        {
-          id: "log-1-3",
-          timestamp: "2026-07-20 15:45",
-          technician: "S. Patel (Quality Assurance Inspector)",
-          step: "BS EN 1469 Surface Deflection Test & Impregnator Seal",
-          profile: "Full Worktop Assembly",
-          gritSequence: "Nano-Sealer Dual Pass",
-          status: "Approved"
-        }
-      ]
-    };
-  }
-
-  if (proj.id === "proj-2") {
-    return {
-      materialYieldPct: 91.5,
-      bsStandardCode: "BS EN 12057 / Part M Certified",
-      cuttingOrientation: "Vertical Vein Match (Flowing down full-height shower wall panels)",
-      grainContinuityVerified: true,
-      subframeToleranceMm: 0.5,
-      wetCncMachineId: "CNC-WATERJET-02",
-      cuttingSequenceNotes: "High-pressure waterjet cut (3800 bar); dual undermount sink aperture edge rounded to 5mm radius.",
-      edgeFinishingLogs: [
-        {
-          id: "log-2-1",
-          timestamp: "2026-07-18 09:10",
-          technician: "C. Thorne (Sintered Stone Tech)",
-          step: "Tension Relief Edge Trimming",
-          profile: "12mm Pencil Bevel",
-          gritSequence: "100-Grit Resin Diamond",
-          status: "Approved"
-        },
-        {
-          id: "log-2-2",
-          timestamp: "2026-07-19 13:20",
-          technician: "R. Sterling (CNC Operator)",
-          step: "Undermount Sink Cutout & Bevel Polishing",
-          profile: "Demi-Bullnose 20mm",
-          gritSequence: "400 -> 800 -> 1500 -> Polish",
-          status: "In Progress"
-        }
-      ]
-    };
-  }
-
   return {
-    materialYieldPct: 88.0,
-    bsStandardCode: "BS EN 1469 / BS 8298-1",
-    cuttingOrientation: "Longitudinal Grain Alignment (Vein direction matched to main run length)",
-    grainContinuityVerified: true,
-    subframeToleranceMm: 1.0,
-    wetCncMachineId: "CNC-WATERJET-02",
-    cuttingSequenceNotes: "Standard wet CNC process under British Masonry Guild guidelines. Relief cuts on internal corners.",
-    edgeFinishingLogs: [
-      {
-        id: "log-def-1",
-        timestamp: "2026-07-20 10:00",
-        technician: "London Atelier Lead Mason",
-        step: "Primary CNC Waterjet Slicing & Edge Beveling",
-        profile: "Standard Mitered Edge",
-        gritSequence: "200 -> 800 -> 1500 Diamond Pads",
-        status: "Approved"
-      }
-    ]
+    materialYieldPct: 0,
+    bsStandardCode: "Not yet recorded",
+    cuttingOrientation: "Not yet recorded",
+    grainContinuityVerified: false,
+    subframeToleranceMm: 0,
+    wetCncMachineId: "Not yet recorded",
+    cuttingSequenceNotes: "Fabrication has not started for this project yet.",
+    edgeFinishingLogs: []
   };
 };
 
@@ -550,9 +482,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["20mm", "30mm"],
     finishes: ["Polished", "Honed"],
     application: ["Interior Countertops", "Wall Cladding", "Vanities"],
-    price: 85,
-    stockSqFt: 35,
-    awaitingTransitSqFt: 120,
     technicalDetails: "High-density engineered quartz composed of 93% natural quartz crystals and 7% advanced polymer resins. Offers absolute stain resistance and zero porosity.",
     fabricationNotes: "Contains crystalline silica. STRICTLY require wet-cutting systems and certified dust-extraction masks. Ensure relief cuts on inner corners (minimum 3/8\" radius to prevent stress cracking). Do not use for exterior applications.",
     hasSpecialImage: true,
@@ -567,9 +496,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["20mm", "30mm"],
     finishes: ["Suede/Matte", "Silken"],
     application: ["Interior Countertops", "Bath Surrounds", "Fireplace Accents"],
-    price: 75,
-    stockSqFt: 180,
-    awaitingTransitSqFt: 0,
     technicalDetails: "Engineered quartz with a deep charcoal background and soft, chalky white veining. Mimics natural soapstone without the soft scratching liability.",
     fabricationNotes: "Avoid polishing matte/suede surfaces locally as it ruins the proprietary factory silken finish. Clean with non-abrasive pH-neutral surface cleaners only.",
     bgStyle: "linear-gradient(135deg, #2b2c2d 0%, #1e1f20 50%, #444547 75%, #1e1f20 100%)"
@@ -583,9 +509,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["20mm"],
     finishes: ["Matte", "Raw Textured"],
     application: ["Interior Countertops", "Commercial Bars", "Flooring"],
-    price: 65,
-    stockSqFt: 15,
-    awaitingTransitSqFt: 50,
     technicalDetails: "Engineered stone offering a raw industrial micro-cement texture with extreme structural stability. Resistant to cracks and structural shifting.",
     fabricationNotes: "Industrial micro-texture is more susceptible to metal marks from cutlery; use soft non-scratch nylon pads to lift blemishes. Easy to fabricate on standard CNC machines.",
     bgStyle: "linear-gradient(135deg, #8a8d8f 0%, #a2a5a8 40%, #76797a 80%, #919496 100%)"
@@ -599,9 +522,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["12mm", "20mm"],
     finishes: ["Polished", "Satin Velvet"],
     application: ["Indoor Countertops", "Outdoor Kitchens", "Ventilated Facades", "Fireplaces"],
-    price: 95,
-    stockSqFt: 12,
-    awaitingTransitSqFt: 80,
     technicalDetails: "Premium sintered stone fired at 1200°C. Composed of natural clays and mineral oxides. Absolutely UV-stable and resistant to temperatures up to 800°C.",
     fabricationNotes: "Highly tensioned material. ALWAYS perform perimeter relief cuts (shaving 1cm from slab borders) before making interior cutouts. Use continuous turbo diamond blades specifically rated for porcelain. Slow down travel speed on entry/exit of cuts.",
     bgStyle: "linear-gradient(135deg, #ffffff 0%, #f4f4f4 50%, #d4d4d4 60%, #ffffff 80%, #cccccc 100%)"
@@ -615,9 +535,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["12mm"],
     finishes: ["Satin Metallic", "Structured"],
     application: ["Indoor Countertops", "Outdoor BBQ Stations", "Accent Walls", "Flooring"],
-    price: 90,
-    stockSqFt: 18,
-    awaitingTransitSqFt: 60,
     technicalDetails: "Sintered porcelain with integrated metallic iron oxides, mimicking aged corten steel with zero rusting, scaling, or toxic leeching. Heatproof and scratchproof.",
     fabricationNotes: "Extremely hard. Blade feed rate must be reduced by 30% compared to standard quartz. Ensure massive water lubrication stream is directed exactly at the cutting point.",
     bgStyle: "linear-gradient(135deg, #5c3a21 0%, #3d2b1f 40%, #73553d 70%, #2b1f1a 100%)"
@@ -631,9 +548,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["12mm", "20mm"],
     finishes: ["Polished", "Matte"],
     application: ["Indoor Countertops", "Shower Walls", "Furniture Tops", "BBQ Cladding"],
-    price: 85,
-    stockSqFt: 150,
-    awaitingTransitSqFt: 0,
     technicalDetails: "High-definition deep black sintered porcelain with sharp, crystalline white veins. Totally non-reactive to bleach, acids, and cooking oils.",
     fabricationNotes: "Deep dark pigments will show seam lines more prominently. Use manufacturer's color-matched epoxy adhesives only (e.g., Integra/Akemi charcoal black). Miters must be cut with pristine precision to avoid micro-chipping on edges.",
     bgStyle: "linear-gradient(135deg, #111111 0%, #1c1c1c 40%, #444444 45%, #111111 50%, #1a1a1a 100%)"
@@ -647,9 +561,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["20mm", "30mm"],
     finishes: ["Polished", "Leathered"],
     application: ["Indoor/Outdoor Countertops", "Wet Bars", "Floor Planking"],
-    price: 120,
-    stockSqFt: 30,
-    awaitingTransitSqFt: 150,
     technicalDetails: "Exquisite natural stone quarried in Brazil. A dense metamorphic rock starting as sandstone and forged under intense geological heat and pressure. Harder than granite.",
     fabricationNotes: "Highly abrasive. Extreme stone density rapidly dulls standard diamond tooling. Dress your bridge saw blade frequently using dress stone. Maintain slow saw travel speeds (approx 4-6 feet per minute) and massive water volume. Premium stone sealer required on handoff.",
     bgStyle: "linear-gradient(135deg, #e3dac9 0%, #dcd3be 40%, #f0ebd8 70%, #d0c8b0 100%)"
@@ -663,9 +574,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["20mm", "30mm"],
     finishes: ["Polished", "Honed"],
     application: ["Residential Kitchens (Care needed)", "Bath Vanities", "Fireplace Hearths"],
-    price: 110,
-    stockSqFt: 220,
-    awaitingTransitSqFt: 100,
     technicalDetails: "Classic Italian natural marble with a white-to-light-grey ground and elegant feathery grey veins. Highly prized for its rich, historic architectural aesthetic.",
     fabricationNotes: "Soft and highly porous. Acid-sensitive (subject to etching from lemon juice, vinegar). Require premium solvent-based impregnating sealer (apply 2 coats before client handover). Handle with high care during transit as tensile strength is low; transport upright with backer frames.",
     bgStyle: "linear-gradient(135deg, #eaeae8 0%, #f7f7f5 50%, #dedede 65%, #f2f2f0 80%, #cccccc 100%)"
@@ -679,9 +587,6 @@ export const MATERIALS_CATALOG: Material[] = [
     thicknesses: ["20mm", "30mm"],
     finishes: ["Polished", "Suede/Leathered"],
     application: ["Indoor/Outdoor Countertops", "High-Traffic Thresholds", "Cladding"],
-    price: 95,
-    stockSqFt: 80,
-    awaitingTransitSqFt: 0,
     technicalDetails: "Extremely dense, deep black igneous natural stone. Possesses nearly zero absorption and excellent structural rigidity. One of the most durable natural materials available.",
     fabricationNotes: "Heavy and rigid. Easy to machine, but highly prone to showing dust during cutting; maintain full wet wash. Use dark stone sealers to maintain absolute deep black rich contrast.",
     bgStyle: "linear-gradient(135deg, #181818 0%, #0c0c0c 60%, #202020 80%, #0a0a0a 100%)"
@@ -1129,7 +1034,7 @@ export default function App() {
   const clearAllMaterialFilters = () => {
     setSelectedMaterialFilters([]);
   };
-  const [catalogSort, setCatalogSort] = useState<"featured" | "price-asc" | "price-desc" | "mohs-desc" | "mohs-asc">("featured");
+  const [catalogSort, setCatalogSort] = useState<"featured" | "mohs-desc" | "mohs-asc">("featured");
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(MATERIALS_CATALOG[0]);
   const [showGrainAdvisor, setShowGrainAdvisor] = useState<boolean>(true);
   
@@ -1206,7 +1111,7 @@ export default function App() {
     }
     const initial: Record<string, number> = {};
     MATERIALS_CATALOG.forEach(m => {
-      initial[m.id] = m.stockSqFt;
+      initial[m.id] = 0;
     });
     return initial;
   });
@@ -1231,7 +1136,6 @@ export default function App() {
   const [activeVisionSlabId, setActiveVisionSlabId] = useState<string>("calacatta-borghini");
   const [showVisionFavoritesOnly, setShowVisionFavoritesOnly] = useState<boolean>(false);
   const [visionMode, setVisionMode] = useState<"simulator" | "blueprint">("simulator");
-  const [simulatedPrice, setSimulatedPrice] = useState<number>(4250);
   const [visionLightingMode, setVisionLightingMode] = useState<"morning" | "studio" | "evening">("studio");
   const [visionPatternRotation, setVisionPatternRotation] = useState<number>(0); // 0, 90, 180, 270 degrees
 
@@ -1377,7 +1281,16 @@ export default function App() {
   const [batchVerificationPayload, setBatchVerificationPayload] = useState<any | null>(null);
   const [isVerifyingBatchApi, setIsVerifyingBatchApi] = useState<boolean>(false);
 
-  // Persistent Batch History state initialized from localStorage or initial sample batches
+  /**
+   * Phase 5 Gate 0 purge: this previously seeded persistent batch-scan
+   * history (written to localStorage, so it would persist across a real
+   * user's sessions) with three fabricated "verified" batches — invented
+   * ledger-hash-shaped hex strings, invented verification codes, and a
+   * claim each was "verified against SMC Thames Warehouse Ledger" — none
+   * of it backed by a real warehouse or verification ledger. History now
+   * starts empty; the structure that renders and persists real scans (via
+   * addBatchToHistory below) is unchanged.
+   */
   const [verifiedBatchHistory, setVerifiedBatchHistory] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem("smc_verified_batch_history");
@@ -1385,47 +1298,7 @@ export default function App() {
     } catch (e) {
       console.error("Error reading verified batch history:", e);
     }
-    return [
-      {
-        batchId: "SMC-BATCH-0801A",
-        batchVerificationCode: "SMC-BATCH-VAL-9X82F1",
-        timestamp: "01 Aug 2026, 14:32",
-        ledgerHash: "0x7f8a91c4d2e5b603a129",
-        totalVerified: 4,
-        items: [
-          { qrCode: "LOT-CG-8821", verified: true, slabName: "Calacatta Gold Supreme", lotNumber: "LOT-CG-8821", bay: "Bay A-01", thickness: "20mm" },
-          { qrCode: "LOT-[#1204]", verified: true, slabName: "Statuario Imperial Quartz", lotNumber: "LOT-[#1204]", bay: "Bay B-03", thickness: "30mm" },
-          { qrCode: "LOT-NM-7712", verified: true, slabName: "Nero Marquina Extra", lotNumber: "LOT-NM-7712", bay: "Bay C-02", thickness: "20mm" },
-          { qrCode: "LOT-PG-3091", verified: true, slabName: "Pietra Grey Honed", lotNumber: "LOT-PG-3091", bay: "Bay A-04", thickness: "20mm" }
-        ],
-        message: "Batch Verification Complete: 4 slab(s) verified against SMC Thames Warehouse Ledger."
-      },
-      {
-        batchId: "SMC-BATCH-0728B",
-        batchVerificationCode: "SMC-BATCH-VAL-4M19Q8",
-        timestamp: "28 Jul 2026, 09:15",
-        ledgerHash: "0x3c2b1a9f8e7d6c5b0412",
-        totalVerified: 3,
-        items: [
-          { qrCode: "LOT-AC-4011", verified: true, slabName: "Arabescato Corchia Marble", lotNumber: "LOT-AC-4011", bay: "Bay A-02", thickness: "20mm" },
-          { qrCode: "LOT-TM-9082", verified: true, slabName: "Taj Mahal Quartzite", lotNumber: "LOT-TM-9082", bay: "Bay B-01", thickness: "30mm" },
-          { qrCode: "LOT-VA-1120", verified: true, slabName: "Verde Alpi Emerald", lotNumber: "LOT-VA-1120", bay: "Bay C-05", thickness: "20mm" }
-        ],
-        message: "Batch Verification Complete: 3 slab(s) verified against SMC Thames Warehouse Ledger."
-      },
-      {
-        batchId: "SMC-BATCH-0720C",
-        batchVerificationCode: "SMC-BATCH-VAL-2K54P0",
-        timestamp: "20 Jul 2026, 16:45",
-        ledgerHash: "0x1d2e3f4a5b6c7d8e9f01",
-        totalVerified: 2,
-        items: [
-          { qrCode: "LOT-GC-5531", verified: true, slabName: "Grigio Carnico Honed", lotNumber: "LOT-GC-5531", bay: "Bay B-04", thickness: "20mm" },
-          { qrCode: "LOT-BC-6610", verified: true, slabName: "Bianco Carrara CD", lotNumber: "LOT-BC-6610", bay: "Bay A-03", thickness: "20mm" }
-        ],
-        message: "Batch Verification Complete: 2 slab(s) verified against SMC Thames Warehouse Ledger."
-      }
-    ];
+    return [];
   });
 
   const [historySearchQuery, setHistorySearchQuery] = useState<string>("");
@@ -2012,30 +1885,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [activeStoryIndex]);
 
-  // Dynamic price fluctuation for the AR visualizer simulation
-  useEffect(() => {
-    let base = 4250;
-    if (activeVisionSlabId === "calacatta-borghini") base = 4250;
-    else if (activeVisionSlabId === "emerald-quartzite") base = 5420;
-    else if (activeVisionSlabId === "nero-marquina") base = 3950;
-    else if (activeVisionSlabId === "taj-mahal") base = 4850;
-    
-    setSimulatedPrice(base);
-
-    const interval = setInterval(() => {
-      setSimulatedPrice(prev => {
-        const fluctuation = Math.floor(Math.random() * 30) - 15;
-        const nextPrice = prev + fluctuation;
-        if (nextPrice > base - 100 && nextPrice < base + 100) {
-          return nextPrice;
-        }
-        return prev;
-      });
-    }, 2500);
-
-    return () => clearInterval(interval);
-  }, [activeVisionSlabId]);
-  
   // Projects State & Search / Status Filtering
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem("smc_pro_projects");
@@ -2195,39 +2044,16 @@ export default function App() {
     }
   };
 
-  // Helper to compute a project's financial valuation
-  const calculateProjectValue = (proj: Project): number => {
-    return proj.estimates.reduce((acc, part) => {
-      const mat = getMaterialById(part.materialId);
-      const mainArea = (part.length * part.width) / 144;
-      const bsArea = (part.backsplashLength * part.backsplashHeight) / 144;
-      const totalSqFt = mainArea + bsArea;
-      
-      let cost = totalSqFt * mat.price;
-      let thicknessMultiplier = 1.0;
-      if (part.thickness === "12mm") thicknessMultiplier = 0.90;
-      if (part.thickness === "30mm") thicknessMultiplier = 1.25;
-      cost = cost * thicknessMultiplier;
-
-      let edgeCostPerFoot = 0;
-      switch (part.edgeProfile) {
-        case "Mitered Apron (2 in)": edgeCostPerFoot = 25; break;
-        case "Mitered Apron (3 in)": edgeCostPerFoot = 35; break;
-        case "Demi-Bullnose": edgeCostPerFoot = 15; break;
-        case "Ogee": edgeCostPerFoot = 20; break;
-        default: edgeCostPerFoot = 0;
-      }
-      cost += part.edgeLength * edgeCostPerFoot;
-      cost += (part.sinkCutouts * 250) + (part.cooktopCutouts * 200) + (part.faucetHoles * 40);
-
-      let diffSurchargePct = 0;
-      if (mat.class === "Porcelain") diffSurchargePct = 0.15;
-      else if (mat.id === "taj-mahal") diffSurchargePct = 0.20;
-      else if (mat.class === "Natural Stone" && mat.id === "bianco-carrara") diffSurchargePct = 0.10;
-
-      cost += cost * diffSurchargePct;
-      return acc + cost;
-    }, 0);
+  // Phase 5 Gate 0: this previously computed a "project financial valuation"
+  // from a fabricated pricing formula (per-material £/sqft with no
+  // authoritative source, invented edge-profile rates, invented cutout fees,
+  // and invented difficulty surcharges). None of those figures were ever
+  // approved by SMC, so there is no formula left to compute a real value
+  // from — this always returns 0 rather than fabricating one. Callers that
+  // display this as a project's worth should show "Pending Quote" instead of
+  // a £ figure; see tasks/todo.md's Gate 0 entry.
+  const calculateProjectValue = (_proj: Project): number => {
+    return 0;
   };
 
   // Filtered & Sorted Projects computation
@@ -2431,7 +2257,7 @@ export default function App() {
 
   const materialDistributionData = useMemo(() => {
     const map: Record<string, { count: number; value: number }> = {};
-    
+
     projects.forEach(p => {
       p.estimates.forEach(est => {
         const mat = getMaterialById(est.materialId);
@@ -2440,7 +2266,6 @@ export default function App() {
           map[cat] = { count: 0, value: 0 };
         }
         map[cat].count += 1;
-        map[cat].value += (est.length * est.width / 144) * mat.price;
       });
     });
 
@@ -2490,115 +2315,20 @@ export default function App() {
     }
   };
 
-  // Drawing OCR Analysis States
-  const [isAnalyzingDrawing, setIsAnalyzingDrawing] = useState<boolean>(false);
-  const [analysisProgress, setAnalysisProgress] = useState<number>(65);
-  const [gridAlignEnabled, setGridAlignEnabled] = useState<boolean>(true);
-  const [detectionMeshEnabled, setDetectionMeshEnabled] = useState<boolean>(true);
-  const [analysisCompleted, setAnalysisCompleted] = useState<boolean>(false);
-  const [analysisFile, setAnalysisFile] = useState<{ name: string; scale: string; totalArea: string; joints: string } | null>(null);
-  const [isDragOver, setIsDragOver] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!isAnalyzingDrawing || analysisProgress >= 99) return;
-    
-    const interval = setInterval(() => {
-      setAnalysisProgress(prev => {
-        if (prev >= 99) {
-          setAnalysisCompleted(true);
-          clearInterval(interval);
-          return 99;
-        }
-        const next = prev + Math.random() * 2 + 0.5;
-        return next >= 99 ? 99 : next;
-      });
-    }, 800);
-    
-    return () => clearInterval(interval);
-  }, [isAnalyzingDrawing, analysisProgress]);
-
-  const handleImportAnalysisData = () => {
-    const detectedParts: EstimatePart[] = [
-      {
-        id: "det-part-1",
-        name: "Slab Block A - Main L-Section",
-        length: 126,
-        width: 75,
-        materialId: "calacatta-gold",
-        thickness: "30mm",
-        edgeProfile: "Mitered Apron (2 in)",
-        edgeLength: 15,
-        sinkCutouts: 1,
-        cooktopCutouts: 0,
-        faucetHoles: 1,
-        backsplashLength: 126,
-        backsplashHeight: 4
-      },
-      {
-        id: "det-part-2",
-        name: "Slab Block B - Waterfall Island Base",
-        length: 124,
-        width: 73,
-        materialId: "calacatta-gold",
-        thickness: "30mm",
-        edgeProfile: "Mitered Apron (3 in)",
-        edgeLength: 20,
-        sinkCutouts: 1,
-        cooktopCutouts: 1,
-        faucetHoles: 1,
-        backsplashLength: 0,
-        backsplashHeight: 0
-      },
-      {
-        id: "det-part-3",
-        name: "Slab Block C - Perimeter Worktop",
-        length: 130,
-        width: 77,
-        materialId: "calacatta-gold",
-        thickness: "20mm",
-        edgeProfile: "Square/Eased",
-        edgeLength: 10,
-        sinkCutouts: 0,
-        cooktopCutouts: 0,
-        faucetHoles: 0,
-        backsplashLength: 130,
-        backsplashHeight: 4
-      },
-      {
-        id: "det-part-4",
-        name: "Slab Block D - Backsplash Hearth",
-        length: 128,
-        width: 75,
-        materialId: "calacatta-gold",
-        thickness: "20mm",
-        edgeProfile: "Square/Eased",
-        edgeLength: 0,
-        sinkCutouts: 0,
-        cooktopCutouts: 0,
-        faucetHoles: 0,
-        backsplashLength: 0,
-        backsplashHeight: 0
-      }
-    ];
-    setEstimateParts(detectedParts);
-    setActiveEditingPartId("det-part-1");
-    setIsAnalyzingDrawing(false);
-    setQuoteNumber("8821");
-    setQuoteNotes("Prism-Core Auto-Quote complete! Extracted layout geometry from Kitchen_Layout_RevA.pdf. Mapped 4 slab blocks with balanced yield profiles, 2 sink cutouts, 1 cooktop, and edge definitions.");
-    setActiveTab("quote-summary");
-  };
-
-  const startAnalyzingDrawing = (fileName: string) => {
-    setAnalysisFile({
-      name: fileName,
-      scale: "1:50 DETECTED",
-      totalArea: "12.45 m²",
-      joints: "03 Units"
-    });
-    setAnalysisProgress(65);
-    setAnalysisCompleted(false);
-    setIsAnalyzingDrawing(true);
-  };
+  /**
+   * Phase 5 Gate 0 purge.
+   *
+   * This previously drove an "SMC Prism-Core™ AI Drawing Scanner" feature:
+   * uploading any file (or clicking a "demo" button) triggered a fake
+   * multi-second progress animation, then always injected the exact same
+   * hardcoded four-block kitchen layout (specific lengths, widths, edge
+   * profiles, cutout counts) into the user's real estimate, regardless of
+   * what file was actually uploaded or its real contents, along with a
+   * fabricated "Prism-Core Auto-Quote complete!" note. No OCR/vision
+   * backend exists. Because this silently wrote fabricated dimensions into
+   * a real quote, the whole simulated scan-and-import flow has been
+   * removed rather than left dormant.
+   */
 
   // Estimator State
   const [estimateParts, setEstimateParts] = useState<EstimatePart[]>([
@@ -2672,55 +2402,21 @@ export default function App() {
     });
   };
 
-  // Pricing & Estimate Logic
+  // Phase 5 Gate 0: pricing removed. This previously computed a per-part
+  // quote total from a fabricated pricing formula (an unverified £/sqft
+  // material rate, invented edge-profile rates, invented cutout fees, and
+  // invented fabrication-difficulty surcharges) — none of it was ever
+  // approved by SMC. The geometric measurements below (areas, sqft) are
+  // real arithmetic on the user's own entered dimensions and are kept; the
+  // cost fields are zeroed rather than fabricated. Consumers should show
+  // "Price on Application" wording instead of these figures.
   const calculatedEstimatePartsSummary = useMemo(() => {
     return estimateParts.map(part => {
       const mat = getMaterialById(part.materialId);
-      
-      // Calculations
+
       const mainAreaSqFt = (part.length * part.width) / 144;
       const backsplashAreaSqFt = (part.backsplashLength * part.backsplashHeight) / 144;
       const totalSqFt = mainAreaSqFt + backsplashAreaSqFt;
-      
-      // Base Material Cost
-      let baseCost = totalSqFt * mat.price;
-      
-      // Thickness Adjustment
-      let thicknessMultiplier = 1.0;
-      if (part.thickness === "12mm") thicknessMultiplier = 0.90;
-      if (part.thickness === "30mm") thicknessMultiplier = 1.25;
-      baseCost = baseCost * thicknessMultiplier;
-
-      // Edge Profile cost
-      let edgeCostPerFoot = 0;
-      switch (part.edgeProfile) {
-        case "Mitered Apron (2 in)": edgeCostPerFoot = 25; break;
-        case "Mitered Apron (3 in)": edgeCostPerFoot = 35; break;
-        case "Demi-Bullnose": edgeCostPerFoot = 15; break;
-        case "Ogee": edgeCostPerFoot = 20; break;
-        default: edgeCostPerFoot = 0; // Square/Eased is standard
-      }
-      const totalEdgeCost = part.edgeLength * edgeCostPerFoot;
-
-      // Cutout charges
-      const totalCutoutsCost = 
-        (part.sinkCutouts * 250) + 
-        (part.cooktopCutouts * 200) + 
-        (part.faucetHoles * 40);
-
-      // Fabrication Difficulty Surcharge (based on material class & tension profiles)
-      let diffSurchargePct = 0; // standard quartz / granite
-      if (mat.class === "Porcelain") {
-        diffSurchargePct = 0.15; // 15% due to extreme hardness/tension cutting
-      } else if (mat.id === "taj-mahal") {
-        diffSurchargePct = 0.20; // 20% due to extremely abrasive natural quartzites
-      } else if (mat.class === "Natural Stone" && mat.id === "bianco-carrara") {
-        diffSurchargePct = 0.10; // 10% due to fragile stone handling & dual sealing
-      }
-      
-      const subtotalBeforeSurcharge = baseCost + totalEdgeCost + totalCutoutsCost;
-      const surchargeCost = subtotalBeforeSurcharge * diffSurchargePct;
-      const totalCost = subtotalBeforeSurcharge + surchargeCost;
 
       return {
         ...part,
@@ -2728,12 +2424,12 @@ export default function App() {
         mainAreaSqFt,
         backsplashAreaSqFt,
         totalSqFt,
-        baseCost,
-        totalEdgeCost,
-        totalCutoutsCost,
-        surchargeCost,
-        surchargePct: diffSurchargePct * 100,
-        totalCost
+        baseCost: 0,
+        totalEdgeCost: 0,
+        totalCutoutsCost: 0,
+        surchargeCost: 0,
+        surchargePct: 0,
+        totalCost: 0
       };
     });
   }, [estimateParts]);
@@ -3102,7 +2798,7 @@ export default function App() {
   // Count of materials where project demand exceeds current warehouse stock
   const exceededMaterialsCount = useMemo(() => {
     return MATERIALS_CATALOG.filter(m => {
-      const stock = materialsStock[m.id] ?? m.stockSqFt ?? 0;
+      const stock = materialsStock[m.id] ?? 0;
       const demand = materialDemandMap[m.id]?.demandSqFt || 0;
       return demand > stock;
     }).length;
@@ -3124,12 +2820,12 @@ export default function App() {
     };
 
     MATERIALS_CATALOG.forEach((m) => {
-      const currentStock = materialsStock[m.id] ?? m.stockSqFt ?? 0;
+      const currentStock = materialsStock[m.id] ?? 0;
       const demandSqFt = materialDemandMap[m.id]?.demandSqFt || 0;
       const isExceeded = demandSqFt > currentStock;
 
       if (currentStock > 0) counts["Available Inventory"]++;
-      if ((m.awaitingTransitSqFt ?? 0) > 0) counts["Awaiting Transit"]++;
+      if (false) counts["Awaiting Transit"]++;
       if (demandSqFt > 0 || isExceeded) counts["High Demand"]++;
       if (currentStock <= 30 || isExceeded) counts["Low Inventory"]++;
       if (isExceeded) counts["Demand Exceeded"]++;
@@ -3151,7 +2847,7 @@ export default function App() {
 
       if (selectedMaterialFilters.length === 0) return true;
 
-      const currentStock = materialsStock[m.id] ?? m.stockSqFt ?? 0;
+      const currentStock = materialsStock[m.id] ?? 0;
       const demandSqFt = materialDemandMap[m.id]?.demandSqFt || 0;
       const isExceeded = demandSqFt > currentStock;
 
@@ -3170,7 +2866,7 @@ export default function App() {
       if (selectedStatuses.length > 0) {
         const matchesAnyStatus = selectedStatuses.some((status) => {
           if (status === "Available Inventory") return currentStock > 0;
-          if (status === "Awaiting Transit") return (m.awaitingTransitSqFt ?? 0) > 0;
+          if (status === "Awaiting Transit") return false;
           if (status === "High Demand") return demandSqFt > 0 || isExceeded;
           if (status === "Low Inventory") return currentStock <= 30 || isExceeded;
           if (status === "Demand Exceeded") return isExceeded;
@@ -3188,8 +2884,6 @@ export default function App() {
     });
 
     return [...list].sort((a, b) => {
-      if (catalogSort === "price-asc") return a.price - b.price;
-      if (catalogSort === "price-desc") return b.price - a.price;
       if (catalogSort === "mohs-desc") return b.mohs - a.mohs;
       if (catalogSort === "mohs-asc") return a.mohs - b.mohs;
       return 0; // "featured" maintains catalog default order
@@ -4180,8 +3874,6 @@ export default function App() {
                     className="bg-white border border-neutral-200 focus:border-gold focus:ring-1 focus:ring-gold/30 rounded pl-8 pr-8 py-2 text-xs font-medium text-neutral-700 transition-all appearance-none cursor-pointer shadow-2xs hover:border-neutral-300"
                   >
                     <option value="featured">Sort by: Featured</option>
-                    <option value="price-asc">Price: Low to High</option>
-                    <option value="price-desc">Price: High to Low</option>
                     <option value="mohs-desc">Hardness: High to Low (Mohs)</option>
                     <option value="mohs-asc">Hardness: Low to High (Mohs)</option>
                   </select>
@@ -4675,7 +4367,7 @@ export default function App() {
               <div className="lg:col-span-7 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredMaterials.map((mat) => {
                   const isSelected = selectedMaterial?.id === mat.id;
-                  const currentStock = materialsStock[mat.id] ?? mat.stockSqFt ?? 0;
+                  const currentStock = materialsStock[mat.id] ?? 0;
                   const demandInfo = materialDemandMap[mat.id] || { demandSqFt: 0, projectCount: 0, projectsList: [] };
                   const demandSqFt = demandInfo.demandSqFt;
                   const isExceeded = demandSqFt > currentStock;
@@ -4802,7 +4494,7 @@ export default function App() {
                           <h4 className="font-serif text-lg font-medium text-[#1A1A1A] leading-tight max-w-[70%]">
                             {mat.name}
                           </h4>
-                          <span className="text-xs font-bold text-neutral-800">£{mat.price}/sqft</span>
+                          <span className="text-xs font-bold text-neutral-800">Price on Application</span>
                         </div>
                       </div>
 
@@ -4874,7 +4566,7 @@ export default function App() {
 
               {/* Right Column: Selected Material Detailed Engineering Specs & Inventory Threshold Manager */}
               {selectedMaterial && (() => {
-                const selStock = materialsStock[selectedMaterial.id] ?? selectedMaterial.stockSqFt ?? 0;
+                const selStock = materialsStock[selectedMaterial.id] ?? 0;
                 const selDemandInfo = materialDemandMap[selectedMaterial.id] || { demandSqFt: 0, projectCount: 0, projectsList: [] };
                 const selDemandSqFt = selDemandInfo.demandSqFt;
                 const selIsExceeded = selDemandSqFt > selStock;
@@ -4904,7 +4596,7 @@ export default function App() {
                         </div>
                         <div className="flex flex-col items-end gap-1.5">
                           <span className="font-mono text-xl font-bold text-neutral-800">
-                            {formatCurrency(selectedMaterial.price)} <span className="text-xs text-neutral-400 font-normal">/ sqft</span>
+                            Price on Application
                           </span>
                           <button
                             type="button"
@@ -5156,7 +4848,7 @@ export default function App() {
         {/* ========================================================= */}
         {/* VIEW 3: DYNAMIC ESTIMATOR & QUOTE GENERATOR */}
         {/* ========================================================= */}
-        {activeTab === "estimator" && !isAnalyzingDrawing && (
+        {activeTab === "estimator" && (
           <div className="space-y-12 animate-fade-in">
             {/* ONLINE QUOTE TECHNICAL WORKFLOW HUB */}
             <OnlineQuoteHub
@@ -5165,7 +4857,7 @@ export default function App() {
                 const el = document.getElementById("estimator-working-grid");
                 if (el) el.scrollIntoView({ behavior: "smooth" });
               }}
-              onTriggerAiScan={() => startAnalyzingDrawing("Kitchen_Layout_RevA.pdf")}
+              onTriggerAiScan={() => alert("Automatic drawing analysis is not currently available. Please add parts manually using the estimator below.")}
               onFocusManualEntry={() => {
                 const el = document.getElementById("estimator-working-grid");
                 if (el) el.scrollIntoView({ behavior: "smooth" });
@@ -5199,66 +4891,6 @@ export default function App() {
                     <Plus className="w-4 h-4" /> Add Countertop Part
                   </button>
                 </div>
-              </div>
-            </div>
-
-            {/* AI BLUEPRINT UPLOAD / DRAG-AND-DROP BAR */}
-            <div 
-              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-              onDragLeave={() => setIsDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragOver(false);
-                if (e.dataTransfer.files?.[0]) {
-                  startAnalyzingDrawing(e.dataTransfer.files[0].name);
-                }
-              }}
-              className={`p-6 border-2 border-dashed rounded-xl transition-all flex flex-col md:flex-row justify-between items-center gap-6 ${
-                isDragOver 
-                  ? "border-gold bg-gold/5 shadow-inner" 
-                  : "border-neutral-200 hover:border-gold/50 bg-neutral-50/40"
-              }`}
-            >
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-white border border-neutral-200 rounded-lg shadow-sm text-gold">
-                  <Sparkles className="w-6 h-6 animate-pulse" />
-                </div>
-                <div className="space-y-1">
-                  <h4 className="font-serif text-lg font-medium text-neutral-800 flex items-center gap-2">
-                    SMC Prism-Core™ AI Drawing Scanner 
-                    <span className="text-[10px] font-mono bg-gold/10 text-gold px-2 py-0.5 rounded-full uppercase tracking-wider font-bold">New beta</span>
-                  </h4>
-                  <p className="text-xs text-neutral-500 leading-relaxed max-w-xl">
-                    Drag and drop layout PDFs or CAD blueprint images to instantly extract dimensions, edge profiles, slab yield rates, and cutout requirements.
-                  </p>
-                  <div className="flex gap-4 pt-1.5 text-[10px] font-mono text-neutral-400">
-                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> PDF, DXF, PNG, JPG</span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 bg-gold rounded-full"></span> 1:50 & 1:100 Scales Supported</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-stretch gap-2.5 w-full md:w-auto">
-                <label className="bg-[#1A1A1A] hover:bg-gold text-white hover:text-neutral-950 text-xs font-sans font-bold uppercase tracking-widest py-3 px-6 rounded-lg transition-all text-center cursor-pointer">
-                  Browse Files
-                  <input 
-                    type="file" 
-                    accept=".pdf,.png,.jpg,.jpeg,.dxf"
-                    className="hidden" 
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        startAnalyzingDrawing(e.target.files[0].name);
-                      }
-                    }}
-                  />
-                </label>
-                <button
-                  onClick={() => startAnalyzingDrawing("Kitchen_Layout_RevA.pdf")}
-                  className="border border-neutral-300 hover:border-gold hover:text-gold text-[#1A1A1A] text-xs font-sans font-bold uppercase tracking-widest py-3 px-6 rounded-lg transition-all text-center"
-                >
-                  Analyze Demo PDF
-                </button>
               </div>
             </div>
 
@@ -5382,7 +5014,6 @@ export default function App() {
                                     >
                                       <Heart className={`w-3 h-3 ${isSelected ? "fill-white text-white" : "fill-rose-500 text-rose-500"}`} />
                                       <span>{favMat.name}</span>
-                                      <span className="text-[10px] font-mono opacity-80">£{favMat.price}/sqft</span>
                                     </button>
                                   );
                                 })}
@@ -5399,7 +5030,7 @@ export default function App() {
                               <optgroup label="❤️ FAVORITE MATERIALS">
                                 {MATERIALS_CATALOG.filter((m) => favoriteMaterialIds.includes(m.id)).map((m) => (
                                   <option key={`fav-${m.id}`} value={m.id}>
-                                    ♥ {m.name} — {formatCurrency(m.price)}/sqft
+                                    ♥ {m.name}
                                   </option>
                                 ))}
                               </optgroup>
@@ -5407,7 +5038,7 @@ export default function App() {
                             <optgroup label="ALL SURFACE CATALOG">
                               {MATERIALS_CATALOG.map((m) => (
                                 <option key={m.id} value={m.id}>
-                                  {m.name} — {formatCurrency(m.price)}/sqft
+                                  {m.name}
                                 </option>
                               ))}
                             </optgroup>
@@ -5614,7 +5245,7 @@ export default function App() {
 
               {/* Right Column: Dynamic Price Summary breakdown */}
               <div className="lg:col-span-5 bg-white border border-[#D4AF37]/30 rounded-lg p-6 md:p-8 space-y-6 sticky top-28 self-start shadow-sm shadow-[#D4AF37]/5">
-                <span className="text-xs font-mono uppercase tracking-widest text-gold font-bold">Live Invoice breakdown</span>
+                <span className="text-xs font-mono uppercase tracking-widest text-gold font-bold">Specification Summary</span>
                 <h3 className="font-serif text-2xl font-medium text-[#1A1A1A] pb-2 border-b border-neutral-100">
                   Active Quote Estimate
                 </h3>
@@ -5630,8 +5261,8 @@ export default function App() {
                             {part.material.name} ({part.thickness})
                           </span>
                         </div>
-                        <span className="font-mono text-sm font-bold text-neutral-800">
-                          {formatCurrency(part.totalCost)}
+                        <span className="font-mono text-xs font-bold text-neutral-800">
+                          Price on Application
                         </span>
                       </div>
 
@@ -5640,7 +5271,7 @@ export default function App() {
                         <div className="flex justify-between">
                           <span>Material Area Yield:</span>
                           <span className="font-mono font-medium text-neutral-700">
-                            {part.totalSqFt.toFixed(2)} sqft ({formatCurrency(part.material.price)}/sqft)
+                            {part.totalSqFt.toFixed(2)} sqft
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -5655,15 +5286,6 @@ export default function App() {
                             Sink x{part.sinkCutouts}, Hob x{part.cooktopCutouts}, Hole x{part.faucetHoles}
                           </span>
                         </div>
-                        
-                        {part.surchargeCost > 0 && (
-                          <div className="flex justify-between text-gold">
-                            <span>Difficulty Surcharge ({part.surchargePct}%):</span>
-                            <span className="font-mono font-semibold">
-                              +{formatCurrency(part.surchargeCost)}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   ))}
@@ -5673,14 +5295,16 @@ export default function App() {
                 <div className="p-5 bg-neutral-900 text-white rounded-lg space-y-2 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-20 h-full opacity-10 bg-gradient-to-l from-white to-transparent pointer-events-none" />
                   <span className="text-[10px] font-mono uppercase tracking-widest text-gold font-bold block">
-                    Estimated Net Total (Excl. Tax)
+                    Estimated Total
                   </span>
                   <div className="flex justify-between items-baseline">
-                    <span className="font-serif text-3xl font-semibold">
-                      {formatCurrency(activeEstimateGrandTotal)}
+                    <span className="font-serif text-2xl font-semibold">
+                      Price on Application
                     </span>
-                    <span className="text-xs text-neutral-400">GBP</span>
                   </div>
+                  <p className="text-[11px] text-neutral-400">
+                    Confirmed by our team based on your specification.
+                  </p>
                 </div>
 
                 <button
@@ -5702,363 +5326,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === "estimator" && isAnalyzingDrawing && (
-          <div className="space-y-6 animate-fade-in text-[#1A1A1A]">
-            
-            {/* Header / Control Bar */}
-            <div className="bg-[#FAFAFA] border border-neutral-200 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setIsAnalyzingDrawing(false)}
-                  className="flex items-center gap-1.5 text-xs font-mono font-bold text-neutral-500 hover:text-neutral-800 transition-colors uppercase tracking-wider"
-                >
-                  <span className="material-symbols-outlined text-sm leading-none">arrow_back</span> Cancel Scan
-                </button>
-                <div className="h-6 w-px bg-neutral-200"></div>
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-lg text-gold leading-none">picture_as_pdf</span>
-                  <div>
-                    <h4 className="text-xs font-bold text-neutral-800 font-sans">{analysisFile?.name}</h4>
-                    <span className="text-[9px] font-mono text-neutral-400 block uppercase font-bold tracking-widest">
-                      FILE DEPOSITED • {analysisFile?.scale}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-mono bg-gold/15 text-gold border border-gold/30 status-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-gold mr-1.5"></span>
-                  {analysisCompleted ? "GEOMETRY COMPILED" : "LASER OCR SCANNING IN PROGRESS"}
-                </span>
-                <span className="text-xs font-mono text-neutral-400">VER: 4.2.1-OCR</span>
-              </div>
-            </div>
-
-            {/* Main Workbench Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              
-              {/* Left Column: Blueprint Scanner Viewport */}
-              <div className="lg:col-span-8 space-y-4">
-                <div className="border border-neutral-200 rounded-xl bg-neutral-950 shadow-2xl relative overflow-hidden aspect-[4/3] flex flex-col justify-between p-4">
-                  
-                  {/* Outer Grid lines overlay */}
-                  <div className="absolute inset-0 opacity-15 pointer-events-none" style={{ backgroundImage: "radial-gradient(#ffffff 1px, transparent 1px)", backgroundSize: "20px 20px" }}></div>
-                  
-                  {/* Custom scanning anim bar */}
-                  {!analysisCompleted && <div className="scan-line"></div>}
-
-                  {/* Top overlay telemetry HUD */}
-                  <div className="absolute top-4 left-4 z-10 space-y-1 pointer-events-none">
-                    <span className="text-[10px] font-mono text-gold block uppercase font-bold tracking-widest">SMC VISION AUTO-CALIBRATOR</span>
-                    <h5 className="text-sm font-sans font-bold text-white">INTERACTIVE LAYOUT MATRIX</h5>
-                  </div>
-                  <div className="absolute top-4 right-4 z-10 pointer-events-none text-right">
-                    <span className="text-[9px] font-mono text-neutral-500 block uppercase">LASER DEPTH AXIS</span>
-                    <span className="text-xs font-mono text-green-400 block font-bold font-mono">Z_LOCK: VERIFIED</span>
-                  </div>
-
-                  {/* Render Blueprint/SVG Drawing Canvas */}
-                  <div className="flex-1 flex items-center justify-center relative p-8">
-                    
-                    {/* Render standard engineering drawings in clean SVG */}
-                    <svg className="w-full h-full max-h-[85%] text-gold stroke-gold" viewBox="0 0 800 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      
-                      {/* Grid Lines align - togglable */}
-                      {gridAlignEnabled && (
-                        <g opacity="0.15" stroke="white" strokeWidth="0.5" strokeDasharray="4">
-                          <line x1="100" y1="0" x2="100" y2="600" />
-                          <line x1="200" y1="0" x2="200" y2="600" />
-                          <line x1="300" y1="0" x2="300" y2="600" />
-                          <line x1="400" y1="0" x2="400" y2="600" />
-                          <line x1="500" y1="0" x2="500" y2="600" />
-                          <line x1="600" y1="0" x2="600" y2="600" />
-                          <line x1="700" y1="0" x2="700" y2="600" />
-                          
-                          <line x1="0" y1="100" x2="800" y2="100" />
-                          <line x1="0" y1="200" x2="800" y2="200" />
-                          <line x1="0" y1="300" x2="800" y2="300" />
-                          <line x1="0" y1="400" x2="800" y2="400" />
-                          <line x1="0" y1="500" x2="800" y2="500" />
-                        </g>
-                      )}
-
-                      {/* Main L-Shape Countertop Block A */}
-                      <g strokeWidth="2.5" className="transition-all duration-500">
-                        <path d="M 120,150 L 520,150 L 520,380 L 400,380 L 400,270 L 120,270 Z" stroke="#D4AF37" strokeWidth="3" fill="rgba(212, 175, 55, 0.05)" />
-                        
-                        {/* L-Shape Outline overlay text */}
-                        <text x="140" y="210" fill="#D4AF37" fontSize="11" fontFamily="monospace" fontWeight="bold">BLOCK A: MAIN WORKTOP (30mm GAUGE)</text>
-                        <text x="280" y="140" fill="#888" fontSize="10" fontFamily="monospace">3200 mm (126")</text>
-                        <text x="530" y="260" fill="#888" fontSize="10" fontFamily="monospace">1900 mm (75")</text>
-                      </g>
-
-                      {/* Waterfall Island Block B */}
-                      <g strokeWidth="2.5">
-                        <rect x="120" y="380" width="240" height="150" stroke="#D4AF37" strokeWidth="3" fill="rgba(212, 175, 55, 0.05)" />
-                        
-                        {/* Island text */}
-                        <text x="135" y="445" fill="#D4AF37" fontSize="11" fontFamily="monospace" fontWeight="bold">BLOCK B: WATERFALL ISLAND (30mm)</text>
-                        <text x="135" y="470" fill="#888" fontSize="10" fontFamily="monospace">3150 x 1850 mm (124" x 73")</text>
-                      </g>
-
-                      {/* Perimeter Shelf Block C */}
-                      <g strokeWidth="2.5">
-                        <rect x="560" y="150" width="120" height="380" stroke="#D4AF37" strokeWidth="2" strokeDasharray="2" fill="rgba(212, 175, 55, 0.02)" />
-                        <text x="615" y="320" fill="#D4AF37" fontSize="10" fontFamily="monospace" fontWeight="bold" transform="rotate(90 615 320)">BLOCK C: PERIMETER WORKTOP</text>
-                      </g>
-
-                      {/* Backsplash Hearth Block D */}
-                      <g strokeWidth="2.5">
-                        <rect x="120" y="60" width="400" height="40" stroke="#90cdf4" strokeWidth="2" fill="rgba(144, 205, 244, 0.1)" />
-                        <text x="210" y="85" fill="#90cdf4" fontSize="10" fontFamily="monospace" fontWeight="bold">BLOCK D: COGNATE BACKSPLASH (400 mm)</text>
-                      </g>
-
-                      {/* Sink Cutout inside Block A */}
-                      <g stroke="#e53e3e" strokeWidth="2">
-                        <rect x="160" y="180" width="100" height="60" fill="rgba(229, 62, 62, 0.08)" />
-                        <line x1="160" y1="180" x2="260" y2="240" />
-                        <line x1="260" y1="180" x2="160" y2="240" />
-                        <text x="175" y="215" fill="#f56565" fontSize="10" fontFamily="sans-serif" fontWeight="bold">SINK CUTOUT 1</text>
-                      </g>
-
-                      {/* Hob Cooktop Cutout inside Block B */}
-                      <g stroke="#e53e3e" strokeWidth="2">
-                        <rect x="220" y="415" width="100" height="60" fill="rgba(229, 62, 62, 0.08)" />
-                        <circle cx="270" cy="445" r="15" />
-                        <text x="230" y="435" fill="#f56565" fontSize="9" fontFamily="sans-serif" fontWeight="bold">HOB / COOKTOP</text>
-                      </g>
-
-                      {/* Joint detection markers */}
-                      {detectionMeshEnabled && (
-                        <g>
-                          {/* Joint 1 */}
-                          <line x1="400" y1="150" x2="400" y2="270" stroke="#f6ad55" strokeWidth="2.5" strokeDasharray="3" />
-                          <circle cx="400" cy="150" r="6" fill="#f6ad55" />
-                          <circle cx="400" cy="270" r="6" fill="#f6ad55" />
-                          <text x="365" y="135" fill="#f6ad55" fontSize="9" fontFamily="monospace">JOINT 01</text>
-
-                          {/* Joint 2 */}
-                          <line x1="520" y1="270" x2="400" y2="270" stroke="#f6ad55" strokeWidth="2.5" strokeDasharray="3" />
-                          <circle cx="520" cy="270" r="6" fill="#f6ad55" />
-                          <circle cx="400" cy="270" r="6" fill="#f6ad55" />
-                          <text x="445" y="295" fill="#f6ad55" fontSize="9" fontFamily="monospace">JOINT 02</text>
-
-                          {/* Joint 3 */}
-                          <line x1="120" y1="380" x2="240" y2="380" stroke="#f6ad55" strokeWidth="2.5" strokeDasharray="3" />
-                          <circle cx="120" cy="380" r="6" fill="#f6ad55" />
-                          <circle cx="240" cy="380" r="6" fill="#f6ad55" />
-                          <text x="145" y="370" fill="#f6ad55" fontSize="9" fontFamily="monospace">JOINT 03</text>
-                        </g>
-                      )}
-
-                      {/* Interactive click node reticles */}
-                      <g className="cursor-pointer" onClick={() => alert("Reticle Alpha: X=1200mm, Y=1500mm, Z=+0.0mm. Vein vector alignment verified at 45°.")}>
-                        <circle cx="120" cy="150" r="8" fill="white" fillOpacity="0.2" stroke="white" strokeWidth="1.5" />
-                        <circle cx="120" cy="150" r="3" fill="#D4AF37" />
-                      </g>
-                      
-                      <g className="cursor-pointer" onClick={() => alert("Reticle Beta: X=5200mm, Y=1500mm, Z=+0.1mm. Book-matched seam coordinates exported.")}>
-                        <circle cx="520" cy="150" r="8" fill="white" fillOpacity="0.2" stroke="white" strokeWidth="1.5" />
-                        <circle cx="520" cy="150" r="3" fill="#D4AF37" />
-                      </g>
-                      
-                      <g className="cursor-pointer" onClick={() => alert("Reticle Gamma: X=3600mm, Y=5300mm, Z=-0.1mm. Waterfall miter return edge verified.")}>
-                        <circle cx="360" cy="530" r="8" fill="white" fillOpacity="0.2" stroke="white" strokeWidth="1.5" />
-                        <circle cx="360" cy="530" r="3" fill="#D4AF37" />
-                      </g>
-                    </svg>
-                  </div>
-
-                  {/* Bottom Viewport Control overlay */}
-                  <div className="border-t border-white/10 pt-3 flex justify-between items-center text-[10px] text-neutral-400 font-mono">
-                    <div className="flex gap-4">
-                      <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-[#e53e3e] rounded-full"></span> RED: CUTOUTS</span>
-                      <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 bg-[#f6ad55] rounded-full"></span> ORANGE: JOINTS</span>
-                    </div>
-                    <div className="text-right">
-                      <span>FPS: 60 • LASER RES: ±0.1mm</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Viewport Toolbar controls */}
-                <div className="bg-white border border-neutral-200 p-4 rounded-xl flex flex-wrap justify-between items-center gap-4 shadow-xs">
-                  <div className="flex items-center gap-6">
-                    <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-neutral-700">
-                      <input
-                        type="checkbox"
-                        checked={gridAlignEnabled}
-                        onChange={(e) => setGridAlignEnabled(e.target.checked)}
-                        className="rounded border-neutral-300 text-gold focus:ring-gold focus:ring-offset-0 cursor-pointer"
-                      />
-                      Show Grid Mesh
-                    </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-neutral-700">
-                      <input
-                        type="checkbox"
-                        checked={detectionMeshEnabled}
-                        onChange={(e) => setDetectionMeshEnabled(e.target.checked)}
-                        className="rounded border-neutral-300 text-gold focus:ring-gold focus:ring-offset-0 cursor-pointer"
-                      />
-                      Highlight Joints
-                    </label>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setGridAlignEnabled(true);
-                        setDetectionMeshEnabled(true);
-                      }}
-                      className="border border-neutral-200 hover:border-neutral-300 text-xs font-semibold px-4 py-2 rounded-lg text-neutral-600 transition-all uppercase tracking-wider"
-                    >
-                      Reset Viewport
-                    </button>
-                    <button
-                      onClick={() => {
-                        alert("Laser calibration grid offset reset to zero. High-precision vector alignment established.");
-                      }}
-                      className="bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all uppercase tracking-wider"
-                    >
-                      Calibrate Scale
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column: OCR Extraction Metrics & Technical Dossier */}
-              <div className="lg:col-span-4 space-y-6">
-                
-                {/* Extraction Status Gauge Card */}
-                <div className="bg-white border border-neutral-200 rounded-xl p-6 space-y-4 shadow-sm">
-                  <span className="text-[10px] font-mono text-gold block uppercase font-bold tracking-widest">PRISM-CORE™ EXTRACTION</span>
-                  
-                  <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
-                    <h5 className="font-serif text-lg font-medium text-neutral-800">Telemetry Status</h5>
-                    <span className="text-xl font-mono font-bold text-gold">{Math.floor(analysisProgress)}%</span>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* Gauge 1: OCR Layout */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-medium">
-                        <span className="text-neutral-600">Vector Edge Extraction</span>
-                        <span className="text-neutral-500 font-mono">
-                          {analysisProgress >= 90 ? "99% Complete" : `${Math.floor(analysisProgress)}%`}
-                        </span>
-                      </div>
-                      <div className="h-2 w-full bg-neutral-100 rounded-full overflow-hidden relative shimmer-bar">
-                        <div 
-                          className="h-full bg-gold transition-all duration-300"
-                          style={{ width: `${analysisProgress >= 90 ? 99 : analysisProgress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-
-                    {/* Gauge 2: Cutout Detection */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-medium">
-                        <span className="text-neutral-600">Cutout Identification</span>
-                        <span className="text-neutral-500 font-mono">
-                          {analysisProgress >= 80 ? "02 Sinks & 01 Hob Locked" : "Searching..."}
-                        </span>
-                      </div>
-                      <div className="h-2 w-full bg-neutral-100 rounded-full overflow-hidden relative">
-                        <div 
-                          className="h-full bg-neutral-900 transition-all duration-300"
-                          style={{ width: `${analysisProgress >= 80 ? 100 : Math.max(0, (analysisProgress - 65) * 5.5)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-
-                    {/* Gauge 3: Joint Placement */}
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-medium">
-                        <span className="text-neutral-600">Mitred Joint Resolution</span>
-                        <span className="text-neutral-500 font-mono">
-                          {analysisProgress >= 95 ? "03 Corners Mapped" : "Calculating paths..."}
-                        </span>
-                      </div>
-                      <div className="h-2 w-full bg-neutral-100 rounded-full overflow-hidden relative">
-                        <div 
-                          className="h-full bg-sky-400 transition-all duration-300"
-                          style={{ width: `${analysisProgress >= 95 ? 100 : Math.max(0, (analysisProgress - 65) * 3)}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Technical Dossier Specs Box */}
-                <div className="bg-[#FBFBFA] border border-neutral-200 rounded-xl p-6 space-y-4">
-                  <span className="text-[10px] font-mono text-neutral-400 block uppercase font-bold tracking-widest">TECHNICAL SPECS (EXTRACTED)</span>
-                  
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center text-xs pb-2.5 border-b border-neutral-150">
-                      <span className="text-neutral-500 font-medium">Total Surface Area</span>
-                      <strong className="text-neutral-800 font-serif text-sm">{analysisFile?.totalArea} (~134 sq ft)</strong>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs pb-2.5 border-b border-neutral-150">
-                      <span className="text-neutral-500 font-medium">Corner Seams Detected</span>
-                      <strong className="text-neutral-800 font-mono">{analysisFile?.joints}</strong>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs pb-2.5 border-b border-neutral-150">
-                      <span className="text-neutral-500 font-medium">Layout Edge Profile</span>
-                      <strong className="text-neutral-800 font-sans">Mitred Apron (Assumed)</strong>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs pb-2.5 border-b border-neutral-150">
-                      <span className="text-neutral-500 font-medium">Material Gauge Thickness</span>
-                      <strong className="text-neutral-800 font-mono">20mm / 30mm Dual</strong>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-neutral-500 font-medium">Recommended Slabs</span>
-                      <strong className="text-neutral-800 font-sans text-xs text-right">04 Slabs Required (Yield 82.4%)</strong>
-                    </div>
-                  </div>
-
-                  <div className="p-3.5 bg-neutral-900 text-white rounded-lg border border-neutral-850 text-[11px] leading-relaxed font-sans space-y-1">
-                    <span className="text-gold uppercase font-bold tracking-wider block text-[9px] font-mono">ESTIMATOR NOTE</span>
-                    <p className="text-neutral-300">
-                      The detected total area is 12.45 m². Our yield matrix recommends Calacatta Gold 30mm porcelain for extreme spans with 4 slab sheets.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Import Action button */}
-                <div className="pt-2">
-                  {analysisProgress < 99 ? (
-                    <button
-                      disabled
-                      className="w-full bg-neutral-100 border border-neutral-200 text-neutral-400 text-xs font-sans font-bold uppercase tracking-widest py-4 rounded-xl flex items-center justify-center gap-2 cursor-not-allowed"
-                    >
-                      <svg className="animate-spin h-4 w-4 text-neutral-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      EXTRACTING DRAWINGS ({Math.floor(analysisProgress)}%)
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleImportAnalysisData}
-                      className="w-full bg-[#1A1A1A] hover:bg-gold text-white hover:text-neutral-950 text-xs font-sans font-bold uppercase tracking-widest py-4 rounded-xl transition-all duration-300 text-center shadow-lg hover:shadow-xl font-bold uppercase tracking-[0.1em]"
-                    >
-                      IMPORT LAYOUT & AUTO-FILL QUOTE
-                    </button>
-                  )}
-                </div>
-
-              </div>
-
-            </div>
-
-          </div>
-        )}
-
+        {/* Phase 5 Gate 0: the fake "AI Drawing Scanner" analysis/import panel that used to render here has been removed - it always injected the same hardcoded fabricated layout into the quote regardless of the uploaded file. See the removal note above handleAddEstimatePart-adjacent state. */}
         {/* ========================================================= */}
         {/* VIEW 4: PROJECT PIPELINE */}
         {/* ========================================================= */}
@@ -7443,65 +6711,6 @@ export default function App() {
             {/* DYNAMIC CORE CONTENT */}
             <div id="vision-viewport-core" className="text-neutral-800 space-y-8">
               {(() => {
-                const VISION_SLABS = [
-                  {
-                    id: "calacatta-borghini",
-                    name: "Calacatta Borghini",
-                    class: "Sintered Porcelain",
-                    lot: "B8492-V2",
-                    origin: "Carrara, Italy",
-                    dims: "320 x 190 x 2 cm",
-                    weight: "324 kg",
-                    mohs: "8.0 / Diamond-Infused Sintered",
-                    absorption: "0.00% / absolute impervious",
-                    desc: "Featuring rare 'Phoenix Gold' dramatic golden-amber veins paired with subtle charcoal-grey accents over an ultra-white base.",
-                    price: 4250,
-                    img: "https://lh3.googleusercontent.com/aida-public/AB6AXuD2Jn-ukLJM65n2PE7Vm35Qvx3kDEyQHAEOdMgDmgj0x58vftic2lXxfwziw3w5fNGxpZHVIk2o-6suPpwcvQloIXQVkEPs8AfCQvRIvHjW97VYc98I50Xnxx8CWmwcSzdGMSPs56xDvhtsauwBK8h5R4jT6juMN1lbgBnZZCx-VY-dsa_a6r82h9zXVMyoFBtoWCztuUu7jzRCQ9mm_h9FZ7Z69dY8f7rE3jIT8x4VfYKCD-iujarM_c7iHByKQOn3Ohual6E430U"
-                  },
-                  {
-                    id: "emerald-quartzite",
-                    name: "Emerald Quartzite",
-                    class: "Natural Quartzite",
-                    lot: "Q7729-M5",
-                    origin: "Minas Gerais, Brazil",
-                    dims: "315 x 185 x 2 cm",
-                    weight: "318 kg",
-                    mohs: "7.0 / Quartzite-Dense",
-                    absorption: "0.15% / standard sealed",
-                    desc: "Stunning deep emerald-green layers infused with gold dust and crystallised quartz veins, offering high architectural resistance.",
-                    price: 5420,
-                    img: "https://lh3.googleusercontent.com/aida-public/AB6AXuDjow7LpgCNrWW-amp7a9qGTOtVV3OcF2JM0wQ1QFTHjfU0SK-YDIFZxTvzBiQKbHQOV7x9ZKHipzKgFSEpYsFP3rVXyzfNDsqkte8s6qTBgSN-U6OUBjOMVUZVYxpecuRzynB1LrDiYR0jbWKoVYK17vbApPjSt2rZvhyH8xK5XiVx3XIxiH3L_Tv04Yx0GsgCyPo_2BYGhiSDIrr6DB2npPQ3CJdTjxbIAx8Rp6hFLEV8MqyJJtf0BA-Z6vYv-M8zewIwgDdWuV4"
-                  },
-                  {
-                    id: "nero-marquina",
-                    name: "Nero Marquina",
-                    class: "Natural Fine Marble",
-                    lot: "N3910-S1",
-                    origin: "Markina, Spain",
-                    dims: "330 x 195 x 2 cm",
-                    weight: "332 kg",
-                    mohs: "4.0 / Fine-Grain Classic",
-                    absorption: "0.18% / mineral impregnated",
-                    desc: "A compact obsidian black background accented by stark white calcitic veins and micro-fossils polished to a mirror-like high gloss.",
-                    price: 3950,
-                    img: "https://lh3.googleusercontent.com/aida-public/AB6AXuC03k3n5v5u2Nu-eC7WQGEld_BgUvAzDUbPaN5WTXCb8d3HfqH0Ni19LncFZC3RZAzHVqgf6DcKROaFb00cqcEYjIiGixkMMJbXh82JRKh5OjN29rwQZQQDUbF691Jdp2ii5DRpvt_k6HTd6afyDsPlqBrSwjyU8dyC7571OomGlR6bUn5jAOp79W9Cj9RgQeixTX1hQe3uN2x1nnosVowsJONOr23VnsElp5EKXqcPU9FWmRYrQDcbRt59V15Yoj-VYPFtyY_hX34"
-                  },
-                  {
-                    id: "taj-mahal",
-                    name: "Taj Mahal",
-                    class: "Natural Quartzite",
-                    lot: "T1048-A9",
-                    origin: "Ceará, Brazil",
-                    dims: "325 x 190 x 2 cm",
-                    weight: "321 kg",
-                    mohs: "7.0 / Metamorphic Premium",
-                    absorption: "0.12% / standard sealed",
-                    desc: "An ultra-creamy translucent ivory backdrop with flowing layers of golden honey, warm caramel, and mineral grey veins.",
-                    price: 4850,
-                    img: "https://lh3.googleusercontent.com/aida-public/AB6AXuAu0R7npq7s-ZS9cjo8D6Ei0uf1JHlXLqHVXfPLkneJk5FNBIKy_XbncmasxXSP5HcVTrspwJgJGtKA2s6mLlrn-cuWBXZQPKKlgf2rxV2MyWF1nF7rixjpnjpgYALHiF_SKgYddkpsE1LhmaY6WvazkHw2q3jGgFSW4DslhBg7Fndx4bYVdKvRz1ducnKMkQF4EvDXRyyzYRghvK4NJvlcJ2fo2ZSkHYC7N6C1jY9wq2kX1KDaqicypfFW0BdLZBYTU8HEMT6E_tY"
-                  }
-                ];
-
                 const activeSlab = VISION_SLABS.find(s => s.id === activeVisionSlabId) || VISION_SLABS[0];
 
                 if (visionMode === "simulator") {
@@ -7785,23 +6994,12 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* TOP LEFT METRICS PANEL */}
-                            <div className="absolute top-4 left-4 z-20 space-y-2">
-                              <div className="bg-black/85 backdrop-blur-md px-3 py-1.5 rounded border border-gold/40 flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-gold animate-pulse"></span>
-                                <span className="font-mono text-[9px] text-white tracking-widest uppercase font-semibold">TRACKING: 98.4%</span>
-                              </div>
-                            </div>
-
                             {/* INSTANT FLOATING ESTIMATE ON TOP CENTER */}
                             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-black/90 backdrop-blur-md px-4 py-2.5 rounded-lg border border-gold/40 text-center shadow-xl min-w-[200px]">
-                              <span className="text-[8px] font-mono font-bold text-neutral-400 block tracking-widest uppercase">ESTIMATED PRICE</span>
-                              <span className="text-lg font-mono text-gold font-bold block mt-0.5" id="price-display">
-                                £{simulatedPrice.toLocaleString()}
+                              <span className="text-[8px] font-mono font-bold text-neutral-400 block tracking-widest uppercase">Pricing</span>
+                              <span className="text-sm font-mono text-gold font-bold block mt-0.5">
+                                Price on Application
                               </span>
-                              <div className="h-[2px] bg-neutral-800 rounded-full mt-1.5 overflow-hidden">
-                                <div className="h-full bg-gold rounded-full w-4/5 animate-pulse" />
-                              </div>
                               <span className="text-[8px] font-mono text-neutral-400 block mt-1 uppercase">Slab: {activeSlab.name}</span>
                             </div>
 
@@ -8044,10 +7242,6 @@ export default function App() {
                                 <span className="text-xs font-semibold text-neutral-800">{activeSlab.class}</span>
                               </div>
                               <div className="flex justify-between items-center py-1 border-b border-neutral-100">
-                                <span className="text-[10px] font-mono text-neutral-400 uppercase">BLOCK ORIGIN</span>
-                                <span className="text-xs font-semibold text-neutral-800">{activeSlab.origin}</span>
-                              </div>
-                              <div className="flex justify-between items-center py-1 border-b border-neutral-100">
                                 <span className="text-[10px] font-mono text-neutral-400 uppercase">BATCH LOT ID</span>
                                 <span className="text-xs font-mono font-bold text-gold">{activeSlab.lot}</span>
                               </div>
@@ -8141,21 +7335,13 @@ export default function App() {
                             <span className="text-[9px] font-mono text-gold font-bold uppercase tracking-widest">BATCH ID REPORT</span>
                             <h4 className="font-serif text-2xl text-neutral-950 font-normal">{activeSlab.name} Specs</h4>
                           </div>
-                          <span className="text-lg font-mono text-gold font-bold">£{activeSlab.price.toLocaleString()} <span className="text-xs text-neutral-400 font-normal">/ slab</span></span>
+                          <span className="text-xs font-mono text-gold font-bold">Price on Application</span>
                         </div>
 
                         <div className="space-y-4 text-xs">
                           <div className="flex justify-between py-2 border-b border-neutral-100">
-                            <span className="text-neutral-400 font-mono uppercase text-[10px]">Geological Origin</span>
-                            <strong className="text-neutral-800">{activeSlab.origin}</strong>
-                          </div>
-                          <div className="flex justify-between py-2 border-b border-neutral-100">
                             <span className="text-neutral-400 font-mono uppercase text-[10px]">Slab Block Sizes</span>
                             <strong className="text-neutral-800 font-mono">{activeSlab.dims}</strong>
-                          </div>
-                          <div className="flex justify-between py-2 border-b border-neutral-100">
-                            <span className="text-neutral-400 font-mono uppercase text-[10px]">Net Block Weight</span>
-                            <strong className="text-neutral-800 font-mono">{activeSlab.weight}</strong>
                           </div>
                           <div className="flex justify-between py-2 border-b border-neutral-100">
                             <span className="text-neutral-400 font-mono uppercase text-[10px]">Mineral Hardness</span>
@@ -8327,16 +7513,27 @@ export default function App() {
             )}
 
             {/* RESERVATION MODAL COMPONENT */}
+            {/*
+              Phase 5 Gate 0 purge: this previously showed a fabricated
+              per-slab price ("£4,250" etc.) and an unsupported "A Grade
+              Stock" claim, then wrote a fake "[SLAB RESERVED TICKET] ...
+              successfully reserved for fabrication" confirmation directly
+              into the target project's real notes and flipped its status
+              to "Slab Selected" — a genuine fabricated-reservation risk,
+              not just a display issue. Per the approved Gate 0 decision,
+              the reservation action is disabled rather than replaced with
+              pricing wording — there is no real reservation system to gate.
+            */}
             {showReserveSlabModal && (
               <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-[100] animate-fade-in">
                 <div className="bg-white border border-neutral-200 rounded-lg p-6 max-w-md w-full space-y-5 shadow-xl">
-                  
+
                   <div className="flex justify-between items-start border-b border-neutral-100 pb-3">
                     <div className="space-y-0.5">
-                      <span className="text-[8px] font-mono text-gold font-bold tracking-widest uppercase block">SECURE RESERVATION TICKET</span>
+                      <span className="text-[8px] font-mono text-gold font-bold tracking-widest uppercase block">SLAB RESERVATIONS</span>
                       <h4 className="font-serif text-xl font-medium text-neutral-800">Reserve Slab Spec</h4>
                     </div>
-                    <button 
+                    <button
                       onClick={() => setShowReserveSlabModal(false)}
                       className="text-neutral-400 hover:text-neutral-600 font-bold"
                     >
@@ -8344,128 +7541,19 @@ export default function App() {
                     </button>
                   </div>
 
-                  {reserveSlabSuccessMessage ? (
-                    <div className="space-y-4 py-3 text-center">
-                      <div className="w-12 h-12 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto border border-green-100">
-                        <span className="material-symbols-outlined text-2xl">check_circle</span>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold text-neutral-800">Slab Reserved Successfully!</p>
-                        <p className="text-xs text-neutral-500 leading-relaxed">{reserveSlabSuccessMessage}</p>
-                      </div>
-                      <div className="pt-2">
-                        <button
-                          onClick={() => {
-                            setShowReserveSlabModal(false);
-                            setActiveTab("projects");
-                          }}
-                          className="bg-neutral-900 hover:bg-gold text-white text-xs font-semibold px-4 py-2 rounded uppercase tracking-wider transition-colors"
-                        >
-                          Go to Projects Pipeline
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      
-                      {/* Active Slab Specs summary */}
-                      <div className="bg-neutral-50 p-4 rounded border border-neutral-150 space-y-2">
-                        <div className="flex justify-between text-[10px] font-mono text-neutral-400 uppercase">
-                          <span>Slab Spec</span>
-                          <span className="text-gold font-bold">A Grade Stock</span>
-                        </div>
-                        <div className="flex justify-between text-xs font-semibold text-neutral-800">
-                          <span>
-                            {activeVisionSlabId === "calacatta-borghini" && "Calacatta Borghini"}
-                            {activeVisionSlabId === "emerald-quartzite" && "Emerald Quartzite"}
-                            {activeVisionSlabId === "nero-marquina" && "Nero Marquina"}
-                            {activeVisionSlabId === "taj-mahal" && "Taj Mahal"}
-                          </span>
-                          <span className="font-mono text-gold font-bold">
-                            {activeVisionSlabId === "calacatta-borghini" && "£4,250"}
-                            {activeVisionSlabId === "emerald-quartzite" && "£5,420"}
-                            {activeVisionSlabId === "nero-marquina" && "£3,950"}
-                            {activeVisionSlabId === "taj-mahal" && "£4,850"}
-                          </span>
-                        </div>
-                      </div>
+                  <p className="text-sm text-neutral-600 leading-relaxed" role="status">
+                    Slab reservations are not currently available. Contact SMC to arrange a reservation for your
+                    project.
+                  </p>
 
-                      {/* Project Dropdown selection */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">Select Target Project Dossier</label>
-                        <select
-                          value={reserveSlabSelectedProjectId}
-                          onChange={(e) => setReserveSlabSelectedProjectId(e.target.value)}
-                          className="w-full bg-[#FBFBFA] border border-neutral-200 focus:border-gold focus:ring-1 focus:ring-gold/30 rounded px-3 py-2.5 text-xs transition-all font-semibold"
-                        >
-                          {projects.map((proj) => (
-                            <option key={proj.id} value={proj.id}>
-                              {proj.name} ({proj.address})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Ticket quantity input */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">Slab Quantity to Secure</label>
-                        <select className="w-full bg-[#FBFBFA] border border-neutral-200 focus:border-gold focus:ring-1 focus:ring-gold/30 rounded px-3 py-2.5 text-xs transition-all font-semibold">
-                          <option>1 Slab (Full Block Match)</option>
-                          <option>2 Slabs (Matched Waterfall/Book-match)</option>
-                          <option>3 Slabs (Multi-surface Master Suite)</option>
-                          <option>4 Slabs + (Bulk Contract Specification)</option>
-                        </select>
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="pt-4 flex justify-end gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowReserveSlabModal(false)}
-                          className="border border-neutral-300 hover:border-neutral-400 text-neutral-600 px-4 py-2 rounded text-xs font-semibold tracking-wider uppercase transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => {
-                            const targetProj = projects.find(p => p.id === reserveSlabSelectedProjectId);
-                            if (!targetProj) return;
-
-                            // Beautiful automated ticket log updated into target project notes
-                            const slabLabel = 
-                              activeVisionSlabId === "calacatta-borghini" ? "Calacatta Borghini Porcelain (2.0cm, Polished)" :
-                              activeVisionSlabId === "emerald-quartzite" ? "Emerald Quartzite Natural Slab (2.0cm, Leathered)" :
-                              activeVisionSlabId === "nero-marquina" ? "Nero Marquina Fine Marble (2.0cm, Polished)" :
-                              "Taj Mahal Exotic Quartzite (2.0cm, Polished)";
-
-                            const updatedNotes = `[SLAB RESERVED TICKET]: 1x Slab of ${slabLabel} successfully reserved for fabrication on ${new Date().toLocaleDateString()}.\n` + targetProj.notes;
-                            
-                            // Let's modify the project notes in our local state list
-                            const updatedProjects = projects.map(p => {
-                              if (p.id === reserveSlabSelectedProjectId) {
-                                  return {
-                                    ...p,
-                                    notes: updatedNotes,
-                                    status: "Slab Selected" as const
-                                  };
-                               }
-                              return p;
-                            });
-
-                            // Save to local storage & state
-                            setProjects(updatedProjects);
-                            localStorage.setItem("smc_pro_projects", JSON.stringify(updatedProjects));
-
-                            setReserveSlabSuccessMessage(`Attached reservation ticket for "${slabLabel}" directly to project "${targetProj.name}".`);
-                          }}
-                          className="bg-neutral-900 hover:bg-gold text-white px-5 py-2 rounded text-xs font-semibold tracking-wider uppercase transition-colors"
-                        >
-                          Confirm & Bind Ticket
-                        </button>
-                      </div>
-
-                    </div>
-                  )}
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      onClick={() => setShowReserveSlabModal(false)}
+                      className="bg-neutral-900 hover:bg-gold text-white px-5 py-2 rounded text-xs font-semibold tracking-wider uppercase transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
 
                 </div>
               </div>
@@ -9335,26 +8423,15 @@ export default function App() {
                             <div>
                               <div className="flex justify-between items-center border-b border-neutral-800 pb-2.5">
                                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 uppercase tracking-wider flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                  <span>BATCH VERIFIED 100%</span>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                  <span>Batch Verified</span>
                                 </span>
                                 <span className="text-[10px] font-mono text-gold font-bold">{batchVerificationPayload.batchId}</span>
                               </div>
 
                               <div className="mt-3 space-y-1">
-                                <h4 className="font-serif text-xl font-light text-white">Batch Audit Certificate</h4>
+                                <h4 className="font-serif text-xl font-light text-white">Batch Verification Report</h4>
                                 <p className="text-[10px] font-mono text-emerald-400">{batchVerificationPayload.message}</p>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
-                                <div className="bg-neutral-950 p-2 rounded border border-neutral-800">
-                                  <span className="text-[8px] font-mono text-neutral-400 uppercase block">Verification Code</span>
-                                  <span className="font-mono font-bold text-gold text-[10px]">{batchVerificationPayload.batchVerificationCode}</span>
-                                </div>
-                                <div className="bg-neutral-950 p-2 rounded border border-neutral-800">
-                                  <span className="text-[8px] font-mono text-neutral-400 uppercase block">Ledger Hash</span>
-                                  <span className="font-mono font-bold text-neutral-300 text-[9px] truncate block">{batchVerificationPayload.ledgerHash}</span>
-                                </div>
                               </div>
 
                               {/* Verified Items Table */}
@@ -9575,8 +8652,8 @@ export default function App() {
                               {/* Core Tech Data Grid */}
                               <div className="grid grid-cols-2 gap-2 text-xs py-1">
                                 <div className="bg-white p-2 rounded border border-neutral-100">
-                                  <span className="text-[9px] font-mono text-neutral-400 uppercase block">Origin</span>
-                                  <span className="font-semibold text-neutral-800">{slab.origin}</span>
+                                  <span className="text-[9px] font-mono text-neutral-400 uppercase block">Class</span>
+                                  <span className="font-semibold text-neutral-800">{slab.class}</span>
                                 </div>
                                 <div className="bg-white p-2 rounded border border-neutral-100">
                                   <span className="text-[9px] font-mono text-neutral-400 uppercase block">Hardness</span>
@@ -9587,8 +8664,8 @@ export default function App() {
                                   <span className="font-semibold text-neutral-800 font-mono">{slab.dims}</span>
                                 </div>
                                 <div className="bg-white p-2 rounded border border-neutral-100">
-                                  <span className="text-[9px] font-mono text-neutral-400 uppercase block">Batch Price</span>
-                                  <span className="font-semibold text-neutral-800">£{slab.price.toLocaleString()}</span>
+                                  <span className="text-[9px] font-mono text-neutral-400 uppercase block">Pricing</span>
+                                  <span className="font-semibold text-neutral-800">On Application</span>
                                 </div>
                               </div>
 
@@ -10379,7 +9456,6 @@ export default function App() {
                             <span className="text-[10px] font-mono text-neutral-500 block">{mat.type || mat.class || mat.category || "Quartz"} • {mat.mohs} Mohs</span>
                           </div>
                         </div>
-                        <span className="text-xs font-mono font-bold text-neutral-900">£{mat.price}/sqft</span>
                       </button>
                     ))}
                   </div>

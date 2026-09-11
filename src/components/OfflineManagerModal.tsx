@@ -109,12 +109,12 @@ export const OfflineManagerModal: React.FC<OfflineManagerModalProps> = ({ isOpen
   // Pre-cache all specs to localforage
   const handlePrecacheAllData = async () => {
     setIsSyncing(true);
-    setSyncNotice("Downloading and caching all SMC Pro luxury material specifications and active site dossiers...");
+    setSyncNotice("Refreshing offline cache...");
     try {
-      await cacheMaterialSpecs(INITIAL_OFFLINE_MATERIAL_SPECS);
-      await cacheProjectData(INITIAL_OFFLINE_PROJECTS);
+      const matCount = await cacheMaterialSpecs(INITIAL_OFFLINE_MATERIAL_SPECS);
+      const projCount = await cacheProjectData(INITIAL_OFFLINE_PROJECTS);
       await loadTelemetryAndData();
-      setSyncNotice("✓ Successfully cached 5 luxury material specifications and 3 site project dossiers to IndexedDB!");
+      setSyncNotice(`✓ Cached ${matCount} material specification(s) and ${projCount} project dossier(s) to IndexedDB.`);
       setTimeout(() => setSyncNotice(null), 5000);
     } catch (e) {
       console.error("Caching error:", e);

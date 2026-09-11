@@ -63,7 +63,7 @@ const TECH_DOCUMENTS: TechDocument[] = [
       "Support sub-frame clearance tolerances for handless kitchen island cabinetry."
     ],
     specs: [
-      { label: "Compliance", value: "ISO 9001 Architectural" },
+      { label: "Compliance", value: "To be confirmed" },
       { label: "CAD Format", value: "AutoCAD 2024 DWG / DXF" },
       { label: "Min Thickness", value: "20mm Solid Slab" }
     ]
@@ -106,7 +106,7 @@ const TECH_DOCUMENTS: TechDocument[] = [
       "Subfloor joist sistering requirements for 30mm natural quartzite."
     ],
     specs: [
-      { label: "Standard", value: "ASTM C119 Compliant" },
+      { label: "Standard", value: "To be confirmed" },
       { label: "Max Overhang", value: "450mm with Steel Ribs" },
       { label: "Safety Factor", value: "3.5x Dynamic Load" }
     ]
@@ -164,7 +164,6 @@ export interface StoneSpecItem {
   mohs: string;
   thickness: string;
   finish: string;
-  stockStatus: "IN STOCK" | "SPECIAL ORDER" | "LOW STOCK";
   imageUrl: string;
   compressiveStrength: string;
   waterAbsorption: string;
@@ -183,12 +182,11 @@ const STONE_SPECS_CATALOG: StoneSpecItem[] = [
     mohs: "7.0",
     thickness: "20mm / 30mm",
     finish: "Polished",
-    stockStatus: "IN STOCK",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuC1de2SUEpBDHEjM7v2igGQyFQ_qiVsKK5wzF9IXMvNo92ufS66kOIQRrOCnUoHMIBeCin3IIVhkK9O8cwghEgujrBwvGGdKRNTkZKexIm6KpijMhDKV6-_iBA_GAnGsGg6jGZ-qDqoK4NHOVjhxIXFJX0mRZMmx6p1HcHznIek0pVjC1sgL5C-u0htp0Z2sQszKO8G7DnY7AWqaJOprlvPo3Xc11AbsoXXuPbtBREtUEo-c_j5Nitm",
     compressiveStrength: "220 MPa",
     waterAbsorption: "< 0.02%",
     flexuralStrength: "48 MPa",
-    acidResistance: "Class A (ISO 10545-13)",
+    acidResistance: "Class A",
     description: "High-density engineered quartz composed of 93% natural quartz crystals and 7% advanced polymer resins. Zero porosity, superior stain and scratch resistance."
   },
   {
@@ -200,7 +198,6 @@ const STONE_SPECS_CATALOG: StoneSpecItem[] = [
     mohs: "6.5",
     thickness: "30mm",
     finish: "Honed",
-    stockStatus: "IN STOCK",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuCdwbzrt4TpYsZ1co9rgolBCBLaK4u0vwf5MMB9j2IhoFAx9IfKwxy7v3WbO3JUnXekzXUvlc808IuYcXZgGh4hAffeYFtRQDnKy4uWtYwUMwtvlxSmZJEo3LxKz6Vi4Z6sOL8p-c_RcH6GMuEux9t9scibjJUBNbwEKt6TzAyLvF_WUAiauZ0T6CCGIHkvf3j0Vb1a7YjUJJ-PTEYtNwaPB4fl5rsJsutNQ2or9gzNBt3bDAkW-f_v",
     compressiveStrength: "285 MPa",
     waterAbsorption: "< 0.08%",
@@ -217,7 +214,6 @@ const STONE_SPECS_CATALOG: StoneSpecItem[] = [
     mohs: "8.0+",
     thickness: "12mm / 20mm",
     finish: "Matte",
-    stockStatus: "SPECIAL ORDER",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuA8qpnU-qZ4x9W8CorLXSlm_6Ke8GK-VX2_lHQuhE9N-ZmqV1E22sl6v3aqYUWcqITV8f6bveEJVoP8n4paB6EH1nwpRzUT3Z8YtuTZy7yVKavAYR57HpEGSHiZXoa15DeehqHPY8iRpBpjlDQkIFvPcTxmW3zD-Ba8VaKoco0257F43k43-RuoGFqHe8EXLO6gCpvDnZUhbfSYjwS8-zrLhrD558MddhEqVvAXkj2RksrC0cQkgGAa",
     compressiveStrength: "350 MPa",
     waterAbsorption: "< 0.01%",
@@ -234,7 +230,6 @@ const STONE_SPECS_CATALOG: StoneSpecItem[] = [
     mohs: "7.5",
     thickness: "12mm / 20mm",
     finish: "Silk Polished",
-    stockStatus: "IN STOCK",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuC1de2SUEpBDHEjM7v2igGQyFQ_qiVsKK5wzF9IXMvNo92ufS66kOIQRrOCnUoHMIBeCin3IIVhkK9O8cwghEgujrBwvGGdKRNTkZKexIm6KpijMhDKV6-_iBA_GAnGsGg6jGZ-qDqoK4NHOVjhxIXFJX0mRZMmx6p1HcHznIek0pVjC1sgL5C-u0htp0Z2sQszKO8G7DnY7AWqaJOprlvPo3Xc11AbsoXXuPbtBREtUEo-c_j5Nitm",
     compressiveStrength: "310 MPa",
     waterAbsorption: "< 0.05%",
@@ -251,7 +246,6 @@ const STONE_SPECS_CATALOG: StoneSpecItem[] = [
     mohs: "8.0",
     thickness: "20mm / 30mm",
     finish: "Leathered",
-    stockStatus: "LOW STOCK",
     imageUrl: "https://lh3.googleusercontent.com/aida-public/AB6AXuAVLJWGDSEMMRYYS04xRCdZMC7WmBQVjhAfYCH3iC4mMrOWMF1IrmaSXIDZZQCpIjTdrqnL9nMuuMY7Y5AciCwtbbRqYkIEsIrRdHJDhsbO4XAO9LtnDnDaG8UzBT4cIjqwZheyfHUBQBXq8AfUS9ou5Uic9eihQn-_ltTIRXgTHnfc39joldwPvlqZ87saakSQy0sr9s25NfmIxWN7kv86w2cZTFCjxRfc8gVKKplhrg5xdPNYyHaLzW2wxi_6-lBijIPgPjKI_9U",
     compressiveStrength: "330 MPa",
     waterAbsorption: "< 0.12%",
@@ -418,14 +412,6 @@ export default function TechnicalLibraryView({
                     alt={item.name}
                     className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500 scale-100 group-hover:scale-105"
                   />
-                  <div className={`absolute top-4 right-4 px-2.5 py-1 rounded text-[10px] font-mono font-bold tracking-widest flex items-center gap-1.5 shadow-md ${
-                    item.stockStatus === "IN STOCK"
-                      ? "bg-[#D4AF37] text-black"
-                      : "bg-[#1A1A1A] border border-[#D4AF37] text-white backdrop-blur-md"
-                  }`}>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {item.stockStatus}
-                  </div>
                 </div>
 
                 <div className="p-6 flex-grow flex flex-col justify-between">
@@ -746,7 +732,7 @@ export default function TechnicalLibraryView({
                   Assembly Detail A-104 • CAD Cross-Section
                 </span>
                 <span className="text-[10px] font-mono text-neutral-500 block">
-                  ASTM C119 Compliant • BS 5385 Certified
+                  Compliance to be confirmed
                 </span>
               </div>
             </div>
@@ -781,7 +767,7 @@ export default function TechnicalLibraryView({
                   24 Technical Drawings • Interactive CAD
                 </span>
                 <span className="text-[10px] font-mono text-neutral-500 block">
-                  ISO 9001 Certified • SMC PRO Spec
+                  Compliance to be confirmed
                 </span>
               </div>
             </div>
@@ -877,7 +863,7 @@ export default function TechnicalLibraryView({
                     </button>
 
                     <button
-                      onClick={() => triggerToast(`Downloading ${doc.refCode} (${doc.format})`)}
+                      onClick={() => triggerToast("Document downloads are not currently available. Contact SMC to request this document.")}
                       className="bg-neutral-900 hover:bg-[#D4AF37] text-[#D4AF37] hover:text-black border border-[#D4AF37]/40 px-3 py-2 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                     >
                       <Download className="w-3.5 h-3.5" />
@@ -930,7 +916,7 @@ export default function TechnicalLibraryView({
                 </div>
 
                 <button
-                  onClick={() => triggerToast("Printing Master Specification Document...")}
+                  onClick={() => window.print()}
                   className="p-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 rounded-lg text-white transition-all cursor-pointer"
                   title="Print Document"
                 >
@@ -938,7 +924,7 @@ export default function TechnicalLibraryView({
                 </button>
 
                 <button
-                  onClick={() => triggerToast("Master Spec PDF Download Started")}
+                  onClick={() => triggerToast("Document downloads are not currently available. Contact SMC to request this document.")}
                   className="bg-[#D4AF37] text-black px-4 py-2 rounded-lg text-xs font-mono font-bold flex items-center gap-1.5 hover:bg-white transition-all cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -1134,9 +1120,6 @@ export default function TechnicalLibraryView({
                     <span className="text-[10px] font-mono text-[#D4AF37] font-bold uppercase tracking-widest px-2 py-0.5 bg-black rounded border border-[#D4AF37]/30">
                       {selectedStoneSpec.category}
                     </span>
-                    <span className="text-[10px] font-mono text-emerald-400 font-bold px-2 py-0.5 bg-emerald-950/40 rounded border border-emerald-800/40">
-                      {selectedStoneSpec.stockStatus}
-                    </span>
                   </div>
                   <h3 className="font-serif text-2xl font-bold text-white mt-1">{selectedStoneSpec.name}</h3>
                 </div>
@@ -1177,7 +1160,7 @@ export default function TechnicalLibraryView({
               {/* Mechanical Properties Matrix */}
               <div className="p-4 bg-black/60 rounded-xl border border-neutral-800 space-y-3 font-mono">
                 <span className="text-[10px] text-[#D4AF37] font-bold uppercase tracking-wider block">
-                  PHYSICAL & MECHANICAL TESTING MATRIX (ASTM / ISO 10545)
+                  PHYSICAL & MECHANICAL PROPERTIES
                 </span>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
