@@ -1601,11 +1601,11 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
               </div>
 
               <div className="bg-neutral-950/80 p-4 rounded-xl border border-neutral-800 space-y-1">
-                <span className="text-[10px] text-neutral-500 uppercase block">Total Portfolio Spend</span>
+                <span className="text-[10px] text-neutral-500 uppercase block">Pricing</span>
                 <strong className="text-gold text-lg font-serif block">
-                  £{orders.reduce((acc, o) => acc + o.total, 0).toFixed(2)}
+                  Price on Application
                 </strong>
-                <p className="text-[10px] text-neutral-400">Inc. Freight & VAT</p>
+                <p className="text-[10px] text-neutral-400">Confirmed by SMC per order</p>
               </div>
             </div>
 
@@ -1713,8 +1713,8 @@ export default function ArtisanShopView({ onBackToDashboard, userEmail = "trade@
 
                       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                         <div className="text-left md:text-right mr-2">
-                          <span className="text-[10px] text-neutral-500 uppercase block">Total Paid</span>
-                          <strong className="font-serif text-lg text-white font-bold">£{ord.total.toFixed(2)}</strong>
+                          <span className="text-[10px] text-neutral-500 uppercase block">Pricing</span>
+                          <strong className="font-serif text-lg text-white font-bold">Price on Application</strong>
                         </div>
 
                         <button
