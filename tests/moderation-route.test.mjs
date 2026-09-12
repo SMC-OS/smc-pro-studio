@@ -116,6 +116,20 @@ mock.module(moderationClientUrl, {
 // already had to guard against for reportingClient.ts.
 const socialClientUrl = new URL("../src/social/services/socialClient.ts", import.meta.url).href;
 const authClientUrl = new URL("../src/services/authClient.ts", import.meta.url).href;
+// Phase 5 Slice B: ProfileRoute also now calls checkCatalogueEditorAccess()
+// for its "Manage catalogue" discovery link, the identical pattern as
+// checkModeratorAccess() above. Mocked for the same reason — the real
+// materialsClient.ts imports socialClient.ts's SocialUnavailableError, and
+// this file's own socialClient.ts mock above deliberately exports only the
+// two functions ProfileRoute's profile-loading path needs, so importing the
+// real materialsClient.ts here would fail at module-load time with "does
+// not provide an export named 'SocialUnavailableError'".
+const materialsClientUrl = new URL("../src/social/services/materialsClient.ts", import.meta.url).href;
+mock.module(materialsClientUrl, {
+  exports: {
+    checkCatalogueEditorAccess: async () => false,
+  },
+});
 
 function ownProfileFor(userId) {
   return {

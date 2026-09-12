@@ -7,6 +7,7 @@ import ConnectionsRoute from "./routes/ConnectionsRoute";
 import CreateRoute from "./routes/CreateRoute";
 import NetworkRoute from "./routes/NetworkRoute";
 import MaterialDetailRoute from "./routes/MaterialDetailRoute";
+import CatalogueManagementRoute from "./routes/CatalogueManagementRoute";
 import HomeRoute from "./routes/HomeRoute";
 import ConversationRoute from "./routes/ConversationRoute";
 import MessagesRoute from "./routes/MessagesRoute";
@@ -52,6 +53,12 @@ export default function SocialApp() {
               null for a nonexistent, draft, or archived slug alike, so this
               route never needs an auth boundary of its own. */}
           <Route path="materials/:slug" element={<MaterialDetailRoute />} />
+          {/* Contextual only — reached from ProfileRoute's "Manage catalogue"
+              link, shown only after confirmed active-catalogue-editor access,
+              not a primary nav tab. CatalogueManagementRoute independently
+              re-verifies access itself regardless of how this route was
+              reached (Phase 5 Slice B). */}
+          <Route path="catalogue" element={<CatalogueManagementRoute />} />
           {/* Back-compat alias: "Discover" was renamed to "Network" in the
               2026-08-19 professional-network pivot (see DESIGN.md). Old
               /discover links/bookmarks keep working via redirect rather
