@@ -4,6 +4,12 @@ import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
 import { Avatar, Card, Chip, SectionHeading } from "../components/ui";
 import { searchPublicProfessionals, type PublicProfessional } from "../services/socialClient";
+import {
+  fetchPublishedMaterials,
+  MATERIAL_CATEGORIES,
+  type Material,
+  type MaterialCategory,
+} from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
 
 /**
@@ -61,13 +67,27 @@ const TAB_SEARCH_PLACEHOLDER: Record<NetworkTab, string> = {
   applications: "Search Applications",
 };
 
-const TAB_EMPTY_DESCRIPTION: Record<Exclude<NetworkTab, "professionals">, string> = {
-  materials: "The materials catalogue — quartz, granite, marble, porcelain, Dekton — lands alongside the Materials/Marketplace phase, not this slice.",
+const TAB_EMPTY_DESCRIPTION: Record<Exclude<NetworkTab, "professionals" | "materials">, string> = {
   projects: "Real projects will appear here once project portfolios are built. No results are simulated in the meantime.",
   architecture: "Architectural inspiration and case studies land in a later slice — no results are simulated here.",
   interiors: "Interior design inspiration lands in a later slice — no results are simulated here.",
   applications: "Application-specific galleries (kitchens, bathrooms, staircases, fireplaces…) land in a later slice — no results are simulated here.",
 };
+
+// Mirrors materialsClient.ts's MaterialCategory exactly — no "other" or
+// speculative category.
+const MATERIAL_CATEGORY_LABELS: Record<MaterialCategory, string> = {
+  quartz: "Quartz",
+  granite: "Granite",
+  marble: "Marble",
+  porcelain: "Porcelain",
+  dekton: "Dekton",
+};
+
+type MaterialsLoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; materials: Material[] };
 
 export default function NetworkRoute() {
   const auth = useAuthSession();
@@ -138,6 +158,22 @@ export default function NetworkRoute() {
     setDebouncedQuery("");
   }
 
+  const [materialCategory, setMaterialCategory] = useState<MaterialCategory | "all">("all");
+  const [materialsState, setMaterialsState] = useState<MaterialsLoadState>({ status: "loading" });
+
+  const loadMaterials = useCallback(() => {
+    setMaterialsState({ status: "loading" });
+    fetchPublishedMaterials(materialCategory === "all" ? undefined : materialCategory)
+      .then((materials) => setMaterialsState({ status: "ready", materials }))
+      .catch((error: unknown) =>
+        setMaterialsState({ status: "error", message: error instanceof Error ? error.message : "Materials could not be loaded." })
+      );
+  }, [materialCategory]);
+
+  useEffect(() => {
+    loadMaterials();
+  }, [loadMaterials]);
+
   return (
     <div className="flex flex-col gap-5">
       <SectionHeading
@@ -158,7 +194,65 @@ export default function NetworkRoute() {
         ))}
       </div>
 
-      {tab !== "professionals" ? (
+      {tab === "materials" ? (
+        <>
+          <div role="tablist" aria-label="Material category" className="flex gap-2 overflow-x-auto pb-1">
+            <Chip
+              role="tab"
+              aria-selected={materialCategory === "all"}
+              active={materialCategory === "all"}
+              onClick={() => setMaterialCategory("all")}
+            >
+              All
+            </Chip>
+            {MATERIAL_CATEGORIES.map((category) => (
+              <Chip
+                key={category}
+                role="tab"
+                aria-selected={materialCategory === category}
+                active={materialCategory === category}
+                onClick={() => setMaterialCategory(category)}
+              >
+                {MATERIAL_CATEGORY_LABELS[category]}
+              </Chip>
+            ))}
+          </div>
+
+          {materialsState.status === "loading" && <LoadingState label="Loading materials" />}
+          {materialsState.status === "error" && <ErrorState message={materialsState.message} onRetry={loadMaterials} />}
+          {materialsState.status === "ready" && materialsState.materials.length === 0 && materialCategory === "all" && (
+            <EmptyState title="No materials published yet" description="Published materials will appear here." />
+          )}
+          {materialsState.status === "ready" && materialsState.materials.length === 0 && materialCategory !== "all" && (
+            <EmptyState
+              title="No materials in this category yet"
+              description="Try a different category, or view all materials."
+              action={
+                <button
+                  type="button"
+                  onClick={() => setMaterialCategory("all")}
+                  className="rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--smc-charcoal)] hover:bg-[var(--smc-limestone)]"
+                >
+                  Show all categories
+                </button>
+              }
+            />
+          )}
+          {materialsState.status === "ready" && materialsState.materials.length > 0 && (
+            <ul className="flex flex-col gap-3">
+              {materialsState.materials.map((material) => (
+                <Card as="li" key={material.id} className="p-0">
+                  <Link to={`/materials/${material.slug}`} className="flex flex-col gap-1 p-4 outline-none">
+                    <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">{MATERIAL_CATEGORY_LABELS[material.category]}</p>
+                    <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{material.name}</p>
+                    {material.summary && <p className="text-sm text-[var(--smc-charcoal-soft)]">{material.summary}</p>}
+                  </Link>
+                </Card>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : tab !== "professionals" ? (
         <EmptyState title={`${TABS.find((t) => t.key === tab)?.label} arrive in a later slice`} description={TAB_EMPTY_DESCRIPTION[tab]} />
       ) : (
         <>

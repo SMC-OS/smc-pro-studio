@@ -6,6 +6,7 @@ import CommunityGuidelinesRoute from "./routes/CommunityGuidelinesRoute";
 import ConnectionsRoute from "./routes/ConnectionsRoute";
 import CreateRoute from "./routes/CreateRoute";
 import NetworkRoute from "./routes/NetworkRoute";
+import MaterialDetailRoute from "./routes/MaterialDetailRoute";
 import HomeRoute from "./routes/HomeRoute";
 import ConversationRoute from "./routes/ConversationRoute";
 import MessagesRoute from "./routes/MessagesRoute";
@@ -46,6 +47,11 @@ export default function SocialApp() {
         <Route element={<AppShell />}>
           <Route index element={<HomeRoute />} />
           <Route path="network" element={<NetworkRoute />} />
+          {/* Public: guest-visible read-only materials catalogue foundation
+              (Phase 5 Slice A). materialsClient.fetchMaterialBySlug returns
+              null for a nonexistent, draft, or archived slug alike, so this
+              route never needs an auth boundary of its own. */}
+          <Route path="materials/:slug" element={<MaterialDetailRoute />} />
           {/* Back-compat alias: "Discover" was renamed to "Network" in the
               2026-08-19 professional-network pivot (see DESIGN.md). Old
               /discover links/bookmarks keep working via redirect rather
