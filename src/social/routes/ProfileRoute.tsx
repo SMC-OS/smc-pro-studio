@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Globe, LogOut, MapPin, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, Globe, Layers, LogOut, MapPin, ShieldCheck, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Avatar, Button, Card, EditorialHeading } from "../components/ui";
@@ -11,6 +11,7 @@ import {
   type OwnProfile,
 } from "../services/socialClient";
 import { checkModeratorAccess } from "../services/moderationClient";
+import { checkCatalogueEditorAccess } from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
 
 type LoadState =
@@ -47,6 +48,28 @@ export default function ProfileRoute() {
       })
       .catch(() => {
         if (!cancelled) setModeratorAccess("unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.status, auth.status === "authenticated" ? auth.session.subject : null]);
+
+  // Phase 5 Slice B: the "Manage catalogue" discovery link — identical
+  // three-state discipline as moderatorAccess above, for the same reason.
+  // CatalogueManagementRoute itself independently re-verifies access
+  // regardless of how it was reached.
+  const [catalogueEditorAccess, setCatalogueEditorAccess] = useState<"loading" | "unavailable" | "denied" | "granted">("loading");
+
+  useEffect(() => {
+    if (auth.status !== "authenticated") return;
+    let cancelled = false;
+    setCatalogueEditorAccess("loading");
+    checkCatalogueEditorAccess()
+      .then((granted) => {
+        if (!cancelled) setCatalogueEditorAccess(granted ? "granted" : "denied");
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogueEditorAccess("unavailable");
       });
     return () => {
       cancelled = true;
@@ -125,6 +148,18 @@ export default function ProfileRoute() {
             >
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               Report review
+            </Link>
+          )}
+          {/* Only ever rendered after a confirmed `true` from
+              checkCatalogueEditorAccess() — same discipline as "Report
+              review" above. */}
+          {catalogueEditorAccess === "granted" && (
+            <Link
+              to="/catalogue"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
+            >
+              <Layers className="h-4 w-4" aria-hidden="true" />
+              Manage catalogue
             </Link>
           )}
         </div>

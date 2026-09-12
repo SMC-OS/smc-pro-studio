@@ -103,8 +103,14 @@ select results_eq(
   $$select relrowsecurity from pg_class where oid = 'public.materials'::regclass$$,
   array[true], 'RLS is enabled on materials'
 );
-select policies_are('public', 'materials', array['materials_public_read'],
-  'materials exposes exactly one policy — no owner/staff read policy exists yet, staff access is a deferred future slice');
+-- Phase 5 Slice B (20260912020809_materials_catalogue_publishing.sql) adds
+-- a second, additive materials_editor_read policy alongside this one — see
+-- materials_catalogue_publishing.test.sql for its own coverage. This
+-- assertion is updated in place (a test file, not a migration) to reflect
+-- that real, intentional change; the policy this file actually tests below
+-- (materials_public_read) is otherwise completely unchanged.
+select policies_are('public', 'materials', array['materials_editor_read', 'materials_public_read'],
+  'materials exposes exactly two policies as of Slice B — the original public-read policy, unchanged, plus Slice B''s new editor-read policy');
 
 select results_eq(
   $$select count(*)::bigint from information_schema.table_privileges
