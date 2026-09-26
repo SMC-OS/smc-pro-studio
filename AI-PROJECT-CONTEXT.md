@@ -25,7 +25,7 @@ into another.**
 |---|---|---|---|
 | **GeoCore** | Multi-tenant SaaS operating system for construction and renovation businesses (quotes, CRM, projects, financials, procurement, client portal, billing). Formerly "SIMO OS". | `SMC-OS/SMC-OS` | Simo Marble & Construction Ltd is one **tenant** of GeoCore, not the platform itself (GeoCore ADR-036). |
 | **SMC Pro Studio** | Professional network and project-collaboration platform for the built environment, branded for Simo Marble & Construction (web + planned Capacitor mobile). | `SMC-OS/smc-pro-studio` | Independent product. Shares no code, database or deployment with GeoCore. |
-| **MeOra** | Flutter mobile application (Supabase, RevenueCat). | **Not located.** No MeOra repository was visible to the 2026-09-26 audit session. | Independent product. |
+| **MeOra** | Owner-reported: Flutter mobile application (Supabase, RevenueCat). **MeOra architecture/state is OWNER-REPORTED BUT NOT YET REPOSITORY-VERIFIED IN THIS MEMORY SYSTEM.** | **Not located.** No MeOra repository was visible to the 2026-09-26 audit session. | Independent product. |
 
 Similar-sounding features (quotes, materials catalogue, projects, messaging)
 exist in both GeoCore and SMC Pro Studio. They are **different implementations
@@ -47,9 +47,18 @@ When sources disagree, trust them in this order:
 5. Chat history, memory tools and summaries from earlier sessions.
 
 **Chat history is never stronger evidence than the repository, Git, the
-database or the deployment platform.** If a previous conversation says
-something was done and the repository does not show it, it was not done (or
-it was lost; see §6).
+database or the deployment platform.**
+
+**Repository evidence takes precedence over memory and chat summaries for
+code state. But absence from the currently accessible repository does not
+prove that historical work never existed.** It may live in another
+repository, an inaccessible account, a local folder or an unpushed branch.
+
+- Report it as "not found in accessible sources", never as "never existed".
+- Attempt recovery (§8) before re-implementing anything.
+
+**Deployment state must be verified from the hosting/deployment system. It
+must never be inferred merely from a Git commit or push.**
 
 ## 3. The five states are different
 
@@ -98,6 +107,9 @@ deployment. A successful deployment is not a verified release.**
   before reporting success. Record what was verified and what was not.
 - If you cannot access the hosting platform, say so. Write "not verified",
   never "deployed".
+- Before pushing to any branch, check whether a hosting service
+  auto-deploys from it. On some platforms a push **is** a deployment. Each
+  project's `CLAUDE.md` records which branches are connected.
 
 ## 6. Secrets
 

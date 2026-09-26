@@ -48,7 +48,103 @@ CHECKPOINT** and **WHERE TO RESUME** at the bottom.
     clearly say that setup is required.
 - **Origins:** began as a Google AI Studio app (`README.md` and
   `metadata.json` are the unmodified AI Studio templates). The large legacy
-  `src/App.tsx` is that original app.
+  `src/App.tsx` is that original app. See PRODUCT GENERATIONS below.
+
+## PRODUCT GENERATIONS
+
+This repository contains more than one generation of SMC Pro Studio. The
+product you find in the source code is **not** automatically the product
+that is current. Evidence below is from the repository and its Git history
+(66 commits, first commit `4384a4f` on 2026-08-19, audited 2026-09-26).
+
+### Generation 1 — pre-Git / imported foundation
+
+- Work existed before this repository's first commit. It is referenced in
+  `tasks/plan.md` as a local checkpoint:
+  `C:\SMC PRO VISION APP\smc-pro-studio-20260818-social-phase1.zip`
+- **Its contents are not available in this environment and have not been
+  verified.** Do not describe what it contains.
+- The first commit, `4384a4f` "Checkpoint after Phase 2 Supabase
+  foundation", imported the application as it stood on 2026-08-19.
+
+### Generation 2 — legacy AI Studio application (LEGACY/DISABLED)
+
+Still present in this repository, and not deleted. It includes legacy code
+for:
+
+- quotes / instant estimator: `src/components/OnlineQuoteHub.tsx`,
+  `QuoteSummary.tsx`, quote logic in `src/App.tsx`, `FinanceCalculatorModal.tsx`
+- projects: `ProjectCommandView.tsx`, `ProjectTimelineVisualizer.tsx`,
+  `ProjectVelocityChart.tsx`, `ProjectPdfModal.tsx`
+- address/postcode flow: `src/App.tsx`, `BookAppointmentModal.tsx`,
+  `AccountView.tsx`, `GuestWelcomeScreen.tsx` and others
+- Stripe payment UI: `StripePaymentGateway.tsx`, plus demo-gated
+  `/api/stripe/*` routes in `server.ts`
+- related older customer-workflow components: `CrmPipelineView.tsx`,
+  `UnifiedCustomerInbox.tsx`, and the rest of `src/components/`
+
+These components are **not the authoritative current production product.**
+
+- Phase 5 Gate 0 (`992da5a`, `82a83de`, 2026-09-11) made the new
+  application the unconditional production default.
+- The legacy `App` renders only in a non-production build with
+  `VITE_LEGACY_APP_OPT_IN=true` (`src/social/flags.ts`).
+- Gate 0 also purged the legacy app's fabricated pricing and content.
+- The legacy server integrations are demo-gated and return 503 in
+  production.
+- `tasks/plan.md` "Consolidation map" records the intended destination of
+  each legacy feature.
+
+### Generation 3 — current product direction (CURRENT)
+
+A professional-network and materials product, verified from the present
+codebase in `src/social/` and `supabase/migrations/`:
+
+- Supabase Auth with email/password (OAuth wired but fail-closed)
+- profiles and account types
+- follow and connect
+- professional network search
+- activity feed, posts, comments and reactions
+- direct messaging with realtime delivery, read state and blocking
+- reporting, moderation review, enforcement and moderation history
+- interim Community Guidelines
+- materials catalogue (public read, plus staff draft/publish/archive)
+
+Module-level states are in §4.
+
+### Rule: establish a feature's state before treating it as active
+
+When you discover a feature in the source code, establish whether it is:
+
+- **CURRENT**: reachable in the production build and backed by real data
+  or services
+- **LEGACY/DISABLED**: present but excluded from production (for example,
+  the Generation 2 components above)
+- **PARTIAL**: partly built; open items recorded in `tasks/todo.md`
+- **PLANNED**: described in `tasks/plan.md` / `DESIGN.md`, not built
+
+Establish this **before** describing the feature as product functionality,
+building on it or reporting it to the owner. Do not delete or rewrite
+legacy code without an approved consolidation step.
+
+## UNLOCATED PRODUCT WORK
+
+The following expected SMC Pro Studio items have **not been found** in this
+repository's Git history, in any other repository accessible to the
+2026-09-26 audit session, or in the history of GeoCore (`SMC-OS/SMC-OS`):
+
+- waitlist
+- founding-member / "founding member" launch work
+- dedicated launch pages
+- any separate current implementation of those features
+
+Their state is **unknown**. They may exist outside this repository or
+outside the Git history accessible to that session.
+
+- **Do not recreate them merely because they are missing here.** Recovery
+  must be attempted first, per `AI-PROJECT-CONTEXT.md` §8.
+- Do not invent their state.
+- Record the location and state here once the owner identifies them.
 
 ## 2. Architecture (verified in the repository)
 
@@ -103,13 +199,13 @@ States: IMPLEMENTED · PARTIAL · BLOCKED · PLANNED · DEPRECATED
 | Notifications, mute, appeals | PLANNED | |
 | Materials catalogue (Slice A: public read; Slice B: staff draft/publish/archive) | IMPLEMENTED | No images, search, pagination, slabs, collections or saved materials. The table is intentionally empty in every environment (no seed). |
 | Materials hub (rest), Design Studio, Technical hub, Site & Installation hub, Account → Profile/Settings | PLANNED | Phase 5 consolidation. Not started. |
-| **Projects** (membership, roles, evidence) | PLANNED | No `projects` schema exists yet. The Projects tab is a placeholder. |
-| **Quotes / quote requests** | PLANNED | Planned as "Quote Request / Review Required" with server-only pricing. The legacy instant-quote UI is disabled in production. |
+| **Projects** (membership, roles, evidence) | PLANNED | No `projects` schema exists yet. The Projects tab is a placeholder. The Generation 2 project components are LEGACY/DISABLED. |
+| **Quotes / quote requests** | PLANNED | Planned as "Quote Request / Review Required" with server-only pricing. The Generation 2 quote/estimator UI is LEGACY/DISABLED in production. |
 | **Customer / client portal** | PLANNED | Not present as a distinct module. The customer experience is the network plus the planned Projects. |
-| **Waitlist / launch infrastructure** | NOT PRESENT | Nothing found in the code. |
+| **Waitlist / founding-member / launch pages** | UNLOCATED | Not found in accessible Git history. Do not recreate; see UNLOCATED PRODUCT WORK. |
 | **Admin** | PARTIAL | Staff tools exist only for moderation (`/moderation/reports`) and catalogue editing (`/catalogue`). There is no general admin console. |
 | **Marketing / public site** | NOT PRESENT | Public guest routes (Home/Network/profiles/materials/guidelines) exist inside the app. There is no separate marketing site. |
-| Payments / Stripe | DEPRECATED (demo-only) | Blocked until an approved pricing and payments phase. |
+| Payments / Stripe | LEGACY/DISABLED (demo-only) | Generation 2 UI plus demo-gated routes. Blocked until an approved pricing and payments phase. |
 | Analytics (PostHog) | PLANNED | Needs consent, retention and taxonomy approval. |
 | Native apps (Android/iOS) | PLANNED | Phases 9–10. |
 
@@ -137,8 +233,13 @@ States: IMPLEMENTED · PARTIAL · BLOCKED · PLANNED · DEPRECATED
   - `npx --yes supabase@2.115.0 db advisors --local --type all --level info`
 - **Environments:** only a **local** Supabase stack is evidenced. The plan
   lists "dev/staging/production project ownership and region" as an open
-  owner decision. **Do not link, push to or create a hosted Supabase project
-  without owner approval.** Never run `db reset` or `db push` against a
+  owner decision.
+  - The connected Supabase account contains one project, "SMC-OS's
+    Project" (created 2026-08-12, eu-west-1). It was `INACTIVE` at the
+    2026-09-26 audit. **Its relationship to this repository has not been
+    established.**
+  - **Do not link, push to or create a hosted Supabase project without
+    owner approval.** Never run `db reset` or `db push` against a
   hosted project.
 
 ## 6. Authentication and authorisation
@@ -235,6 +336,9 @@ audit session.)
   run in this audit. The last recorded pgTAP result in `tasks/todo.md`
   (Slice L) was 580/580 plus the Slice A/B additions.
 - **Deployment:** none evidenced. **Staging:** none. **Production:** none.
+- **Product generations:** Generation 3 is CURRENT and Generation 2 is
+  LEGACY/DISABLED (see PRODUCT GENERATIONS). The waitlist, founding-member
+  and launch-page work is UNLOCATED (see UNLOCATED PRODUCT WORK).
 - **Launch blockers:**
   - owner decisions (Supabase projects, domains, OAuth credentials, staff
     role model, pricing/data owners, PostHog)
@@ -261,6 +365,9 @@ audit session.)
   bounded Phase 5 slice in `tasks/todo.md` before writing code, because
   `AGENTS.md` requires stopping at approval checkpoints.
 - **Do NOT change yet:**
+  - the Generation 2 legacy code: do not delete or re-enable it without an
+    approved consolidation step
+  - the unlocated waitlist and founding-member work: do not recreate it
   - any merged migration
   - the production legacy-app kill switch
   - demo gating
