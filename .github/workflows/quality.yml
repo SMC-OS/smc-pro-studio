@@ -75,7 +75,16 @@ jobs:
         run: npx --yes supabase@2.115.0 start -x studio,imgproxy,vector,logflare,edge-runtime,supavisor
 
       - name: Run pgTAP suite
-        run: npx --yes supabase@2.115.0 test db
+        # Exit status is unchanged; on failure the failing lines are also raised as
+        # an annotation so they are readable from the PR checks and the REST API.
+        run: |
+          set -o pipefail
+          npx --yes supabase@2.115.0 test db 2>&1 | tee pgtap.log || {
+            status=$?
+            summary=$(grep -E "not ok|^# |Failed|ERROR|error:|Dubious|Parse errors|Result:" pgtap.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=pgTAP failures::${summary:-no failing lines matched; see the job log}"
+            exit $status
+          }
 
       - name: Run real-backend integration tests
         run: |
@@ -84,11 +93,20 @@ jobs:
           export SMC_REAL_SUPABASE_ANON_KEY="$ANON_KEY"
           export SMC_REAL_SUPABASE_SERVICE_KEY="$SERVICE_ROLE_KEY"
           test -n "$SMC_REAL_SUPABASE_URL" && test -n "$SMC_REAL_SUPABASE_ANON_KEY" && test -n "$SMC_REAL_SUPABASE_SERVICE_KEY"
-          bun run test:integration
+          set -o pipefail
+          bun run test:integration 2>&1 | tee integration.log || {
+            status=$?
+            summary=$(grep -E "^✖|not ok|Error|ℹ (tests|pass|fail)" integration.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Integration failures::${summary:-see the job log}"
+            exit $status
+          }
 
       - name: Supabase advisors (report only)
         if: always()
-        run: npx --yes supabase@2.115.0 db advisors --local --type all --level warn || true
+        run: |
+          npx --yes supabase@2.115.0 db advisors --local --type all --level warn 2>&1 | tee advisors.log || true
+          summary=$(head -80 advisors.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::notice title=Supabase advisors (report only)::${summary:-no output}"
 
       - name: Stop local Supabase
         if: always()
