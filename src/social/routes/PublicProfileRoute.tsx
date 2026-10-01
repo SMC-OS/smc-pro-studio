@@ -19,6 +19,7 @@ import {
 } from "../services/socialClient";
 import { fetchMyBlockState } from "../services/messagingClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -94,7 +95,7 @@ export default function PublicProfileRoute() {
       auth.status === "authenticated" ? fetchConnectionState(userId) : Promise.resolve({ state: "none" as const, connectionId: null }),
     ])
       .then(([data, following, connection]) => setState({ status: "ready", data, following, connection }))
-      .catch((error: unknown) => setState({ status: "error", message: error instanceof Error ? error.message : "This profile could not be loaded." }));
+      .catch((error: unknown) => setState({ status: "error", message: describeError(error, "This profile could not be loaded.").message }));
   }, [userId, auth.status, isOwnProfile]);
 
   useEffect(() => {
@@ -107,7 +108,7 @@ export default function PublicProfileRoute() {
     fetchPublicPostsByAuthor(userId)
       .then((posts) => setActivity({ status: "ready", posts }))
       .catch((error: unknown) =>
-        setActivity({ status: "error", message: error instanceof Error ? error.message : "This person's activity could not be loaded." })
+        setActivity({ status: "error", message: describeError(error, "This person's activity could not be loaded.").message })
       );
     // Independent of the profile-card load: a real activity fetch failure
     // must not hide the profile itself, and vice versa — each is its own
@@ -144,7 +145,7 @@ export default function PublicProfileRoute() {
       })
       .catch((error: unknown) => {
         if (blockGenerationRef.current !== generation) return;
-        setBlockState({ status: "error", message: error instanceof Error ? error.message : "Your block status could not be checked." });
+        setBlockState({ status: "error", message: describeError(error, "Your block status could not be checked.").message });
       });
   }, [userId, isOwnProfile, auth.status]);
 

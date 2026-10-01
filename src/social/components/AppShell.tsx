@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 import BottomNav from "./BottomNav";
 import NavRail from "./NavRail";
+import { OfflineBanner } from "./OfflineBanner";
 import { useAuthSession } from "../services/useAuthSession";
 
 export default function AppShell() {
@@ -27,6 +28,7 @@ export default function AppShell() {
         </header>
 
         <main id="main-content" className="mx-auto w-full max-w-2xl px-4 pb-24 pt-4 lg:max-w-3xl lg:pb-10">
+          <OfflineBanner />
           <Outlet context={auth} />
         </main>
       </div>

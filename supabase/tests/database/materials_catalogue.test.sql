@@ -51,7 +51,8 @@ select hasnt_column('public', 'materials', 'price', 'materials has no price colu
 select hasnt_column('public', 'materials', 'stock', 'materials has no stock column');
 select hasnt_column('public', 'materials', 'origin', 'materials has no origin column');
 select hasnt_column('public', 'materials', 'certification', 'materials has no certification column');
-select hasnt_column('public', 'materials', 'image_path', 'materials has no image/storage column');
+-- Slice C deliberately added image_path (format-locked, see materials_catalogue_imagery.test.sql).
+select has_column('public', 'materials', 'image_path', 'materials has exactly the Slice C image_path column (no other image/storage field)');
 
 select col_not_null('public', 'materials', 'slug', 'materials.slug is required');
 select col_not_null('public', 'materials', 'name', 'materials.name is required');

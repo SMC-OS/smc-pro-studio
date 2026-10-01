@@ -100,13 +100,24 @@ test("the Community Guidelines link is present on the signup form, with an exact
   assert.equal(link.getAttribute("href"), "/community-guidelines");
 });
 
-test("no fabricated /terms route or unrelated Terms/Privacy change was introduced — 'Terms of Use' and 'Privacy Notice' remain plain text, not links", async () => {
+test("V1 launch gate (O7): the signup consent links the real Terms of Use and Privacy Policy pages", async () => {
   const container = await mountRegister();
-  const links = [...container.querySelectorAll("a")].map((a) => a.textContent.trim());
-  assert.ok(!links.includes("Terms of Use"), "Terms of Use must not become a link (no /terms route exists in this shell)");
-  assert.ok(!links.includes("Privacy Notice"), "Privacy Notice must remain exactly as before — unlinked plain text");
-  assert.match(container.textContent, /I accept the Terms of Use and Community Guidelines, and acknowledge the Privacy Notice/);
-  assert.match(container.textContent, /All require final legal review before public beta/);
+  const href = (text) => [...container.querySelectorAll("a")].find((a) => a.textContent.trim() === text)?.getAttribute("href");
+  assert.equal(href("Terms of Use"), "/terms");
+  assert.equal(href("Privacy Policy"), "/privacy");
+  assert.equal(href("Community Guidelines"), "/community-guidelines");
+  assert.match(container.textContent, /I accept the Terms of Use and Community Guidelines, and I have read the Privacy Policy\./);
+});
+
+test("V1 launch gate (O3): SMC Team is not offered as a sign-up profession", async () => {
+  const container = await mountRegister();
+  const proButton = [...container.querySelectorAll("button")].find((b) => b.textContent.trim().toLowerCase() === "professional");
+  await React.act(async () => proButton.click());
+  await flush();
+  const values = [...container.querySelectorAll("select option")].map((o) => o.value);
+  assert.ok(values.includes("installer"), "the profession list is rendered");
+  assert.ok(!values.includes("smc_team"));
+  assert.doesNotMatch(container.textContent, /SMC Team/);
 });
 
 test("the acceptance checkbox is still required — submitting register mode with it unchecked never calls signUpWithPassword", async () => {
@@ -139,7 +150,7 @@ test("the acceptance checkbox is still required — submitting register mode wit
   });
   await flush();
   assert.equal(signUpCalls.length, 0, "signUpWithPassword must never be called while the acceptance checkbox is unchecked");
-  assert.match(container.textContent, /Accept the Terms and Privacy Notice to create an account/i);
+  assert.match(container.textContent, /Accept the Terms of Use and Privacy Policy to create an account/i);
 });
 
 test("checking the acceptance checkbox and submitting a valid form does call signUpWithPassword — the checkbox is the only thing that was blocking it", async () => {

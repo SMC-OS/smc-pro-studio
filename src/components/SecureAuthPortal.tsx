@@ -28,7 +28,6 @@ const professionalCategories: Array<{ value: ProfessionalCategory; label: string
   { value: "contractor", label: "Contractor" },
   { value: "developer", label: "Developer" },
   { value: "construction_professional", label: "Construction Professional" },
-  { value: "smc_team", label: "SMC Team (profile only — no staff access)" },
   { value: "other", label: "Other" },
 ];
 

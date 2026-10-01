@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
-import { StoriesTray } from "../components/StoriesTray";
 import { PostCard, type EngagementView } from "../components/PostCard";
 import { EditorialHeading } from "../components/ui";
 import { fetchHomeFeed, fetchMySavedPostIds, fetchPostEngagement, type FeedPost, type HomeFeedCursor, type PostEngagement } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -102,7 +102,7 @@ export default function HomeRoute() {
       })
       .catch((error: unknown) => {
         if (requestIdRef.current !== requestId) return;
-        setState({ status: "error", message: error instanceof Error ? error.message : "The feed could not be loaded." });
+        setState({ status: "error", message: describeError(error, "The feed could not be loaded.").message });
       });
   }, []);
 
@@ -254,7 +254,7 @@ export default function HomeRoute() {
       .catch((error: unknown) =>
         setState((prev) =>
           prev.status === "ready"
-            ? { ...prev, loadingMore: false, loadMoreError: error instanceof Error ? error.message : "More activity could not be loaded." }
+            ? { ...prev, loadingMore: false, loadMoreError: describeError(error, "More activity could not be loaded.").message }
             : prev
         )
       );
@@ -292,9 +292,9 @@ export default function HomeRoute() {
 
   return (
     <div className="flex flex-col gap-5">
-      <StoriesTray auth={auth} />
-
-      <div className="border-t border-[var(--smc-border)] pt-5">
+      {/* V1 scope: Stories is not part of V1, so its placeholder tray is not
+          rendered (components/StoriesTray.tsx is kept for a later release). */}
+      <div>
         <EditorialHeading as="h2" className="text-lg">
           Professional activity
         </EditorialHeading>

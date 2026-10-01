@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { MessageCircle } from "lucide-react";
 import { Button } from "./ui";
 import { createOrGetDirectConversation } from "../services/messagingClient";
+import { describeError } from "../services/networkErrors";
 
 /**
  * "Message" entry point on another member's profile. Never rendered for a
@@ -44,7 +45,7 @@ export function MessageButton({ userId, blocked }: { userId: string; blocked: bo
       const conversationId = await createOrGetDirectConversation(userId);
       navigate(`/messages/${conversationId}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "This conversation could not be started right now.");
+      setError(describeError(err, "This conversation could not be started right now.").message);
     } finally {
       setBusy(false);
     }

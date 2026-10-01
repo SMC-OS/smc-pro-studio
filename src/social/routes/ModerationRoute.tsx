@@ -18,6 +18,7 @@ import {
   type ReviewResult,
 } from "../services/moderationClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Phase 4 Slice J: `/moderation/reports` — the moderator report review
@@ -105,7 +106,7 @@ export default function ModerationRoute() {
       })
       .catch((error: unknown) => {
         if (accessGenerationRef.current !== generation) return;
-        setAccessState({ status: "error", message: error instanceof Error ? error.message : "We couldn't verify your access. Please try again." });
+        setAccessState({ status: "error", message: describeError(error, "We couldn't verify your access. Please try again.").message });
       });
   }, [auth.status, authIdentity]);
 
@@ -138,7 +139,7 @@ export default function ModerationRoute() {
       })
       .catch((error: unknown) => {
         if (historyGenerationRef.current !== generation) return;
-        setHistoryState({ status: "error", message: error instanceof Error ? error.message : "The moderation history could not be loaded. Please try again." });
+        setHistoryState({ status: "error", message: describeError(error, "The moderation history could not be loaded. Please try again.").message });
       });
   }, [accessState.status, activeView, authIdentity]);
 
@@ -158,7 +159,7 @@ export default function ModerationRoute() {
       setHistoryState((prev) => (prev.status === "ready" ? { status: "ready", items: [...prev.items, ...page.items], nextCursor: page.nextCursor } : prev));
     } catch (error) {
       if (historyGenerationRef.current !== generation) return;
-      setHistoryActionError(error instanceof Error ? error.message : "More history could not be loaded. Please try again.");
+      setHistoryActionError(describeError(error, "More history could not be loaded. Please try again.").message);
     } finally {
       if (historyGenerationRef.current === generation) setLoadingMoreHistory(false);
     }
@@ -176,7 +177,7 @@ export default function ModerationRoute() {
       })
       .catch((error: unknown) => {
         if (queueGenerationRef.current !== generation) return;
-        setQueueState({ status: "error", message: error instanceof Error ? error.message : "The moderation queue could not be loaded. Please try again." });
+        setQueueState({ status: "error", message: describeError(error, "The moderation queue could not be loaded. Please try again.").message });
       });
   }, [accessState.status, statusFilter, authIdentity]);
 
@@ -197,7 +198,7 @@ export default function ModerationRoute() {
       setQueueState((prev) => (prev.status === "ready" ? { status: "ready", items: [...prev.items, ...page.items], nextCursor: page.nextCursor } : prev));
     } catch (error) {
       if (queueGenerationRef.current !== generation) return;
-      setPageActionError(error instanceof Error ? error.message : "More reports could not be loaded. Please try again.");
+      setPageActionError(describeError(error, "More reports could not be loaded. Please try again.").message);
     } finally {
       if (queueGenerationRef.current === generation) setLoadingMore(false);
     }
