@@ -48,12 +48,28 @@ check("deep-link host auth", /:host\(0x[0-9a-f]+\)="auth"/.test(manifest));
 const paths = [...manifest.matchAll(/:path\(0x[0-9a-f]+\)="([^"]+)"/g)].map((m) => m[1]).sort();
 check("deep-link paths are exactly /callback and /reset-password", JSON.stringify(paths) === JSON.stringify(["/callback", "/reset-password"]), paths.join(", "));
 
-// Exported components: only the launcher activity.
-const exportedTrue = [...manifest.matchAll(/E: (activity|activity-alias|service|receiver|provider)[\s\S]*?(?=\n\s+E: (?:activity|activity-alias|service|receiver|provider|application)|\n?$)/g)]
+// Exported components: only the launcher activity may be reachable by other
+// apps. The single tolerated library component is AndroidX's
+// ProfileInstallReceiver (baseline-profile installation), and only while it is
+// guarded by android.permission.DUMP, which third-party apps cannot hold (shell/
+// system only). Anything else exported, or that receiver without the guard,
+// fails.
+const componentBlocks = [...manifest.matchAll(/E: (activity|activity-alias|service|receiver|provider)[\s\S]*?(?=\n\s+E: (?:activity|activity-alias|service|receiver|provider|application)|\n?$)/g)]
   .map((m) => m[0])
   .filter((block) => /:exported\(0x[0-9a-f]+\)=(true|\(type 0x12\)0xffffffff)/.test(block))
-  .map((block) => /:name\(0x[0-9a-f]+\)="([^"]+)"/.exec(block)?.[1]);
-check("only MainActivity is exported", JSON.stringify(exportedTrue) === JSON.stringify(["com.smcprostudio.app.MainActivity"]), exportedTrue.join(", "));
+  .map((block) => ({
+    name: /:name\(0x[0-9a-f]+\)="([^"]+)"/.exec(block)?.[1],
+    permission: /:permission\(0x[0-9a-f]+\)="([^"]+)"/.exec(block)?.[1] ?? null,
+  }));
+const PROFILE_INSTALLER = "androidx.profileinstaller.ProfileInstallReceiver";
+const unguarded = componentBlocks.filter(
+  (c) => c.name !== "com.smcprostudio.app.MainActivity" && !(c.name === PROFILE_INSTALLER && c.permission === "android.permission.DUMP"),
+);
+check(
+  "only MainActivity is exported to other apps (ProfileInstallReceiver allowed only behind android.permission.DUMP)",
+  componentBlocks.some((c) => c.name === "com.smcprostudio.app.MainActivity") && unguarded.length === 0,
+  componentBlocks.map((c) => `${c.name}${c.permission ? ` [${c.permission}]` : ""}`).join(", "),
+);
 
 // --- Packaged Capacitor config: production-safe ------------------------------
 check("no server.url (never a dev/remote server)", !config.server?.url);
