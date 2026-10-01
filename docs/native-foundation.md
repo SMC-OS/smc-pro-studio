@@ -23,13 +23,13 @@ scope changes; the web UI is unchanged apart from safe-area handling.
 | `bun run native:assets` | regenerate icons and launch assets from `public/favicon.svg` (needs Python + Pillow) |
 
 Copied web assets and generated configs (`android/app/src/main/assets/public`,
-`ios/App/App/public`, `capacitor.config.json`) are git-ignored: environment
-values from `.env*` are never committed.
+`ios/App/App/public`, `capacitor.config.json`) are git-ignored. The only
+committed environment file is `.env.staging`, which holds public values only.
 
-**Building for device QA** needs a staging environment:
-`VITE_SUPABASE_URL` (https) and `VITE_SUPABASE_PUBLISHABLE_KEY` at build
-time. Without them the app fails closed ("setup required"). Never use
-production for QA.
+**Building for device QA** uses the staging environment:
+`bun run build:android:staging` (see `docs/environments.md`). A build without
+backend configuration fails closed ("setup required"). Never use production
+for QA.
 
 ## Session storage (one abstraction: `src/services/authStorage.ts`)
 

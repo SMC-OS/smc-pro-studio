@@ -51,6 +51,9 @@ jobs:
       - name: Build web bundle
         run: bun run build
 
+      - name: Verify bundle fails closed (no backend, no secrets, self-hosted fonts)
+        run: node scripts/check-client-bundle.mjs unconfigured
+
       - name: Sync Capacitor (android)
         run: npx cap sync android
 

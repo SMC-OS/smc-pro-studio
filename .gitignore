@@ -8,4 +8,6 @@ coverage/
 *.log
 .env*
 !.env.example
+# Public staging client config (publishable values only; see the file header).
+!.env.staging
 supabase/.temp/

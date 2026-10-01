@@ -151,6 +151,18 @@ import { ManagerSecurityGate } from "./components/ManagerSecurityGate";
 import { DataSafetyDisclosureModal } from "./components/DataSafetyDisclosureModal";
 import { AiContentBadge } from "./components/AiContentBadge";
 
+// The legacy App's icon font (Phase M2). This module is only ever loaded by
+// main.tsx's development-only, import.meta.env.PROD-guarded opt-in branch, so
+// production bundles never contain this request; the shipped social shell
+// self-hosts its fonts (src/fonts.css) and makes no Google Fonts request.
+if (typeof document !== "undefined" && !document.getElementById("legacy-material-symbols")) {
+  const icons = document.createElement("link");
+  icons.id = "legacy-material-symbols";
+  icons.rel = "stylesheet";
+  icons.href = "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block";
+  document.head.appendChild(icons);
+}
+
 // Global Static Slabs Dataset for AI vision AR and Logistics tracking
 /**
  * Phase 5 Gate 0 purge: `origin` (specific claimed countries of quarry
