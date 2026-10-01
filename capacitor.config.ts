@@ -39,7 +39,7 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: false,
   },
   plugins: {
-    // Hidden by the app after its first render (src/social/native/nativeShell.ts)
+    // Hidden by the app after its first render (src/social/native/NativeShell.tsx)
     // so the WebView is painted before the launch surface fades away.
     SplashScreen: {
       launchAutoHide: false,
