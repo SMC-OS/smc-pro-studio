@@ -45,6 +45,10 @@ async function signUp(label, metadata) {
   if (error) throw error;
   ids.push(data.user.id);
   if (!data.session) {
+    // Projects with email confirmation on (supabase/config.toml): confirm the
+    // address through the admin API, standing in for clicking the email link.
+    const confirm = await service.auth.admin.updateUserById(data.user.id, { email_confirm: true });
+    if (confirm.error) throw confirm.error;
     const r = await c.auth.signInWithPassword({ email, password: PASSWORD });
     if (r.error) throw r.error;
   }

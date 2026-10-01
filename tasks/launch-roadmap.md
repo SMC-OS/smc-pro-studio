@@ -13,7 +13,7 @@ Last verified: 2026-10-01 · Verified against: `main` @ `f222cc3`, plus the unme
 |---|---|
 | `main` = `origin/main` = `f222cc3` (PR #24, Materials Slice B) | `git log`, `git branch -a -vv` |
 | Owner's working copy `C:\SMC PRO VISION APP\smc-pro-studio-audit` on branch `phase-5-slice-c-materials-catalogue-imagery` @ `f222cc3` | 161 files show as modified but differ **only in CRLF line endings**; the only real uncommitted work was 4 untracked Slice C files (recovered — see below) |
-| Unmerged branches on `origin` | `docs/claude-project-memory` (docs only) · `phase-5-db-hardening-revoke-anon-rpc-execute` → `phase-5-slice-c-materials-catalogue-imagery` → `v1-1-profile-editing-onboarding` → `v1-2-settings-account-deletion` (each stacked on the previous; merge in that order) |
+| Unmerged branches on `origin` | `docs/claude-project-memory` (docs only) · `phase-5-db-hardening-revoke-anon-rpc-execute` → `phase-5-slice-c-materials-catalogue-imagery` → `v1-1-profile-editing-onboarding` → `v1-2-settings-account-deletion` → `phase-h-ci-gates` (each stacked on the previous; merge in that order) |
 | No hosted Supabase project for SMC Pro Studio exists | `.env.local` points at `127.0.0.1:54321`; the only project on the connected Supabase account (`grycfqndntzsexzoxkeu`) is unrelated and INACTIVE |
 | No staging or production environment, no web deployment | No hosting config in the repo; nothing deployed |
 | No native projects | `capacitor.config.ts` exists (`com.smcprostudio.app`); `android/` and `ios/` do not |
@@ -58,7 +58,7 @@ Last verified: 2026-10-01 · Verified against: `main` @ `f222cc3`, plus the unme
 | R8 | ~~Low~~ **Fixed on branch `v1-2-settings-account-deletion`** | Network tabs "Projects / Architecture / Interiors / Applications" render "arrive in a later slice" placeholders. | Hide in V1 (V1-5) |
 | R9 | Low | Main JS chunk > 500 kB; routes not code-split. | Phase H |
 | R12 | **High** (blocks deletion processing) | Deleting a user's `auth.users` row will fail for anyone who has filed a report or acted as a moderator: `reports.reporter_id`/`reported_user_id` and `moderation_actions.moderator_id` reference `profiles` without `ON DELETE CASCADE/SET NULL` (`moderation_actions` is explicitly `RESTRICT`). The completion design must decide what happens to safety records (anonymise vs. retain) — legal input needed. | O4 → dedicated migration |
-| R10 | Low | Unit tests require Node ≥ 24 but `package.json` has no `engines`; CI omits DB tests and the server build. | Phase H |
+| R10 | ~~Low~~ Addressed on branch `phase-h-ci-gates` (unverified in Actions) | Unit tests require Node ≥ 24 but `package.json` had no `engines`; CI omitted DB tests and the server build. | Phase H |
 
 ---
 
@@ -118,7 +118,7 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 - [ ] **V1-7** Offline banner + retry-on-reconnect.
 
 ### Phase H — Production hardening
-- [ ] CI: add `supabase test db`, `test:integration` (local stack), `build:server`, and pin Node 24 (`engines` + `.nvmrc`).
+- [~] CI: `database` job (`supabase test db` + `test:integration` + advisors), `build:server` and bundle scan added, Node pinned via `.nvmrc`/`engines` — branch `phase-h-ci-gates`. **Not yet observed running on GitHub Actions**: verify on the first PR.
 - [ ] Re-run the Supabase advisors (`db advisors --local`) after D1/D2; resolve WARNs.
 - [ ] Fix R5 storage SELECT policies before any avatar/media UI.
 - [ ] `npm audit` triage; route-level code splitting (R9).
@@ -161,5 +161,5 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 | O5 | Deploy the Express API for V1, or drop it from the mobile/social shell | **Drop** for V1; nothing in V1 needs it |
 | O6 | Create staging and production Supabase projects (billing) | Required before Phase S |
 | O7 | Legal sign-off on Terms, Privacy Notice and Community Guidelines | Required before any public release |
-| O8 | Merge the stacked branches in order: hardening → Slice C → V1-1 → V1-2 | Ready for review |
+| O8 | Merge the stacked branches in order: hardening → Slice C → V1-1 → V1-2 → CI gates | Ready for review |
 | O9 | Confirm `smcprostudio@outlook.com` as the public support contact (already the published safety contact), and provide a public support web page URL for the store listings | Use a domain address (e.g. support@…) before launch for trust |
