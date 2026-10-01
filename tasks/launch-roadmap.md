@@ -58,6 +58,7 @@ Last verified: 2026-10-01 (V1 launch gate) · Verified against: `main` @ `f222cc
 | R8 | ~~Low~~ **Fixed on branch `v1-2-settings-account-deletion`** | Network tabs "Projects / Architecture / Interiors / Applications" render "arrive in a later slice" placeholders. | Hide in V1 (V1-5) |
 | R9 | Low | Main JS chunk > 500 kB; routes not code-split. | Phase H |
 | R12 | **Resolved on branch `v1-launch-completion-gate`** — deletion anonymises in place (tombstone profile) instead of deleting rows, so FKs never block it | Deleting a user's `auth.users` row will fail for anyone who has filed a report or acted as a moderator: `reports.reporter_id`/`reported_user_id` and `moderation_actions.moderator_id` reference `profiles` without `ON DELETE CASCADE/SET NULL` (`moderation_actions` is explicitly `RESTRICT`). The completion design must decide what happens to safety records (anonymise vs. retain) — legal input needed. | O4 → dedicated migration |
+| R13 | Medium | Dependency advisories (see Phase H `npm audit` triage). Fix before RC: update `@capacitor/cli` (and move it to devDependencies), `express`/`qs`, `jspdf`/`dompurify`, `jsdom`/`undici`, then rerun every gate. | Phase H |
 | R10 | ~~Low~~ Addressed on branch `phase-h-ci-gates` (unverified in Actions) | Unit tests require Node ≥ 24 but `package.json` had no `engines`; CI omitted DB tests and the server build. | Phase H |
 
 ---
@@ -93,7 +94,7 @@ Status key: **COMPLETE** = real, tested, shippable · **NEEDS FIX** = in V1, not
 | Design Studio, AR/measure, shop, slabs, payments (Stripe), Gemini chat, WhatsApp/CNC stubs | LEGACY | Dev-only behind `VITE_LEGACY_APP_OPT_IN`; demo-gated server endpoints |
 | Stories | DEFERRED | De-emphasised |
 | Error / empty / loading states | COMPLETE | Consistent `StateViews` |
-| Offline / network-loss | NEEDS FIX | Errors are safe, but there is no offline banner or retry-on-reconnect; verify on device |
+| Offline / network-loss | COMPLETE (branch `v1-launch-completion-gate`, V1-7) | One shared connectivity store; offline banner in the page flow (mobile + desktop, polite live region); connection failures told apart from server/validation errors; typed input kept; manual Try again on the profile save; failed reads re-run once on reconnection; nothing auto-submits; deletion never auto-retried; network loss never signs out. Browser QA `scripts/qa/v1-7-offline-browser.mjs` 42/42 at 375px and 1280px. Still to verify on physical devices in Phase M |
 
 ---
 
@@ -115,13 +116,14 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 - [x] **V1-4** Social shell no longer calls `/api/auth/session` (R6) — branch `v1-2-settings-account-deletion`.
 - [x] **V1-5** Placeholder Network tabs hidden (R8) — same branch.
 - [x] **V1-6** Settings screen — legal, support and deletion links added on `v1-launch-completion-gate`.
-- [ ] **V1-7** Offline banner + retry-on-reconnect.
+- [x] **V1-7** Offline banner + retry-on-reconnect — done on `v1-launch-completion-gate` (see scope matrix row).
 
 ### Phase H — Production hardening
 - [~] CI: `database` job (`supabase test db` + `test:integration` + advisors), `build:server` and bundle scan added, Node pinned via `.nvmrc`/`engines` — branch `phase-h-ci-gates`. **Not yet observed running on GitHub Actions**: verify on the first PR.
 - [ ] Re-run the Supabase advisors (`db advisors --local`) after D1/D2; resolve WARNs.
 - [ ] Fix R5 storage SELECT policies before any avatar/media UI.
-- [ ] `npm audit` triage; route-level code splitting (R9).
+- [ ] `npm audit` triage (first run 2026-10-01 via `bun audit` — the repo's lockfile is `bun.lock`; `npm audit` needs a `package-lock.json`): 29 advisories (14 high, 11 moderate, 4 low); 18 in production dependencies (11 high, 6 moderate, 1 low). None in code the shipped social shell runs: `@xmldom/xmldom`, `brace-expansion`, `uuid` come via `@capacitor/cli` (a build-time CLI, which belongs in devDependencies); `qs` via `express` (legacy server, demo-gated); `dompurify` via `jspdf` (legacy PDF modal, bundled only behind the legacy opt-in); `undici` via `jsdom` (tests only). Not auto-upgraded — R13.
+- [ ] Route-level code splitting (R9); exclude the legacy app from the production bundle.
 - [ ] Security review of Express `server.ts`: the demo-gated endpoints must stay disabled in production (`ENABLE_DEMO_FEATURES` unset); consider removing them from the production build.
 
 ### Phase M — Mobile (Capacitor 8 — continue the existing shell, no rewrite)

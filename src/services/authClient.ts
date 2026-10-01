@@ -72,14 +72,14 @@ export async function signUpWithPassword(input: { email: string; password: strin
       },
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(error.message, { cause: error });
   return { requiresEmailVerification: !data.session };
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<void> {
   if (!password) throw new Error("Password is required.");
   const { error } = await requireConfigured().auth.signInWithPassword({ email: validateEmail(email), password });
-  if (error) throw new Error("The email or password is incorrect, or the account is not ready for sign-in.");
+  if (error) throw new Error("The email or password is incorrect, or the account is not ready for sign-in.", { cause: error });
 }
 
 export async function signInWithOAuth(provider: SupportedOAuthProvider): Promise<void> {
@@ -125,9 +125,24 @@ export async function completeAuthRedirect(url = window.location.href): Promise<
  * no Express API to call (launch roadmap R6/V1-4). The legacy app keeps the
  * default.
  */
+/**
+ * Thrown by getAuthSession when the session could not be checked because the
+ * connection failed (an expired access token whose refresh hit a network
+ * error). The stored session is untouched — Supabase only removes it when the
+ * server actually rejects the refresh token — so callers must not treat this
+ * as "signed out" (launch roadmap V1-7).
+ */
+export class AuthSessionUnavailableError extends Error {
+  constructor(options?: ErrorOptions) {
+    super("Your session can't be checked right now.", options);
+    this.name = "AuthSessionUnavailableError";
+  }
+}
+
 export async function getAuthSession(options: { includeServerRoles?: boolean } = {}): Promise<AuthSession | null> {
   if (!isSupabaseConfigured) return null;
   const { data, error } = await getSupabaseClient().auth.getSession();
+  if (error && error.name === "AuthRetryableFetchError") throw new AuthSessionUnavailableError({ cause: error });
   if (error || !data.session?.user) return null;
   let roles: StaffRole[] = [];
   if (options.includeServerRoles !== false) {

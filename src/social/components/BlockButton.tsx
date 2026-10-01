@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ShieldAlert, ShieldOff } from "lucide-react";
 import { Button } from "./ui";
 import { blockUser, unblockUser } from "../services/messagingClient";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Phase 4 Slice G: block/unblock action on another member's profile.
@@ -119,7 +120,7 @@ export function BlockButton({
     } catch (err) {
       if (!mountedRef.current) return;
       setConfirmOpen(false);
-      setError(err instanceof Error ? err.message : "This person could not be blocked right now. Please try again.");
+      setError(describeError(err, "This person could not be blocked right now. Please try again.").message);
     } finally {
       if (mountedRef.current) setPending(false);
     }
@@ -135,7 +136,7 @@ export function BlockButton({
       onChange(false);
     } catch (err) {
       if (!mountedRef.current) return;
-      setError(err instanceof Error ? err.message : "This person could not be unblocked right now. Please try again.");
+      setError(describeError(err, "This person could not be unblocked right now. Please try again.").message);
     } finally {
       if (mountedRef.current) setPending(false);
     }

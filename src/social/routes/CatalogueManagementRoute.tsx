@@ -18,6 +18,7 @@ import {
   type MaterialCategory,
 } from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Phase 5 Slice B: `/catalogue` — staff-only materials catalogue authoring
@@ -63,7 +64,7 @@ export default function CatalogueManagementRoute() {
     checkCatalogueEditorAccess()
       .then((granted) => setAccessState(granted ? { status: "granted" } : { status: "denied" }))
       .catch((error: unknown) =>
-        setAccessState({ status: "error", message: error instanceof Error ? error.message : "We couldn't verify your access. Please try again." })
+        setAccessState({ status: "error", message: describeError(error, "We couldn't verify your access. Please try again.").message })
       );
   }, [auth.status]);
 
@@ -149,7 +150,7 @@ function CatalogueWorkspace() {
     fetchMaterialsForEditor()
       .then((items) => setListState({ status: "ready", items }))
       .catch((error: unknown) =>
-        setListState({ status: "error", message: error instanceof Error ? error.message : "The catalogue could not be loaded." })
+        setListState({ status: "error", message: describeError(error, "The catalogue could not be loaded.").message })
       );
   }, []);
 
@@ -193,7 +194,7 @@ function CatalogueWorkspace() {
     } catch (caught) {
       // Form values are deliberately left as-is on failure — a rejected
       // save must not lose the editor's in-progress draft text.
-      setFormError(caught instanceof Error ? caught.message : "This material could not be saved.");
+      setFormError(describeError(caught, "This material could not be saved.").message);
     } finally {
       setSaving(false);
     }
@@ -207,7 +208,7 @@ function CatalogueWorkspace() {
       await publishMaterial(id);
       load();
     } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "This material could not be published.");
+      setRowError(describeError(caught, "This material could not be published.").message);
     } finally {
       setRowBusyId(null);
     }
@@ -223,7 +224,7 @@ function CatalogueWorkspace() {
       await uploadMaterialImage(material.id, file, material.image_path);
       load();
     } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "This image could not be uploaded.");
+      setRowError(describeError(caught, "This image could not be uploaded.").message);
     } finally {
       setRowBusyId(null);
     }
@@ -237,7 +238,7 @@ function CatalogueWorkspace() {
       await removeMaterialImage(material.id, material.image_path);
       load();
     } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "This image could not be removed.");
+      setRowError(describeError(caught, "This image could not be removed.").message);
     } finally {
       setRowBusyId(null);
     }
@@ -252,7 +253,7 @@ function CatalogueWorkspace() {
       if (editingId === id) startCreate();
       load();
     } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "This material could not be archived.");
+      setRowError(describeError(caught, "This material could not be archived.").message);
     } finally {
       setRowBusyId(null);
     }

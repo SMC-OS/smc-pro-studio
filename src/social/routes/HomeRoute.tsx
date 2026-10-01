@@ -5,6 +5,7 @@ import { PostCard, type EngagementView } from "../components/PostCard";
 import { EditorialHeading } from "../components/ui";
 import { fetchHomeFeed, fetchMySavedPostIds, fetchPostEngagement, type FeedPost, type HomeFeedCursor, type PostEngagement } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -101,7 +102,7 @@ export default function HomeRoute() {
       })
       .catch((error: unknown) => {
         if (requestIdRef.current !== requestId) return;
-        setState({ status: "error", message: error instanceof Error ? error.message : "The feed could not be loaded." });
+        setState({ status: "error", message: describeError(error, "The feed could not be loaded.").message });
       });
   }, []);
 
@@ -253,7 +254,7 @@ export default function HomeRoute() {
       .catch((error: unknown) =>
         setState((prev) =>
           prev.status === "ready"
-            ? { ...prev, loadingMore: false, loadMoreError: error instanceof Error ? error.message : "More activity could not be loaded." }
+            ? { ...prev, loadingMore: false, loadMoreError: describeError(error, "More activity could not be loaded.").message }
             : prev
         )
       );

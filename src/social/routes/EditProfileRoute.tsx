@@ -13,6 +13,7 @@ import {
   type ProfileVisibility,
 } from "../services/profileClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 /**
  * V1-1: `/profile/edit` — the owner edits their own profile. For a
@@ -67,7 +68,7 @@ export default function EditProfileRoute() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [form, setForm] = useState<FormValues | null>(null);
   const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<{ field: string | null; message: string } | null>(null);
+  const [formError, setFormError] = useState<{ field: string | null; message: string; isNetwork: boolean } | null>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
 
   const load = useCallback(() => {
@@ -83,7 +84,7 @@ export default function EditProfileRoute() {
         setForm(toForm(profile, professional));
       })
       .catch((error: unknown) =>
-        setState({ status: "error", message: error instanceof Error ? error.message : "Your profile could not be loaded." }),
+        setState({ status: "error", message: describeError(error, "Your profile could not be loaded.").message }),
       );
   }, [auth.status]);
 
@@ -127,8 +128,8 @@ export default function EditProfileRoute() {
   const set = (patch: Partial<FormValues>) => setForm((prev) => (prev ? { ...prev, ...patch } : prev));
   const invalid = (field: string) => (formError?.field === field ? true : undefined);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function handleSubmit(event?: React.FormEvent) {
+    event?.preventDefault();
     if (saving || !form || state.status !== "ready") return;
     setSaving(true);
     setFormError(null);
@@ -148,9 +149,14 @@ export default function EditProfileRoute() {
       });
       navigate("/profile", { state: { profileSaved: true } });
     } catch (caught) {
+      // Every typed value stays in the form. A profile save is an idempotent
+      // update, so after a connection failure the same values can safely be
+      // sent again with "Try again" (only ever on the member's own click).
+      const described = describeError(caught, "Your profile could not be saved.");
       setFormError({
         field: caught instanceof ProfileValidationError ? caught.field : null,
-        message: caught instanceof Error ? caught.message : "Your profile could not be saved.",
+        message: described.message,
+        isNetwork: described.isNetwork,
       });
     } finally {
       setSaving(false);
@@ -180,14 +186,16 @@ export default function EditProfileRoute() {
       <Card className="p-5">
         <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
           {formError && (
-            <p
-              ref={errorRef}
-              tabIndex={-1}
-              role="alert"
-              className="rounded-[var(--smc-radius-card)] border border-[var(--smc-mineral-clay)]/40 px-4 py-2.5 text-sm text-[var(--smc-charcoal)] outline-none"
-            >
-              {formError.message}
-            </p>
+            <div className="flex flex-col gap-2 rounded-[var(--smc-radius-card)] border border-[var(--smc-mineral-clay)]/40 px-4 py-2.5">
+              <p ref={errorRef} tabIndex={-1} role="alert" className="text-sm text-[var(--smc-charcoal)] outline-none">
+                {formError.message}
+              </p>
+              {formError.isNetwork && (
+                <Button type="button" variant="secondary" className="self-start" disabled={saving} onClick={() => void handleSubmit()}>
+                  {saving ? "Saving…" : "Try again"}
+                </Button>
+              )}
+            </div>
           )}
 
           <label className={labelClass}>

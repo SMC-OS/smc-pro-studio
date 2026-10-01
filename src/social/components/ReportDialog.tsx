@@ -10,6 +10,7 @@ import {
   type ReportCategory,
   type ReportReceipt,
 } from "../services/reportingClient";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Phase 4 Slice I: one reusable, accessible reporting dialog for both
@@ -223,7 +224,7 @@ export function ReportDialog({
     } catch (err) {
       if (!mountedRef.current) return;
       // Category/details are deliberately left untouched on failure — see requirement.
-      setSubmitError(err instanceof Error ? err.message : "We couldn't submit this report. Please try again.");
+      setSubmitError(describeError(err, "We couldn't submit this report. Please try again.").message);
     } finally {
       if (mountedRef.current) setSubmitting(false);
     }

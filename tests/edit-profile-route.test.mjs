@@ -235,3 +235,40 @@ test("choosing 'Only you' saves a private profile", async () => {
   await submit(c);
   assert.equal(writes[1].update.visibility, "private");
 });
+
+// ==========================================================================
+// V1-7: connection loss while saving
+// ==========================================================================
+
+test("a lost connection keeps every typed value, explains it plainly, and 'Try again' re-sends the same values", async () => {
+  professionalWriteError = { message: "TypeError: Failed to fetch", details: "", hint: "", code: "" };
+  const c = await mount();
+  typeInto(byLabel(c, "Service area"), "Leeds");
+  typeInto(byLabel(c, "Bio"), "Twenty years of stonework.");
+  await flush();
+  await submit(c);
+  assert.match(c.querySelector('[role="alert"]').textContent, /We couldn't reach SMC Pro Studio\. Check your connection, then try again\./);
+  assert.doesNotMatch(c.innerHTML, /Failed to fetch|TypeError/);
+  assert.equal(byLabel(c, "Service area").value, "Leeds");
+  assert.equal(byLabel(c, "Bio").value, "Twenty years of stonework.");
+  assert.doesNotMatch(c.textContent, /PROFILE-LANDING/, "nothing pretends to have saved");
+  const firstAttempt = writes[0].update;
+
+  professionalWriteError = null; // the connection is back
+  const retry = [...c.querySelectorAll("button")].find((b) => b.textContent.trim() === "Try again");
+  assert.ok(retry, "a Try again action is offered after a connection failure");
+  await React.act(async () => retry.click());
+  await flush();
+  assert.deepEqual(writes[1].update, firstAttempt, "the retry sends exactly the values that were kept");
+  assert.match(c.textContent, /PROFILE-LANDING/, "and only now returns to Profile");
+});
+
+test("an ordinary server refusal keeps its own message and offers no connection retry", async () => {
+  professionalWriteError = { code: "42501", message: "new row violates row-level security policy" };
+  const c = await mount();
+  typeInto(byLabel(c, "Service area"), "Leeds");
+  await flush();
+  await submit(c);
+  assert.match(c.textContent, /Your professional details could not be saved\. Please try again\./);
+  assert.equal([...c.querySelectorAll("button")].find((b) => b.textContent.trim() === "Try again"), undefined);
+});

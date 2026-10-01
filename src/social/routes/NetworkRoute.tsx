@@ -12,6 +12,7 @@ import {
   type MaterialCategory,
 } from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Network — professional discovery (people, trades, companies). Reframed
@@ -127,7 +128,7 @@ export default function NetworkRoute() {
     })
       .then((page) => setState({ status: "ready", professionals: page.items, cursor: page.nextCursor, loadingMore: false }))
       .catch((error: unknown) =>
-        setState({ status: "error", message: error instanceof Error ? error.message : "Network could not be loaded." })
+        setState({ status: "error", message: describeError(error, "Network could not be loaded.").message })
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profession, debouncedServiceArea, debouncedQuery]);
@@ -173,7 +174,7 @@ export default function NetworkRoute() {
     fetchPublishedMaterials(materialCategory === "all" ? undefined : materialCategory)
       .then((materials) => setMaterialsState({ status: "ready", materials }))
       .catch((error: unknown) =>
-        setMaterialsState({ status: "error", message: error instanceof Error ? error.message : "Materials could not be loaded." })
+        setMaterialsState({ status: "error", message: describeError(error, "Materials could not be loaded.").message })
       );
   }, [materialCategory]);
 

@@ -13,6 +13,7 @@ import {
 import { checkModeratorAccess } from "../services/moderationClient";
 import { checkCatalogueEditorAccess } from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -83,7 +84,7 @@ export default function ProfileRoute() {
     setState({ status: "loading" });
     Promise.all([fetchOwnProfile(), fetchOwnProfessionalProfile().catch(() => null)])
       .then(([profile, professional]) => setState({ status: "ready", profile, professional }))
-      .catch((error: unknown) => setState({ status: "error", message: error instanceof Error ? error.message : "Your profile could not be loaded." }));
+      .catch((error: unknown) => setState({ status: "error", message: describeError(error, "Your profile could not be loaded.").message }));
   }, [auth.status]);
 
   useEffect(() => {

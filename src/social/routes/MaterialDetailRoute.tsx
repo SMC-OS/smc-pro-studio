@@ -4,6 +4,7 @@ import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Card, SectionHeading } from "../components/ui";
 import { MaterialImage } from "../components/MaterialImage";
 import { fetchMaterialBySlug, type Material, type MaterialCategory } from "../services/materialsClient";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -60,7 +61,7 @@ export default function MaterialDetailRoute() {
     fetchMaterialBySlug(slug)
       .then((material) => setState({ status: "ready", material }))
       .catch((error: unknown) =>
-        setState({ status: "error", message: error instanceof Error ? error.message : "This material could not be loaded." })
+        setState({ status: "error", message: describeError(error, "This material could not be loaded.").message })
       );
   }, [slug]);
 

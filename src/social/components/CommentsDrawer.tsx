@@ -6,6 +6,7 @@ import { Avatar } from "./ui";
 import { LoadingState, ErrorState } from "./StateViews";
 import { addComment, deleteComment, fetchComments, type PostComment } from "../services/socialClient";
 import type { AuthSessionState } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; comments: PostComment[] };
 
@@ -64,7 +65,7 @@ export function CommentsDrawer({
     setState({ status: "loading" });
     fetchComments(postId)
       .then((comments) => setState({ status: "ready", comments }))
-      .catch((error: unknown) => setState({ status: "error", message: error instanceof Error ? error.message : "Comments could not be loaded." }));
+      .catch((error: unknown) => setState({ status: "error", message: describeError(error, "Comments could not be loaded.").message }));
   };
 
   useEffect(() => {
@@ -145,7 +146,7 @@ export function CommentsDrawer({
       onCommentCountChange?.(1);
       onMutated?.();
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Your comment could not be posted.");
+      setSubmitError(describeError(error, "Your comment could not be posted.").message);
     } finally {
       setSubmitting(false);
     }

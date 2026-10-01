@@ -14,6 +14,7 @@ import {
   type SupportedOAuthProvider,
 } from "../../services/authClient";
 import { Button } from "./ui";
+import { describeError } from "../services/networkErrors";
 
 /**
  * SMC-styled sign-in / create-account / forgot-password / reset-password
@@ -99,7 +100,7 @@ export default function AuthForm({
     try {
       await action();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Authentication is temporarily unavailable.");
+      setError(describeError(caught, "Authentication is temporarily unavailable.").message);
     } finally {
       setBusy(false);
     }

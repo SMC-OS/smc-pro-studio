@@ -9,6 +9,7 @@ import {
   type DeletionRequest,
 } from "../services/accountClient";
 import { SUPPORT_EMAIL, supportMailto } from "../contact";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Account deletion for a signed-in member, shared by /settings and
@@ -42,7 +43,7 @@ export function DeleteAccountPanel() {
     fetchActiveDeletionRequest()
       .then((request) => setState({ status: "ready", request }))
       .catch((error: unknown) =>
-        setState({ status: "error", message: error instanceof Error ? error.message : "Your account status could not be loaded." }),
+        setState({ status: "error", message: describeError(error, "Your account status could not be loaded.").message }),
       );
   }, []);
 
@@ -54,6 +55,9 @@ export function DeleteAccountPanel() {
     if (confirming) inputRef.current?.focus();
   }, [confirming]);
 
+  // Never retried automatically (V1-7): after a connection failure the
+  // confirmation form stays open with what was typed, and the member decides
+  // whether to press the button again.
   async function run(action: () => Promise<DeletionRequest>, onDone: (request: DeletionRequest) => void) {
     if (busy) return;
     setBusy(true);
@@ -61,7 +65,7 @@ export function DeleteAccountPanel() {
     try {
       onDone(await action());
     } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+      setActionError(describeError(caught, "Something went wrong. Please try again.").message);
     } finally {
       setBusy(false);
     }
