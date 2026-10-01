@@ -1,0 +1,46 @@
+# NOT ACTIVE. Template for a future iOS STAGING simulator/compile check.
+#
+# Kept outside .github/workflows on purpose: GitHub-hosted macOS runners are
+# billed at a higher per-minute rate on private repositories, and Phase M2 must
+# not consume paid capacity without the owner's approval. To enable after
+# approval: copy to .github/workflows/native-ios-staging.yml (it is
+# manual-dispatch only), then run it from the Actions tab.
+#
+# What it can prove without an Apple Developer account: the web bundle syncs
+# into the Xcode project and the app compiles for the iOS Simulator with no
+# signing. It cannot produce an installable device build (that needs a Team ID
+# and signing, which must not be invented) and it is not physical-device QA.
+name: Native iOS (STAGING simulator compile)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-staging-simulator:
+    name: iOS STAGING simulator compile (unsigned)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Build STAGING web bundle, verify it, sync iOS
+        run: |
+          bun x vite build --mode staging
+          node scripts/check-client-bundle.mjs staging
+          bun x cap sync ios
+      - name: Compile for the iOS Simulator (no signing)
+        working-directory: ios/App
+        run: |
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build
