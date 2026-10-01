@@ -13,7 +13,7 @@ Last verified: 2026-10-01 · Verified against: `main` @ `f222cc3`, plus the unme
 |---|---|
 | `main` = `origin/main` = `f222cc3` (PR #24, Materials Slice B) | `git log`, `git branch -a -vv` |
 | Owner's working copy `C:\SMC PRO VISION APP\smc-pro-studio-audit` on branch `phase-5-slice-c-materials-catalogue-imagery` @ `f222cc3` | 161 files show as modified but differ **only in CRLF line endings**; the only real uncommitted work was 4 untracked Slice C files (recovered — see below) |
-| Unmerged branches on `origin` | `docs/claude-project-memory` (docs only) · `phase-5-db-hardening-revoke-anon-rpc-execute` · `phase-5-slice-c-materials-catalogue-imagery` (stacked on the hardening branch) |
+| Unmerged branches on `origin` | `docs/claude-project-memory` (docs only) · `phase-5-db-hardening-revoke-anon-rpc-execute` → `phase-5-slice-c-materials-catalogue-imagery` → `v1-1-profile-editing-onboarding` (each stacked on the previous; merge in that order) |
 | No hosted Supabase project for SMC Pro Studio exists | `.env.local` points at `127.0.0.1:54321`; the only project on the connected Supabase account (`grycfqndntzsexzoxkeu`) is unrelated and INACTIVE |
 | No staging or production environment, no web deployment | No hosting config in the repo; nothing deployed |
 | No native projects | `capacitor.config.ts` exists (`com.smcprostudio.app`); `android/` and `ios/` do not |
@@ -48,7 +48,7 @@ Last verified: 2026-10-01 · Verified against: `main` @ `f222cc3`, plus the unme
 
 | # | Severity | Issue | Plan |
 |---|---|---|---|
-| R1 | **Launch blocker** | **Nothing in the app ever sets `profiles.onboarding_completed = true`, and there is no profile-editing UI** (company name, service area, bio, visibility). `search_public_professionals` requires `onboarding_completed`, so **in production the Network would always be empty**. The Slice E real-backend gate passed only because fixtures set the flag directly. | V1-1 below |
+| R1 | ~~Launch blocker~~ **Fixed on branch `v1-1-profile-editing-onboarding`** | **Nothing in the app ever sets `profiles.onboarding_completed = true`, and there is no profile-editing UI** (company name, service area, bio, visibility). `search_public_professionals` requires `onboarding_completed`, so **in production the Network would always be empty**. The Slice E real-backend gate passed only because fixtures set the flag directly. | V1-1 below |
 | R2 | **Launch blocker** (Apple 5.1.1(v), Google Play) | No in-app account deletion in the shipped shell — only in the dev-only legacy `AccountView`. The deletion request table has no processing/completion workflow. | V1-2 |
 | R3 | **Launch blocker** (UK GDPR, both stores) | Signup asks users to accept the Terms of Use and Privacy Notice, but neither is reachable in the shipped shell (the components exist only in the legacy app) and both still need final UK legal review. | V1-3 + owner/legal |
 | R4 | Medium (trust) | Any user can self-select the professional category **"SMC Team"** at signup and is then labelled "SMC Team" on Network and profiles. No staff access is granted, but the label invites impersonation. | Owner decision O3 |
@@ -69,9 +69,9 @@ Status key: **COMPLETE** = real, tested, shippable · **NEEDS FIX** = in V1, not
 |---|---|---|
 | Email sign-up / sign-in / sign-out / reset / session restore | COMPLETE | OTP UI present; min 8 chars |
 | Google / Apple / Facebook sign-in | DEFERRED | Fail-closed; no SMC credentials configured. **Apple Guideline 4.8:** if any third-party login ships on iOS, Sign in with Apple must too |
-| Onboarding (account type, category) | NEEDS FIX | Captured at signup; completion never recorded (R1) |
+| Onboarding (account type, category) | COMPLETE on branch | Completion recorded when a professional adds profession + service area (V1-1) |
 | Own profile view | COMPLETE | |
-| Profile editing (name, bio, company, service area, visibility) | NEEDS FIX | Not built (R1) |
+| Profile editing (name, username, bio, visibility, profession, company, service area, services, website) | COMPLETE on branch | `/profile/edit` (V1-1); SMC Team not self-selectable in the editor |
 | Avatar upload | DEFERRED | Bucket exists; no UI; R5 first |
 | Public professional profiles | COMPLETE | |
 | Home feed (text posts, General/Portfolio) | COMPLETE | Media attachments DEFERRED |
@@ -107,7 +107,7 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 - [ ] ⛔ Owner reviews/merges the hardening branch, then the Slice C branch (stacked; merge in that order).
 
 ### Phase 2 — V1 completion (freeze scope at O1)
-- [ ] **V1-1** Profile editing + onboarding completion (R1): edit display name, bio, visibility; professionals add company name, service area, services, website; "complete profile" marks `onboarding_completed`. Real-backend test: a newly signed-up professional becomes discoverable only after completing their profile.
+- [x] **V1-1** Profile editing + onboarding completion (R1) — branch `v1-1-profile-editing-onboarding`: unit 14 + route 9 + real-backend 6 + browser 8/8: edit display name, bio, visibility; professionals add company name, service area, services, website; "complete profile" marks `onboarding_completed`. Real-backend test: a newly signed-up professional becomes discoverable only after completing their profile.
 - [ ] **V1-2** Account deletion (R2): Settings → Delete account (confirm, sign out, show pending state, cancel while `requested`). Plus a server-side processing path (Edge Function or staff runbook) that completes the deletion within a stated period. ⛔ Owner sets the retention period (O4).
 - [ ] **V1-3** Terms, Privacy Notice and Support routes in the shell, linked from signup, Settings and the store listings (R3). ⛔ Legal text is owner/legal-supplied.
 - [ ] **V1-4** Remove the social shell's dependency on `/api/auth/session` (R6), or decide to deploy the API (O5).
