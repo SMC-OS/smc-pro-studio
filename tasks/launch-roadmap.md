@@ -13,7 +13,7 @@ Last verified: 2026-10-01 · Verified against: `main` @ `f222cc3`, plus the unme
 |---|---|
 | `main` = `origin/main` = `f222cc3` (PR #24, Materials Slice B) | `git log`, `git branch -a -vv` |
 | Owner's working copy `C:\SMC PRO VISION APP\smc-pro-studio-audit` on branch `phase-5-slice-c-materials-catalogue-imagery` @ `f222cc3` | 161 files show as modified but differ **only in CRLF line endings**; the only real uncommitted work was 4 untracked Slice C files (recovered — see below) |
-| Unmerged branches on `origin` | `docs/claude-project-memory` (docs only) · `phase-5-db-hardening-revoke-anon-rpc-execute` → `phase-5-slice-c-materials-catalogue-imagery` → `v1-1-profile-editing-onboarding` (each stacked on the previous; merge in that order) |
+| Unmerged branches on `origin` | `docs/claude-project-memory` (docs only) · `phase-5-db-hardening-revoke-anon-rpc-execute` → `phase-5-slice-c-materials-catalogue-imagery` → `v1-1-profile-editing-onboarding` → `v1-2-settings-account-deletion` (each stacked on the previous; merge in that order) |
 | No hosted Supabase project for SMC Pro Studio exists | `.env.local` points at `127.0.0.1:54321`; the only project on the connected Supabase account (`grycfqndntzsexzoxkeu`) is unrelated and INACTIVE |
 | No staging or production environment, no web deployment | No hosting config in the repo; nothing deployed |
 | No native projects | `capacitor.config.ts` exists (`com.smcprostudio.app`); `android/` and `ios/` do not |
@@ -49,14 +49,15 @@ Last verified: 2026-10-01 · Verified against: `main` @ `f222cc3`, plus the unme
 | # | Severity | Issue | Plan |
 |---|---|---|---|
 | R1 | ~~Launch blocker~~ **Fixed on branch `v1-1-profile-editing-onboarding`** | **Nothing in the app ever sets `profiles.onboarding_completed = true`, and there is no profile-editing UI** (company name, service area, bio, visibility). `search_public_professionals` requires `onboarding_completed`, so **in production the Network would always be empty**. The Slice E real-backend gate passed only because fixtures set the flag directly. | V1-1 below |
-| R2 | **Launch blocker** (Apple 5.1.1(v), Google Play) | No in-app account deletion in the shipped shell — only in the dev-only legacy `AccountView`. The deletion request table has no processing/completion workflow. | V1-2 |
+| R2 | **Partly fixed** — request/cancel UI on branch `v1-2-settings-account-deletion`; **processing still open** | No in-app account deletion in the shipped shell — only in the dev-only legacy `AccountView`. The deletion request table has no processing/completion workflow. | V1-2 |
 | R3 | **Launch blocker** (UK GDPR, both stores) | Signup asks users to accept the Terms of Use and Privacy Notice, but neither is reachable in the shipped shell (the components exist only in the legacy app) and both still need final UK legal review. | V1-3 + owner/legal |
 | R4 | Medium (trust) | Any user can self-select the professional category **"SMC Team"** at signup and is then labelled "SMC Team" on Network and profiles. No staff access is granted, but the label invites impersonation. | Owner decision O3 |
 | R5 | Medium | `avatars` / `public-media` buckets have the same missing-SELECT-policy pattern as D2: owner deletes would silently no-op. No UI uses them yet. | Fix with the first avatar/media upload slice |
-| R6 | Medium | The shell calls the Express API (`/api/auth/session`) on every session read (fails safe to "no roles"). A packaged mobile app needs a deployed API URL, or this call removed from the social shell. | V1-4 |
+| R6 | ~~Medium~~ **Fixed on branch `v1-2-settings-account-deletion`** | The shell calls the Express API (`/api/auth/session`) on every session read (fails safe to "no roles"). A packaged mobile app needs a deployed API URL, or this call removed from the social shell. | V1-4 |
 | R7 | Low | Missing favicon / app icons; splash background `#0a0a0a` contradicts the bright design direction. | Phase M |
-| R8 | Low | Network tabs "Projects / Architecture / Interiors / Applications" render "arrive in a later slice" placeholders. | Hide in V1 (V1-5) |
+| R8 | ~~Low~~ **Fixed on branch `v1-2-settings-account-deletion`** | Network tabs "Projects / Architecture / Interiors / Applications" render "arrive in a later slice" placeholders. | Hide in V1 (V1-5) |
 | R9 | Low | Main JS chunk > 500 kB; routes not code-split. | Phase H |
+| R12 | **High** (blocks deletion processing) | Deleting a user's `auth.users` row will fail for anyone who has filed a report or acted as a moderator: `reports.reporter_id`/`reported_user_id` and `moderation_actions.moderator_id` reference `profiles` without `ON DELETE CASCADE/SET NULL` (`moderation_actions` is explicitly `RESTRICT`). The completion design must decide what happens to safety records (anonymise vs. retain) — legal input needed. | O4 → dedicated migration |
 | R10 | Low | Unit tests require Node ≥ 24 but `package.json` has no `engines`; CI omits DB tests and the server build. | Phase H |
 
 ---
@@ -82,9 +83,10 @@ Status key: **COMPLETE** = real, tested, shippable · **NEEDS FIX** = in V1, not
 | Block / report / moderation queue / enforcement / history | COMPLETE | Guidelines interim pending legal review |
 | Community Guidelines page | COMPLETE (interim) | Legal review open |
 | Terms / Privacy pages in shipped shell | NEEDS FIX | R3 |
-| Account deletion (request + processing) | NEEDS FIX | R2 |
-| Settings / privacy controls screen | NEEDS FIX | Minimal: visibility, sign out, delete account, legal links, support contact |
-| Support / contact | NEEDS FIX | Only a mailto inside the Guidelines; stores require a support URL |
+| Account deletion — in-app request / cancel | COMPLETE on branch | Settings → Delete account (V1-2) |
+| Account deletion — processing to completion | NEEDS FIX | Staff/server step not built; blocked by R12 and O4 |
+| Settings / privacy controls screen | COMPLETE on branch (legal links pending V1-3) | `/settings`: email, edit profile & visibility, guidelines, support, sign out, delete account |
+| Support / contact | NEEDS FIX | In-app mailto to smcprostudio@outlook.com (O9); stores also need a public support **URL** (web page) |
 | Notifications (push / in-app) | DEFERRED | Do not request push permission in V1 |
 | Projects (collaboration workspace) | DEFERRED | Not built; no schema. Messages occupies nav tab 4 in V1 |
 | Quote Request / Review Required | DEFERRED | Legacy instant quote retired |
@@ -108,11 +110,11 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 
 ### Phase 2 — V1 completion (freeze scope at O1)
 - [x] **V1-1** Profile editing + onboarding completion (R1) — branch `v1-1-profile-editing-onboarding`: unit 14 + route 9 + real-backend 6 + browser 8/8: edit display name, bio, visibility; professionals add company name, service area, services, website; "complete profile" marks `onboarding_completed`. Real-backend test: a newly signed-up professional becomes discoverable only after completing their profile.
-- [ ] **V1-2** Account deletion (R2): Settings → Delete account (confirm, sign out, show pending state, cancel while `requested`). Plus a server-side processing path (Edge Function or staff runbook) that completes the deletion within a stated period. ⛔ Owner sets the retention period (O4).
+- [~] **V1-2** Account deletion (R2) — in-app request/cancel done on branch `v1-2-settings-account-deletion` (unit/mounted 7, real-backend 5, browser 9/9). Remaining:: Settings → Delete account (confirm, sign out, show pending state, cancel while `requested`). Plus a server-side processing path (Edge Function or staff runbook) that completes the deletion within a stated period. ⛔ Owner sets the retention period (O4).
 - [ ] **V1-3** Terms, Privacy Notice and Support routes in the shell, linked from signup, Settings and the store listings (R3). ⛔ Legal text is owner/legal-supplied.
-- [ ] **V1-4** Remove the social shell's dependency on `/api/auth/session` (R6), or decide to deploy the API (O5).
-- [ ] **V1-5** Hide the four placeholder Network tabs (R8).
-- [ ] **V1-6** Settings screen (visibility, legal, support, sign out, delete account).
+- [x] **V1-4** Social shell no longer calls `/api/auth/session` (R6) — branch `v1-2-settings-account-deletion`.
+- [x] **V1-5** Placeholder Network tabs hidden (R8) — same branch.
+- [x] **V1-6** Settings screen — same branch (legal links to add with V1-3).
 - [ ] **V1-7** Offline banner + retry-on-reconnect.
 
 ### Phase H — Production hardening
@@ -159,4 +161,5 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 | O5 | Deploy the Express API for V1, or drop it from the mobile/social shell | **Drop** for V1; nothing in V1 needs it |
 | O6 | Create staging and production Supabase projects (billing) | Required before Phase S |
 | O7 | Legal sign-off on Terms, Privacy Notice and Community Guidelines | Required before any public release |
-| O8 | Merge the hardening branch, then the Slice C branch | Ready for review |
+| O8 | Merge the stacked branches in order: hardening → Slice C → V1-1 → V1-2 | Ready for review |
+| O9 | Confirm `smcprostudio@outlook.com` as the public support contact (already the published safety contact), and provide a public support web page URL for the store listings | Use a domain address (e.g. support@…) before launch for trust |

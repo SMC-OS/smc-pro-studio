@@ -50,7 +50,7 @@ const PROFESSION_FILTER_OPTIONS = Object.keys(CATEGORY_LABELS);
 
 type NetworkTab = "professionals" | "materials" | "projects" | "architecture" | "interiors" | "applications";
 
-const TABS: Array<{ key: NetworkTab; label: string }> = [
+const ALL_TABS: Array<{ key: NetworkTab; label: string }> = [
   { key: "professionals", label: "Professionals" },
   { key: "materials", label: "Materials" },
   { key: "projects", label: "Projects" },
@@ -58,6 +58,12 @@ const TABS: Array<{ key: NetworkTab; label: string }> = [
   { key: "interiors", label: "Interiors" },
   { key: "applications", label: "Applications" },
 ];
+
+// Launch roadmap V1-5: only tabs backed by real data ship. The remaining
+// scaffolded tabs stay defined (and their honest empty state stays in place)
+// so they can be switched back on when their slices land.
+const LAUNCHED_TABS = new Set<NetworkTab>(["professionals", "materials"]);
+const TABS = ALL_TABS.filter((t) => LAUNCHED_TABS.has(t.key));
 
 const TAB_SEARCH_PLACEHOLDER: Record<NetworkTab, string> = {
   professionals: "Search by name or company…",
@@ -257,7 +263,7 @@ export default function NetworkRoute() {
           )}
         </>
       ) : tab !== "professionals" ? (
-        <EmptyState title={`${TABS.find((t) => t.key === tab)?.label} arrive in a later slice`} description={TAB_EMPTY_DESCRIPTION[tab]} />
+        <EmptyState title={`${ALL_TABS.find((t) => t.key === tab)?.label} arrive in a later slice`} description={TAB_EMPTY_DESCRIPTION[tab]} />
       ) : (
         <>
           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">

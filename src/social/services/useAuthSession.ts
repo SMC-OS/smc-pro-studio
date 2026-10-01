@@ -14,7 +14,8 @@ export function useAuthSession(): AuthSessionState {
     let cancelled = false;
 
     async function load() {
-      const session = await getAuthSession();
+      // No Express API round-trip: social routes never read session.roles.
+      const session = await getAuthSession({ includeServerRoles: false });
       if (cancelled) return;
       setState(session ? { status: "authenticated", session } : { status: "guest" });
     }

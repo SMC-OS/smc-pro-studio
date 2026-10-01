@@ -109,19 +109,28 @@ export async function completeAuthRedirect(url = window.location.href): Promise<
   }
 }
 
-export async function getAuthSession(): Promise<AuthSession | null> {
+/**
+ * `includeServerRoles` asks the Express API for server-verified staff roles.
+ * The social shell passes false: it never uses these roles (every privileged
+ * screen re-checks access through its own RPC), and a packaged mobile app has
+ * no Express API to call (launch roadmap R6/V1-4). The legacy app keeps the
+ * default.
+ */
+export async function getAuthSession(options: { includeServerRoles?: boolean } = {}): Promise<AuthSession | null> {
   if (!isSupabaseConfigured) return null;
   const { data, error } = await getSupabaseClient().auth.getSession();
   if (error || !data.session?.user) return null;
   let roles: StaffRole[] = [];
-  try {
-    const response = await apiFetch("/api/auth/session");
-    if (response.ok) {
-      const principal = await response.json() as { roles?: StaffRole[] };
-      roles = Array.isArray(principal.roles) ? principal.roles : [];
+  if (options.includeServerRoles !== false) {
+    try {
+      const response = await apiFetch("/api/auth/session");
+      if (response.ok) {
+        const principal = await response.json() as { roles?: StaffRole[] };
+        roles = Array.isArray(principal.roles) ? principal.roles : [];
+      }
+    } catch {
+      roles = [];
     }
-  } catch {
-    roles = [];
   }
   return {
     subject: data.session.user.id,

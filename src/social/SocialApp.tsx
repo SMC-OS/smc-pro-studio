@@ -14,6 +14,7 @@ import MessagesRoute from "./routes/MessagesRoute";
 import ModerationRoute from "./routes/ModerationRoute";
 import ProfileRoute from "./routes/ProfileRoute";
 import EditProfileRoute from "./routes/EditProfileRoute";
+import SettingsRoute from "./routes/SettingsRoute";
 import PublicProfileRoute from "./routes/PublicProfileRoute";
 import ResetPasswordRoute from "./routes/ResetPasswordRoute";
 import { completeAuthRedirect } from "../services/authClient";
@@ -70,6 +71,7 @@ export default function SocialApp() {
           <Route path="messages/:conversationId" element={<ConversationRoute />} />
           <Route path="profile" element={<ProfileRoute />} />
           <Route path="profile/edit" element={<EditProfileRoute />} />
+          <Route path="settings" element={<SettingsRoute />} />
           <Route path="profile/:userId" element={<PublicProfileRoute />} />
           {/* Contextual only — reached from ProfileRoute's "Connections" link,
               not a primary nav tab (see AGENTS.md's approved nav direction). */}

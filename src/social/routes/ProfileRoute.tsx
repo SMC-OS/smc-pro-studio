@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Globe, Layers, LogOut, MapPin, Pencil, ShieldCheck, Users } from "lucide-react";
+import { BookOpen, Globe, Layers, LogOut, MapPin, Pencil, Settings, ShieldCheck, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Avatar, Button, Card, EditorialHeading } from "../components/ui";
@@ -147,6 +147,13 @@ export default function ProfileRoute() {
           >
             <Pencil className="h-4 w-4" aria-hidden="true" />
             Edit profile
+          </Link>
+          <Link
+            to="/settings"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
+          >
+            <Settings className="h-4 w-4" aria-hidden="true" />
+            Settings
           </Link>
           <Link
             to="/connections"

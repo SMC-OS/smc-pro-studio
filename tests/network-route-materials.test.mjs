@@ -203,14 +203,11 @@ test("Materials tab: category chips cover exactly the five locked categories, no
   assert.deepEqual(chipLabels, ["All", "Quartz", "Granite", "Marble", "Porcelain", "Dekton"]);
 });
 
-test("other tabs are unaffected: switching to Projects still shows its own later-slice empty state, not the Materials empty state", async () => {
+test("V1 ships only data-backed tabs: Professionals and Materials, with no 'later slice' placeholder tabs", async () => {
   const container = await mount();
-  await React.act(async () => {
-    findTab(container, "Projects").click();
-  });
-  await flush();
-  assert.match(container.textContent, /Projects arrive in a later slice/);
-  assert.doesNotMatch(container.textContent, /No materials published yet/);
+  const labels = [...container.querySelectorAll('[role="tablist"][aria-label="Network categories"] [role="tab"]')].map((t) => t.textContent.trim());
+  assert.deepEqual(labels, ["Professionals", "Materials"]);
+  assert.doesNotMatch(container.textContent, /arrive in a later slice/);
 });
 
 test("Materials tab: a material with an image shows a decorative thumbnail; one without shows none", async () => {
