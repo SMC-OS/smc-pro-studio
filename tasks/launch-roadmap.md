@@ -55,7 +55,7 @@ Last verified: 2026-10-01 (V1 launch gate) · Verified against: `main` @ `f222cc
 | R4 | **Fixed on branch `v1-launch-completion-gate`** — removed from sign-up; DB trigger refuses client self-assignment; sign-up metadata maps to `other` | Any user can self-select the professional category **"SMC Team"** at signup and is then labelled "SMC Team" on Network and profiles. No staff access is granted, but the label invites impersonation. | Owner decision O3 |
 | R5 | Medium | `avatars` / `public-media` buckets have the same missing-SELECT-policy pattern as D2: owner deletes would silently no-op. No UI uses them yet. | Fix with the first avatar/media upload slice |
 | R6 | ~~Medium~~ **Fixed on branch `v1-2-settings-account-deletion`** | The shell calls the Express API (`/api/auth/session`) on every session read (fails safe to "no roles"). A packaged mobile app needs a deployed API URL, or this call removed from the social shell. | V1-4 |
-| R7 | **Web part fixed on branch `v1-launch-completion-gate`** (favicon, PWA/apple icons, manifest); native splash remains Phase M | Missing favicon / app icons; splash background `#0a0a0a` contradicts the bright design direction. | Phase M |
+| R7 | **Web part fixed on branch `v1-launch-completion-gate`** (favicon, PWA/apple icons, manifest); native icons/launch screen done on `phase-m-native-foundation` (#FBF9F5, approved mark) | Missing favicon / app icons; splash background `#0a0a0a` contradicts the bright design direction. | Phase M |
 | R8 | ~~Low~~ **Fixed on branch `v1-2-settings-account-deletion`** | Network tabs "Projects / Architecture / Interiors / Applications" render "arrive in a later slice" placeholders. | Hide in V1 (V1-5) |
 | R9 | Low — **legacy part fixed on `v1-launch-completion-gate`** | The main JS chunk was 1,277 kB because the legacy App was statically imported (dead code in production). It is now a PROD-guarded dynamic import, so production excludes it: 843 kB (235.6 kB gzip), and jsPDF/html2canvas/DOMPurify are gone. CI guard `check-bundle-excludes-legacy.mjs`. Still over 500 kB: route-level code splitting remains. | Phase H |
 | R12 | **Resolved on branch `v1-launch-completion-gate`** — deletion anonymises in place (tombstone profile) instead of deleting rows, so FKs never block it | Deleting a user's `auth.users` row will fail for anyone who has filed a report or acted as a moderator: `reports.reporter_id`/`reported_user_id` and `moderation_actions.moderator_id` reference `profiles` without `ON DELETE CASCADE/SET NULL` (`moderation_actions` is explicitly `RESTRICT`). The completion design must decide what happens to safety records (anonymise vs. retain) — legal input needed. | O4 → dedicated migration |
@@ -131,13 +131,19 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 - [ ] Security review of Express `server.ts`: the demo-gated endpoints must stay disabled in production (`ENABLE_DEMO_FEATURES` unset); consider removing them from the production build.
 
 ### Phase M — Mobile (Capacitor 8 — continue the existing shell, no rewrite)
-- [ ] `npx cap add android` / `npx cap add ios`; appId `com.smcprostudio.app` (⛔ O2 confirms the ID — it is permanent once published).
-- [ ] Icons, adaptive icon, splash (bright palette), status/nav bar, safe areas, keyboard, hardware back.
-- [ ] Deep link `smcprostudio://auth/callback` (already allowed in `supabase/config.toml`) + Android App Links / iOS Universal Links for password reset.
-- [ ] Secure token storage: today the native path keeps the session **in memory only** (sign-in lost on app restart) — replace with Keychain/Keystore-backed storage.
-- [ ] iOS `PrivacyInfo.xcprivacy`; Android network security config (HTTPS only).
-- [ ] Release signing structure (keystore never committed); `.aab` build.
-- [ ] Device QA at 360×640 and 430×932.
+Phase M1 native foundation: branch `phase-m-native-foundation` (see `docs/native-foundation.md`).
+- [x] `cap add android` / `cap add ios`; appId `com.smcprostudio.app`; Capacitor core/cli/android/ios 8.5.2.
+- [x] Icons from the approved vector mark: Android adaptive and monochrome plus legacy; iOS 1024 opaque. Launch screen `#FBF9F5`, hidden after first paint, light-only post-launch theme. System bars dark-on-light. Safe areas: sticky header, status-bar strip, bottom nav, dialogs (browser QA `m1-native-layout-browser.mjs`). Keyboard resize. Android hardware back.
+- [x] Deep links `smcprostudio://auth/callback` and `smcprostudio://auth/reset-password` through one handler. Reset URL added to `supabase/config.toml` (it was missing, so native password reset could not have returned to the app). `/auth/callback` route added: the web previously landed on "Page not found".
+- [ ] ⛔ Android App Links / iOS Universal Links: need the release certificate SHA-256 and the Apple Team ID (signing/domain prerequisites; not invented).
+- [x] Secure token storage: Keychain (`afterFirstUnlockThisDeviceOnly`) / Android Keystore AES-GCM via `@aparajita/capacitor-secure-storage`. This replaces the in-memory native session, which was lost on every restart.
+- [x] Android: HTTPS-only (`usesCleartextTraffic=false`), backup/device-transfer excluded, FileProvider narrowed, only MainActivity exported, no Firebase hook. Permissions: INTERNET + ACCESS_NETWORK_STATE only.
+- [ ] Android debug build: CI workflow `native-android.yml` (the dev container cannot reach the Google/Maven/Gradle hosts).
+- [ ] ⛔ iOS build/Xcode validation: needs macOS + Xcode or a macOS CI runner (higher-cost minutes; owner decision).
+- [ ] iOS `PrivacyInfo.xcprivacy` and App Store privacy answers (Phase L); `ITSAppUsesNonExemptEncryption` (export-compliance answer; owner/legal).
+- [ ] Release signing structure (keystore never committed); `.aab` build. ⛔ Owner creates the signing keys.
+- [ ] Physical-device QA (checklist in `docs/native-foundation.md`) at 360×640 and 430×932; needs a staging build.
+- [ ] Self-host the web fonts. They load from Google Fonts at runtime, so the first launch offline falls back to system fonts, and the request shares IPs with Google (privacy review).
 
 ### Phase S — Staging
 - [ ] ⛔ Owner creates the staging and production Supabase projects (paid/billing decision) and a web host if web launch is wanted.

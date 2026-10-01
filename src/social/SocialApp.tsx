@@ -22,6 +22,8 @@ import NotFoundRoute from "./routes/NotFoundRoute";
 import { PRIVACY_POLICY, TERMS_OF_USE } from "./legal/documents";
 import PublicProfileRoute from "./routes/PublicProfileRoute";
 import ResetPasswordRoute from "./routes/ResetPasswordRoute";
+import AuthCallbackRoute from "./routes/AuthCallbackRoute";
+import { NativeShell } from "./native/NativeShell";
 import { completeAuthRedirect } from "../services/authClient";
 import "./tokens.css";
 
@@ -51,6 +53,7 @@ export default function SocialApp() {
 
   return (
     <BrowserRouter>
+      <NativeShell />
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<HomeRoute />} />
@@ -97,6 +100,7 @@ export default function SocialApp() {
           <Route path="support" element={<SupportRoute />} />
           <Route path="delete-account" element={<DeleteAccountRoute />} />
           <Route path="auth" element={<AuthRoute />} />
+          <Route path="auth/callback" element={<AuthCallbackRoute />} />
           <Route path="auth/reset-password" element={<ResetPasswordRoute />} />
           {import.meta.env.DEV && <Route path="dev/otp-preview" element={<OtpPreviewRoute />} />}
           {import.meta.env.DEV && <Route path="dev/interaction-preview" element={<InteractionPreviewRoute />} />}

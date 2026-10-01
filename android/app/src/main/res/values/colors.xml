@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Warm Architectural Atelier native surface. Continuous with the web shell's ivory. -->
+    <color name="smc_native_surface">#FBF9F5</color>
+    <color name="smc_charcoal">#221F1C</color>
+    <color name="colorPrimary">#FBF9F5</color>
+    <color name="colorPrimaryDark">#FBF9F5</color>
+    <color name="colorAccent">#8A6A45</color>
+</resources>

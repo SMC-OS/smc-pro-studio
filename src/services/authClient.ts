@@ -104,19 +104,8 @@ export async function updatePassword(password: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function completeAuthRedirect(url = window.location.href): Promise<void> {
-  if (!isSupabaseConfigured) return;
-  const parsed = new URL(url);
-  const errorDescription = parsed.searchParams.get("error_description");
-  if (errorDescription) throw new Error(errorDescription);
-  const code = parsed.searchParams.get("code");
-  if (code) {
-    const { error } = await getSupabaseClient().auth.exchangeCodeForSession(code);
-    if (error) throw new Error("The authentication link is invalid or has expired.");
-    parsed.searchParams.delete("code");
-    window.history.replaceState({}, document.title, `${parsed.pathname}${parsed.search}${parsed.hash}`);
-  }
-}
+// Auth-redirect completion lives with the shared redirect state (web + native).
+export { completeAuthRedirect, exchangeAuthCode } from "./authRedirect";
 
 /**
  * `includeServerRoles` asks the Express API for server-verified staff roles.

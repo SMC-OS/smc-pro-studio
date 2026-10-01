@@ -40,8 +40,14 @@
   --smc-radius-pill: 999px;
   --smc-shadow-soft: 0 1px 2px rgba(34, 31, 28, 0.04), 0 8px 24px -12px rgba(34, 31, 28, 0.10);
   --smc-shadow-raised: 0 2px 4px rgba(34, 31, 28, 0.05), 0 16px 32px -16px rgba(34, 31, 28, 0.16);
-  --smc-safe-top: env(safe-area-inset-top, 0px);
-  --smc-safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Safe areas. env() is the platform value (iOS / modern WebViews, with
+     viewport-fit=cover). On Android, Capacitor 8 also injects
+     --safe-area-inset-* for WebViews whose env() is unreliable; when present
+     it wins. Both resolve to 0 in an ordinary browser tab. */
+  --smc-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --smc-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --smc-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --smc-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
 
   background-color: var(--smc-surface);
   color: var(--smc-charcoal);
@@ -64,4 +70,16 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* Centred modal dialogs stay clear of the status bar, notch / Dynamic Island
+   and home indicator, and scroll inside the safe region if they are taller
+   than it. (The bottom-sheet CommentsDrawer pads its own footer.) */
+.smc-shell [role="presentation"].fixed.inset-0.items-center {
+  padding-top: max(1rem, var(--smc-safe-top));
+  padding-bottom: max(1rem, var(--smc-safe-bottom));
+}
+.smc-shell [role="presentation"].fixed.inset-0.items-center > [role="dialog"] {
+  max-height: 100%;
+  overflow-y: auto;
 }

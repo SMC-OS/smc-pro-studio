@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { authStorage } from "./authStorage";
 
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim().replace(/\/$/, "");
 const supabasePublishableKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined)?.trim();
@@ -10,23 +11,6 @@ export class SupabaseConfigurationError extends Error {
     this.name = "SupabaseConfigurationError";
   }
 }
-
-const nativeMemoryStorage = new Map<string, string>();
-const authStorage = {
-  getItem(key: string): string | null {
-    if (Capacitor.isNativePlatform()) return nativeMemoryStorage.get(key) ?? null;
-    if (typeof window === "undefined") return null;
-    return window.sessionStorage.getItem(key);
-  },
-  setItem(key: string, value: string): void {
-    if (Capacitor.isNativePlatform()) nativeMemoryStorage.set(key, value);
-    else window.sessionStorage.setItem(key, value);
-  },
-  removeItem(key: string): void {
-    if (Capacitor.isNativePlatform()) nativeMemoryStorage.delete(key);
-    else window.sessionStorage.removeItem(key);
-  },
-};
 
 function validConfiguration(): boolean {
   if (!supabaseUrl || !supabasePublishableKey) return false;

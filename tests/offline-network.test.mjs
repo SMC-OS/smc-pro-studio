@@ -21,6 +21,20 @@ dom.window.addEventListener = (type, ...rest) => {
   return realAdd(type, ...rest);
 };
 
+// On the web the store must never use the native Network plugin (Phase M1).
+// Stubbed here because tsx's loader evaluates the plugin's web module, which
+// attaches its own window listeners; in the Vite bundle that module is a lazy
+// chunk that never loads on the web.
+const nativeNetworkCalls = [];
+mock.module("@capacitor/network", {
+  exports: {
+    Network: {
+      addListener: async (...args) => (nativeNetworkCalls.push(["addListener", args[0]]), { remove: async () => {} }),
+      getStatus: async () => (nativeNetworkCalls.push(["getStatus"]), { connected: true, connectionType: "wifi" }),
+    },
+  },
+});
+
 const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const status = await import(new URL("../src/social/services/networkStatus.ts", import.meta.url).href);
@@ -62,6 +76,7 @@ test("one shared pair of window listeners, however many components subscribe", a
   await mount(React.createElement(React.Fragment, null, ...[0, 1, 2, 3].map((id) => React.createElement(Probe, { key: id, id }))));
   await mount(React.createElement(OfflineBanner));
   assert.deepEqual(added.sort(), ["offline", "online"]);
+  assert.deepEqual(nativeNetworkCalls, [], "the web never uses the native Network plugin");
   await goOffline();
   assert.equal(status.isOnline(), false);
 });

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SMC Pro Studio</string>
+    <string name="title_activity_main">SMC Pro Studio</string>
+    <string name="package_name">com.smcprostudio.app</string>
+    <string name="custom_url_scheme">com.smcprostudio.app</string>
+</resources>

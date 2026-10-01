@@ -1,0 +1,2 @@
+# Windows batch scripts need CRLF on checkout (Gradle wrapper); stored as LF.
+*.bat text eol=crlf
