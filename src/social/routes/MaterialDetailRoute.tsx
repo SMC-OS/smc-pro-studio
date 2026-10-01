@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Card, SectionHeading } from "../components/ui";
+import { MaterialImage } from "../components/MaterialImage";
 import { fetchMaterialBySlug, type Material, type MaterialCategory } from "../services/materialsClient";
 
 type LoadState =
@@ -42,8 +43,9 @@ function NotFound() {
  * slug alike (RLS-collapsed, indistinguishable by design), so all three —
  * plus a missing/malformed slug param, handled below without ever querying
  * — render the identical NotFound state. No price, stock, discount, origin,
- * certification, standards, warranty, provenance, image, or storage content
- * exists on this screen.
+ * certification, standards, warranty, or provenance content exists on this
+ * screen. Slice C adds the material's single editorial image, when one has
+ * been uploaded — never a placeholder.
  */
 export default function MaterialDetailRoute() {
   const { slug } = useParams<{ slug: string }>();
@@ -75,6 +77,7 @@ export default function MaterialDetailRoute() {
   return (
     <div className="flex flex-col gap-5">
       <SectionHeading eyebrow={CATEGORY_LABELS[material.category]} title={material.name} description={material.summary ?? undefined} />
+      <MaterialImage imagePath={material.image_path} name={material.name} variant="hero" />
       <Card className="flex flex-col gap-4 p-5">
         {material.description && (
           <p className="whitespace-pre-line text-sm text-[var(--smc-charcoal-soft)]">{material.description}</p>

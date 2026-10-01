@@ -23,8 +23,11 @@ select policies_are('storage', 'objects', array[
   'storage_private_user_owner_delete', 'storage_private_user_owner_insert',
   'storage_private_user_owner_read', 'storage_private_user_owner_update',
   'storage_public_media_owner_delete', 'storage_public_media_owner_insert',
-  'storage_public_media_owner_update'
-], 'storage exposes only owner-scoped Phase 2 policies');
+  'storage_public_media_owner_update',
+  -- Phase 5 Slice C: role-gated (catalogue editor) write policies on materials-media.
+  'storage_materials_media_editor_delete', 'storage_materials_media_editor_insert',
+  'storage_materials_media_editor_update', 'storage_materials_media_editor_read'
+], 'storage exposes only owner-scoped Phase 2 policies plus Slice C catalogue-editor media policies');
 
 select results_eq(
   $$select count(*)::bigint from pg_policies where schemaname = 'storage' and tablename = 'objects' and coalesce(qual, '') like '%private-project-media%'$$,

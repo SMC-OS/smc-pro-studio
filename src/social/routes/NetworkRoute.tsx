@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
 import { Avatar, Card, Chip, SectionHeading } from "../components/ui";
+import { MaterialImage } from "../components/MaterialImage";
 import { searchPublicProfessionals, type PublicProfessional } from "../services/socialClient";
 import {
   fetchPublishedMaterials,
@@ -242,10 +243,13 @@ export default function NetworkRoute() {
             <ul className="flex flex-col gap-3">
               {materialsState.materials.map((material) => (
                 <Card as="li" key={material.id} className="p-0">
-                  <Link to={`/materials/${material.slug}`} className="flex flex-col gap-1 p-4 outline-none">
-                    <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">{MATERIAL_CATEGORY_LABELS[material.category]}</p>
-                    <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{material.name}</p>
-                    {material.summary && <p className="text-sm text-[var(--smc-charcoal-soft)]">{material.summary}</p>}
+                  <Link to={`/materials/${material.slug}`} className="flex items-start gap-3 p-4 outline-none">
+                    <MaterialImage imagePath={material.image_path} name={material.name} variant="thumb" />
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">{MATERIAL_CATEGORY_LABELS[material.category]}</p>
+                      <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{material.name}</p>
+                      {material.summary && <p className="text-sm text-[var(--smc-charcoal-soft)]">{material.summary}</p>}
+                    </div>
                   </Link>
                 </Card>
               ))}
