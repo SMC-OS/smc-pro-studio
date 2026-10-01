@@ -19,12 +19,13 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -46,6 +47,9 @@ jobs:
       - name: Scan production bundle for fabricated content
         run: node scripts/scan-bundle-for-fabricated-content.mjs
 
+      - name: Check production bundle excludes legacy code
+        run: node scripts/check-bundle-excludes-legacy.mjs
+
       - name: Build server
         run: bun run build:server
 
@@ -56,12 +60,13 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -101,12 +106,18 @@ jobs:
             exit $status
           }
 
-      - name: Supabase advisors (report only)
+      - name: Supabase advisors (complete report)
         if: always()
+        # Every finding at INFO and above, one line each, raised as a notice so
+        # the complete list is readable from the PR checks and the REST API.
         run: |
-          npx --yes supabase@2.115.0 db advisors --local --type all --level warn 2>&1 | tee advisors.log || true
-          summary=$(head -80 advisors.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-          echo "::notice title=Supabase advisors (report only)::${summary:-no output}"
+          npx --yes supabase@2.115.0 db advisors --local --type all --level info --output-format json > advisors.json 2> advisors.err || true
+          node scripts/ci/advisors-summary.mjs advisors.json | tee advisors.txt || cat advisors.err
+          summary=$(sed 's/%/%25/g' advisors.txt | awk '{printf "%s%%0A", $0}')
+          echo "::notice title=Supabase advisors (complete)::${summary:-no output; see advisors.err in the job log}"
+
+      - name: Supabase advisors gate (fail on ERROR)
+        run: npx --yes supabase@2.115.0 db advisors --local --type all --level error --fail-on error
 
       - name: Stop local Supabase
         if: always()
