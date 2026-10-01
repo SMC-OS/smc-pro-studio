@@ -110,7 +110,7 @@ Each phase ends with the gates in §6. Steps marked ⛔ stop for owner approval.
 
 ### Phase 2 — V1 completion (freeze scope at O1)
 - [x] **V1-1** Profile editing + onboarding completion (R1) — branch `v1-1-profile-editing-onboarding`: unit 14 + route 9 + real-backend 6 + browser 8/8: edit display name, bio, visibility; professionals add company name, service area, services, website; "complete profile" marks `onboarding_completed`. Real-backend test: a newly signed-up professional becomes discoverable only after completing their profile.
-- [~] **V1-2** Account deletion (R2) — in-app request/cancel done on branch `v1-2-settings-account-deletion` (unit/mounted 7, real-backend 5, browser 9/9). Remaining:: Settings → Delete account (confirm, sign out, show pending state, cancel while `requested`). Plus a server-side processing path (Edge Function or staff runbook) that completes the deletion within a stated period. ⛔ Owner sets the retention period (O4).
+- [~] **V1-2** Account deletion (R2) — in-app request/cancel done on branch `v1-2-settings-account-deletion` (unit/mounted 7, real-backend 5, browser 9/9). Remaining: a server-side processing path (Edge Function or staff runbook) that completes the deletion within a stated period, after R12 is resolved. ⛔ Owner sets the retention period and the handling of safety records (O4).
 - [ ] **V1-3** Terms, Privacy Notice and Support routes in the shell, linked from signup, Settings and the store listings (R3). ⛔ Legal text is owner/legal-supplied.
 - [x] **V1-4** Social shell no longer calls `/api/auth/session` (R6) — branch `v1-2-settings-account-deletion`.
 - [x] **V1-5** Placeholder Network tabs hidden (R8) — same branch.
