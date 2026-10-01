@@ -4,6 +4,11 @@ import { getAuthRedirectUrl, getSupabaseClient, isSupabaseConfigured, SupabaseCo
 
 export type AccountType = "customer" | "professional";
 export type ProfessionalCategory = "architect" | "interior_designer" | "stone_fabricator" | "stone_supplier" | "installer" | "contractor" | "developer" | "construction_professional" | "smc_team" | "other";
+/** Categories a member may choose at sign-up. "smc_team" is staff-assigned only (owner decision O3). */
+export const SELF_SELECTABLE_PROFESSIONAL_CATEGORIES: readonly ProfessionalCategory[] = [
+  "architect", "interior_designer", "stone_fabricator", "stone_supplier", "installer",
+  "contractor", "developer", "construction_professional", "other",
+];
 export type SupportedOAuthProvider = "google" | "apple" | "facebook";
 export type StaffRole = "user" | "smc_staff" | "moderator" | "catalogue_editor" | "project_manager" | "admin" | "owner";
 
@@ -51,6 +56,10 @@ export async function signUpWithPassword(input: { email: string; password: strin
   validatePassword(input.password);
   const displayName = input.displayName.trim();
   if (!displayName || displayName.length > 100) throw new Error("Enter a name no longer than 100 characters.");
+  if (input.accountType === "professional" && input.professionalCategory !== undefined
+      && !SELF_SELECTABLE_PROFESSIONAL_CATEGORIES.includes(input.professionalCategory)) {
+    throw new Error("Choose your profession from the list.");
+  }
   const { data, error } = await requireConfigured().auth.signUp({
     email: validateEmail(input.email),
     password: input.password,
@@ -153,13 +162,12 @@ export async function signOut(): Promise<void> {
 }
 
 export async function requestAccountDeletion(): Promise<void> {
+  // Legacy-app entry point. Requests are RPC-only since the V1 launch gate
+  // migration (they are scheduled for the end of the cancellation window).
   const client = requireConfigured();
   const { data } = await client.auth.getUser();
   if (!data.user) throw new Error("Sign in again before requesting account deletion.");
-  const { error } = await client.from("account_deletion_requests").insert({ user_id: data.user.id });
-  if (error) {
-    if (error.code === "23505") throw new Error("An account deletion request is already active.");
-    throw new Error("The account deletion request could not be recorded.");
-  }
+  const { error } = await client.rpc("request_account_deletion");
+  if (error) throw new Error("The account deletion request could not be recorded.");
   await signOut();
 }

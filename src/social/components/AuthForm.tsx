@@ -48,7 +48,6 @@ const PROFESSIONAL_CATEGORIES: Array<{ value: ProfessionalCategory; label: strin
   { value: "contractor", label: "Contractor" },
   { value: "developer", label: "Developer" },
   { value: "construction_professional", label: "Construction Professional" },
-  { value: "smc_team", label: "SMC Team (profile only — no staff access)" },
   { value: "other", label: "Other" },
 ];
 
@@ -118,7 +117,7 @@ export default function AuthForm({
     event.preventDefault();
     void run(async () => {
       if (password !== confirmPassword) throw new Error("Passwords do not match.");
-      if (!acceptTerms) throw new Error("Accept the Terms and Privacy Notice to create an account.");
+      if (!acceptTerms) throw new Error("Accept the Terms of Use and Privacy Policy to create an account.");
       const result = await signUpWithPassword({ email, password, displayName, accountType, professionalCategory });
       if (result.requiresEmailVerification) {
         setNotice("Check your email to verify the account before signing in.");
@@ -288,11 +287,19 @@ export default function AuthForm({
                 <label className="flex items-start gap-3 text-xs text-[var(--smc-charcoal-faint)]">
                   <input type="checkbox" checked={acceptTerms} onChange={(event) => setAcceptTerms(event.target.checked)} className="mt-0.5" />
                   <span>
-                    I accept the Terms of Use and{" "}
+                    I accept the{" "}
+                    <Link to="/terms" className="font-semibold underline underline-offset-2">
+                      Terms of Use
+                    </Link>{" "}
+                    and{" "}
                     <Link to="/community-guidelines" className="font-semibold underline underline-offset-2">
                       Community Guidelines
                     </Link>
-                    , and acknowledge the Privacy Notice. All require final legal review before public beta.
+                    , and I have read the{" "}
+                    <Link to="/privacy" className="font-semibold underline underline-offset-2">
+                      Privacy Policy
+                    </Link>
+                    .
                   </span>
                 </label>
                 <SubmitButton busy={busy}>Create account</SubmitButton>

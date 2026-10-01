@@ -2,8 +2,9 @@ import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
-// V1-2 / V1-6: mounted coverage for /settings and the real accountClient.ts
-// running against a fake Supabase client.
+// V1 launch gate: /settings and the shared DeleteAccountPanel (request →
+// typed confirmation → scheduled → cancel), with the real accountClient.ts
+// running against a fake Supabase client that models the two RPCs.
 
 const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost/" });
 globalThis.window = dom.window;
@@ -16,10 +17,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const USER_ID = "a0000000-0000-0000-0000-000000000001";
 let authState;
-let rows; // the fake account_deletion_requests table
-let insertError;
-let updateError;
-const ops = [];
+let active; // the member's active request row, or null
+let rpcError;
+const rpcCalls = [];
+let tableReads = 0;
 let signOutCalls = 0;
 
 mock.module(new URL("../src/social/services/useAuthSession.ts", import.meta.url).href, {
@@ -35,32 +36,25 @@ mock.module(new URL("../src/services/supabaseClient.ts", import.meta.url).href, 
       auth: { getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }) },
       from: (table) => {
         assert.equal(table, "account_deletion_requests");
-        const q = { op: "select", filters: [], values: null };
         const b = {
-          select() { return b; },
-          insert(v) { q.op = "insert"; q.values = v; return b; },
-          update(v) { q.op = "update"; q.values = v; return b; },
-          eq(c, v) { q.filters.push(["eq", c, v]); return b; },
-          in(c, v) { q.filters.push(["in", c, v]); return b; },
-          order() { return b; },
-          async limit() { ops.push(q); return { data: rows.filter((r) => ["requested", "identity_locked", "retention_review"].includes(r.status)), error: null }; },
-          async single() {
-            ops.push(q);
-            if (insertError) return { data: null, error: insertError };
-            const row = { id: "r1", status: "requested", requested_at: "2026-10-01T09:00:00.000Z", cancellation_requested_at: null };
-            rows.push(row);
-            return { data: row, error: null };
-          },
-          async maybeSingle() {
-            ops.push(q);
-            if (updateError) return { data: null, error: updateError };
-            const row = rows.find((r) => r.status === "requested");
-            if (!row) return { data: null, error: null };
-            row.cancellation_requested_at = q.values.cancellation_requested_at;
-            return { data: row, error: null };
-          },
+          select: () => b, eq: () => b, in: () => b, order: () => b,
+          async limit() { tableReads += 1; return { data: active ? [active] : [], error: null }; },
         };
         return b;
+      },
+      rpc: async (name) => {
+        rpcCalls.push(name);
+        if (rpcError) return { data: null, error: rpcError };
+        if (name === "request_account_deletion") {
+          active ??= { id: "r1", status: "requested", requested_at: "2026-10-01T09:00:00.000Z", scheduled_for: "2026-10-15T09:00:00.000Z", cancellation_requested_at: null };
+          return { data: [active], error: null };
+        }
+        if (name === "cancel_account_deletion") {
+          const row = { ...active, status: "cancelled", cancellation_requested_at: "2026-10-02T09:00:00.000Z" };
+          active = null;
+          return { data: [row], error: null };
+        }
+        throw new Error(`unexpected rpc ${name}`);
       },
     }),
   },
@@ -69,7 +63,8 @@ mock.module(new URL("../src/services/supabaseClient.ts", import.meta.url).href, 
 const React = (await import("react")).default;
 const { createRoot } = await import("react-dom/client");
 const { MemoryRouter } = await import("react-router-dom");
-const { default: SettingsRoute, SUPPORT_EMAIL } = await import(new URL("../src/social/routes/SettingsRoute.tsx", import.meta.url).href);
+const { default: SettingsRoute } = await import(new URL("../src/social/routes/SettingsRoute.tsx", import.meta.url).href);
+const { CONFIRM_WORD } = await import(new URL("../src/social/components/DeleteAccountPanel.tsx", import.meta.url).href);
 
 async function flush(ms = 20) {
   await React.act(async () => { await new Promise((r) => setTimeout(r, ms)); });
@@ -92,13 +87,22 @@ async function click(el) {
   await React.act(async () => el.click());
   await flush();
 }
+function type(field, value) {
+  Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, "value").set.call(field, value);
+  field.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+}
+async function submitConfirmation(c, word) {
+  const input = c.querySelector('form input');
+  await React.act(async () => type(input, word));
+  await click(button(c, "Request deletion"));
+}
 
 test.beforeEach(() => {
   authState = { status: "authenticated", session: { subject: USER_ID, email: "alder@example.test", roles: [] } };
-  rows = [];
-  insertError = null;
-  updateError = null;
-  ops.length = 0;
+  active = null;
+  rpcError = null;
+  rpcCalls.length = 0;
+  tableReads = 0;
   signOutCalls = 0;
 });
 
@@ -106,66 +110,71 @@ test("guests are asked to sign in and no account query runs", async () => {
   authState = { status: "guest" };
   const c = await mount();
   assert.match(c.textContent, /Sign in to manage your account/);
-  assert.equal(ops.length, 0);
+  assert.equal(tableReads, 0);
 });
 
-test("shows the account email, profile, guidelines, support and sign-out entries", async () => {
+test("Settings links every policy and support surface, using support@smcprostudio.app", async () => {
   const c = await mount();
   assert.match(c.textContent, /Signed in as alder@example\.test/);
-  assert.ok(c.querySelector('a[href="/profile/edit"]'));
-  assert.ok(c.querySelector('a[href="/community-guidelines"]'));
-  assert.ok(c.querySelector(`a[href="mailto:${SUPPORT_EMAIL}"]`));
+  for (const href of ["/profile/edit", "/support", "/privacy", "/terms", "/community-guidelines"]) {
+    assert.ok(c.querySelector(`a[href="${href}"]`), `missing link to ${href}`);
+  }
+  assert.ok(c.querySelector('a[href="mailto:support@smcprostudio.app"]'));
+  assert.doesNotMatch(c.innerHTML, /outlook\.com/);
   await click(button(c, "Sign out"));
   assert.equal(signOutCalls, 1);
 });
 
-test("deletion needs an explicit confirmation; 'Keep my account' writes nothing", async () => {
+test("deletion needs the typed confirmation; a wrong word or 'Keep my account' requests nothing", async () => {
   const c = await mount();
   await click(button(c, "Delete my account"));
-  assert.match(c.textContent, /Are you sure you want to delete your account\?/);
-  assert.equal(document.activeElement, button(c, "Yes, request deletion"), "focus moves to the confirm action");
+  assert.ok(document.activeElement === c.querySelector('form input'), "focus moves to the confirmation field");
+  await submitConfirmation(c, "delete it");
+  assert.match(c.querySelector('[role="alert"]').textContent, new RegExp(`Type ${CONFIRM_WORD} to confirm`));
+  assert.deepEqual(rpcCalls, []);
   await click(button(c, "Keep my account"));
-  assert.ok(!ops.some((o) => o.op === "insert"));
+  assert.deepEqual(rpcCalls, []);
   assert.ok(button(c, "Delete my account"));
 });
 
-test("confirming records a request for the signed-in user only, then shows its pending status — never 'deleted'", async () => {
+test("confirming schedules deletion and shows the server's date — never 'deleted'", async () => {
   const c = await mount();
   await click(button(c, "Delete my account"));
-  await click(button(c, "Yes, request deletion"));
-  const insert = ops.find((o) => o.op === "insert");
-  assert.deepEqual(insert.values, { user_id: USER_ID });
-  assert.match(c.textContent, /Deletion requested on 1 October 2026\./);
-  assert.match(c.textContent, /The SMC Pro Studio team will delete your account/);
-  assert.doesNotMatch(c.textContent, /has been deleted|account deleted|within \d+ days/i);
-  assert.ok(button(c, "Cancel deletion request"));
+  await submitConfirmation(c, CONFIRM_WORD);
+  assert.deepEqual(rpcCalls, ["request_account_deletion"]);
+  assert.match(c.textContent, /You asked to delete your account on 1 October 2026\./);
+  assert.match(c.textContent, /Unless you cancel, it will be deleted after 15 October 2026\./);
+  assert.doesNotMatch(c.textContent, /has been deleted|account deleted/i);
+  assert.ok(button(c, "Cancel deletion"));
 });
 
-test("an existing active request is shown on load; cancelling records the cancellation", async () => {
-  rows = [{ id: "r1", status: "requested", requested_at: "2026-09-30T09:00:00.000Z", cancellation_requested_at: null }];
+test("an existing request is shown on load and can be cancelled within the window", async () => {
+  active = { id: "r1", status: "requested", requested_at: "2026-09-30T09:00:00.000Z", scheduled_for: "2999-01-01T00:00:00.000Z", cancellation_requested_at: null };
   const c = await mount();
-  assert.match(c.textContent, /Deletion requested on 30 September 2026\./);
-  assert.equal(button(c, "Delete my account"), undefined, "no second request can be started");
-  await click(button(c, "Cancel deletion request"));
-  const update = ops.find((o) => o.op === "update");
-  assert.deepEqual(Object.keys(update.values), ["cancellation_requested_at"]);
-  assert.deepEqual(update.filters.filter((f) => f[1] === "user_id"), [["eq", "user_id", USER_ID]]);
-  assert.match(c.textContent, /You asked to cancel this request on/);
+  assert.equal(button(c, "Delete my account"), undefined);
+  await click(button(c, "Cancel deletion"));
+  assert.deepEqual(rpcCalls, ["cancel_account_deletion"]);
+  assert.match(c.textContent, /Deletion cancelled\. Your account will stay open\./);
+  assert.ok(button(c, "Delete my account"), "a new request can be started");
 });
 
-test("a request already being processed can't be cancelled in-app and points to support", async () => {
-  rows = [{ id: "r1", status: "retention_review", requested_at: "2026-09-30T09:00:00.000Z", cancellation_requested_at: null }];
-  const c = await mount();
-  assert.equal(button(c, "Cancel deletion request"), undefined);
-  assert.match(c.textContent, /already being processed/);
+test("once the window has passed (or processing started) there is no in-app cancel; support is offered", async () => {
+  active = { id: "r1", status: "requested", requested_at: "2026-09-01T09:00:00.000Z", scheduled_for: "2026-09-15T09:00:00.000Z", cancellation_requested_at: null };
+  let c = await mount();
+  assert.equal(button(c, "Cancel deletion"), undefined);
+  assert.match(c.textContent, /Deletion is being processed\./);
+  assert.ok(c.querySelector('a[href^="mailto:support@smcprostudio.app"]'));
+  active = { ...active, status: "retention_review", scheduled_for: "2999-01-01T00:00:00.000Z" };
+  c = await mount();
+  assert.equal(button(c, "Cancel deletion"), undefined);
 });
 
-test("a failed request shows only the safe message and leaves the confirmation open", async () => {
-  insertError = { code: "42501", message: 'new row violates row-level security policy for table "account_deletion_requests"' };
+test("a failed request shows only the safe message and keeps the confirmation open", async () => {
+  rpcError = { code: "42501", message: 'permission denied for function request_account_deletion' };
   const c = await mount();
   await click(button(c, "Delete my account"));
-  await click(button(c, "Yes, request deletion"));
+  await submitConfirmation(c, CONFIRM_WORD);
   assert.match(c.textContent, /Your deletion request could not be recorded\. Please try again\./);
-  assert.doesNotMatch(c.innerHTML, /row-level|42501|account_deletion_requests/);
-  assert.ok(button(c, "Yes, request deletion"));
+  assert.doesNotMatch(c.innerHTML, /permission denied|42501|request_account_deletion/);
+  assert.ok(button(c, "Request deletion"));
 });

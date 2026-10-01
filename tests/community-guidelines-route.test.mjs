@@ -102,8 +102,8 @@ test("never promises anonymity, guaranteed action, a response time, or an indivi
 test("gives the manual safety/contact/appeal route as a mailto link to the approved address, and states no in-app appeal flow exists", async () => {
   const container = await mountGuidelines();
   assert.match(container.textContent, /There is no in-app appeal flow yet/);
-  const mailLink = [...container.querySelectorAll("a")].find((a) => a.getAttribute("href") === "mailto:smcprostudio@outlook.com");
-  assert.ok(mailLink, "a mailto link to smcprostudio@outlook.com must be present");
+  const mailLink = [...container.querySelectorAll("a")].find((a) => a.getAttribute("href") === "mailto:support@smcprostudio.app");
+  assert.ok(mailLink, "a mailto link to support@smcprostudio.app must be present");
 });
 
 test("states report confidentiality is restricted to authorised moderators except for safety/legal/regulatory disclosure", async () => {

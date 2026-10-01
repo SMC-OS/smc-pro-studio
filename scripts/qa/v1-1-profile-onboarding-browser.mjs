@@ -1,5 +1,6 @@
 // V1-1 browser QA. Same usage as the other scripts/qa files (local stack + vite + ad-hoc playwright; SERVICE_KEY for cleanup only).
 // V1-1 browser QA: real sign-up through the UI -> complete profile -> discoverable to guests. Real backend, no interception.
+// V1-1 browser QA: real sign-up through the UI -> complete profile -> discoverable to guests. Real backend, no interception.
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 const URL_ = "http://127.0.0.1:54321", APP = "http://127.0.0.1:5173";
@@ -21,8 +22,18 @@ try {
     await page.locator('input[type="checkbox"]').check();
     await page.locator("form").getByRole("button", { name: "Create account" }).click();
     await page.waitForTimeout(2000);
+    // Email confirmation is on (as in supabase/config.toml): confirm through the admin API,
+    // standing in for the emailed link, then sign in through the UI.
+    const { data: list } = await svc.auth.admin.listUsers({ perPage: 200 });
+    const signedUp = list.users.find((x) => x.email === email);
+    if (signedUp && !signedUp.email_confirmed_at) {
+      await svc.auth.admin.updateUserById(signedUp.id, { email_confirm: true });
+      await page.goto(`${APP}/auth`, { waitUntil: "networkidle" });
+      await page.locator('input[type="email"]').fill(email); await page.locator('input[type="password"]').first().fill(PASSWORD);
+      await page.getByRole("button", { name: "Sign in securely" }).click(); await page.waitForTimeout(1500);
+    }
     await page.goto(`${APP}/profile`, { waitUntil: "networkidle" });
-    check("new professional sees the 'Complete your profile' prompt", await page.getByText("Complete your profile to appear in the Network.").isVisible());
+    check("new professional sees the 'Complete your profile' prompt", await page.getByText("Complete your profile to appear in the Network.").waitFor({ timeout: 5000 }).then(() => true).catch(() => false));
     const guest = await browser.newPage({ viewport: vp });
     await guest.goto(`${APP}/network`, { waitUntil: "networkidle" });
     await guest.getByLabel("Search Network").fill(T); await guest.waitForTimeout(900); await guest.waitForLoadState("networkidle");

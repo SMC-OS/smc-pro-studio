@@ -15,6 +15,11 @@ import ModerationRoute from "./routes/ModerationRoute";
 import ProfileRoute from "./routes/ProfileRoute";
 import EditProfileRoute from "./routes/EditProfileRoute";
 import SettingsRoute from "./routes/SettingsRoute";
+import SupportRoute from "./routes/SupportRoute";
+import DeleteAccountRoute from "./routes/DeleteAccountRoute";
+import LegalDocumentRoute from "./routes/LegalDocumentRoute";
+import NotFoundRoute from "./routes/NotFoundRoute";
+import { PRIVACY_POLICY, TERMS_OF_USE } from "./legal/documents";
 import PublicProfileRoute from "./routes/PublicProfileRoute";
 import ResetPasswordRoute from "./routes/ResetPasswordRoute";
 import { completeAuthRedirect } from "../services/authClient";
@@ -87,10 +92,15 @@ export default function SocialApp() {
               redirected to sign-in — AppShell above only branches its own nav
               rendering on auth.status, it never redirects the outlet itself. */}
           <Route path="community-guidelines" element={<CommunityGuidelinesRoute />} />
+          <Route path="privacy" element={<LegalDocumentRoute document={PRIVACY_POLICY} />} />
+          <Route path="terms" element={<LegalDocumentRoute document={TERMS_OF_USE} />} />
+          <Route path="support" element={<SupportRoute />} />
+          <Route path="delete-account" element={<DeleteAccountRoute />} />
           <Route path="auth" element={<AuthRoute />} />
           <Route path="auth/reset-password" element={<ResetPasswordRoute />} />
           {import.meta.env.DEV && <Route path="dev/otp-preview" element={<OtpPreviewRoute />} />}
           {import.meta.env.DEV && <Route path="dev/interaction-preview" element={<InteractionPreviewRoute />} />}
+          <Route path="*" element={<NotFoundRoute />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>SMC Pro Studio</title>
+  <rect width="512" height="512" rx="112" fill="#221f1c"/>
+  <polygon points="184,128 398,128 364,186 150,186" fill="#fbf8f2"/>
+  <polygon points="150,227 398,227 364,285 116,285" fill="#c9a77c"/>
+  <polygon points="164,326 378,326 344,384 130,384" fill="#fbf8f2"/>
+</svg>

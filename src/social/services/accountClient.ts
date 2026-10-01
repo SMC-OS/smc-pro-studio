@@ -2,24 +2,28 @@ import { getSupabaseClient, isSupabaseConfigured } from "../../services/supabase
 import { SocialUnavailableError } from "./socialClient";
 
 /**
- * V1-2 (launch roadmap): in-app account deletion requests.
+ * Account deletion (launch roadmap V1-2, owner decision O4).
  *
- * Built entirely on the existing public.account_deletion_requests table and
- * its owner-only RLS (20260818194611_visibility_account_deletion.sql): an
- * owner may insert a request (always status 'requested'), read their own
- * requests, and set cancellation_requested_at on a still-'requested' one.
- * Completing a deletion is a separate, staff/server-side step — nothing here
- * claims the account is deleted, or by when.
+ * Requests and cancellations go only through the request_account_deletion()
+ * and cancel_account_deletion() RPCs (20261001060000_*.sql), which schedule
+ * processing for the end of the configured cancellation window. Processing
+ * itself is a server job (scripts/process-account-deletions.mjs). Nothing here
+ * claims an account is already deleted.
  */
+
+export type DeletionStatus = "requested" | "identity_locked" | "retention_review" | "completed" | "cancelled";
 
 export interface DeletionRequest {
   id: string;
-  status: "requested" | "identity_locked" | "retention_review" | "completed" | "cancelled";
+  status: DeletionStatus;
   requested_at: string;
+  /** When processing becomes due; null only for a legacy request made before scheduling existed. */
+  scheduled_for: string | null;
   cancellation_requested_at: string | null;
 }
 
-const ACTIVE = new Set(["requested", "identity_locked", "retention_review"]);
+const STATUSES = new Set<DeletionStatus>(["requested", "identity_locked", "retention_review", "completed", "cancelled"]);
+const ACTIVE: DeletionStatus[] = ["requested", "identity_locked", "retention_review"];
 
 export type AccountOperation = "load_deletion" | "request_deletion" | "cancel_deletion";
 
@@ -33,6 +37,10 @@ export class AccountOperationError extends Error {
   }
 }
 
+const SAFE_LOAD = "Your account status could not be loaded. Please try again.";
+const SAFE_REQUEST = "Your deletion request could not be recorded. Please try again.";
+const SAFE_CANCEL = "Your deletion request could not be cancelled. If it is still within the cancellation window, please try again or contact support.";
+
 async function requireAuthenticatedClient() {
   if (!isSupabaseConfigured) throw new SocialUnavailableError();
   const client = getSupabaseClient();
@@ -42,20 +50,24 @@ async function requireAuthenticatedClient() {
   return { client, userId: data.user.id };
 }
 
-function parseRequest(raw: unknown): DeletionRequest | null {
+const isIsoOrNull = (value: unknown) => value === null || (typeof value === "string" && !Number.isNaN(Date.parse(value)));
+
+export function parseDeletionRequest(raw: unknown): DeletionRequest | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  if (typeof r.id !== "string" || typeof r.status !== "string" || typeof r.requested_at !== "string") return null;
-  if (r.cancellation_requested_at !== null && typeof r.cancellation_requested_at !== "string") return null;
+  if (typeof r.id !== "string" || !STATUSES.has(r.status as DeletionStatus)) return null;
+  if (typeof r.requested_at !== "string" || Number.isNaN(Date.parse(r.requested_at))) return null;
+  if (!isIsoOrNull(r.scheduled_for ?? null) || !isIsoOrNull(r.cancellation_requested_at ?? null)) return null;
   return {
     id: r.id,
-    status: r.status as DeletionRequest["status"],
+    status: r.status as DeletionStatus,
     requested_at: r.requested_at,
-    cancellation_requested_at: r.cancellation_requested_at as string | null,
+    scheduled_for: (r.scheduled_for ?? null) as string | null,
+    cancellation_requested_at: (r.cancellation_requested_at ?? null) as string | null,
   };
 }
 
-const SELECT = "id, status, requested_at, cancellation_requested_at";
+const SELECT = "id, status, requested_at, scheduled_for, cancellation_requested_at";
 
 /** The caller's single active deletion request, or null when there is none. */
 export async function fetchActiveDeletionRequest(): Promise<DeletionRequest | null> {
@@ -64,54 +76,40 @@ export async function fetchActiveDeletionRequest(): Promise<DeletionRequest | nu
     .from("account_deletion_requests")
     .select(SELECT)
     .eq("user_id", userId)
-    .in("status", [...ACTIVE])
+    .in("status", ACTIVE)
     .order("requested_at", { ascending: false })
     .limit(1);
-  if (error) throw new AccountOperationError("load_deletion", "Your account status could not be loaded. Please try again.", { cause: error });
-  if (!Array.isArray(data)) throw new AccountOperationError("load_deletion", "Your account status could not be loaded. Please try again.");
+  if (error || !Array.isArray(data)) throw new AccountOperationError("load_deletion", SAFE_LOAD, { cause: error ?? undefined });
   if (data.length === 0) return null;
-  const parsed = parseRequest(data[0]);
-  if (!parsed) throw new AccountOperationError("load_deletion", "Your account status could not be loaded. Please try again.");
+  const parsed = parseDeletionRequest(data[0]);
+  if (!parsed) throw new AccountOperationError("load_deletion", SAFE_LOAD);
   return parsed;
 }
 
-/** Records a deletion request. A request that is already active is returned rather than duplicated. */
+function singleRow(data: unknown): DeletionRequest | null {
+  return Array.isArray(data) && data.length === 1 ? parseDeletionRequest(data[0]) : null;
+}
+
+/** Schedules deletion for the end of the cancellation window. Idempotent. */
 export async function requestAccountDeletion(): Promise<DeletionRequest> {
-  const { client, userId } = await requireAuthenticatedClient();
-  const { data, error } = await client
-    .from("account_deletion_requests")
-    .insert({ user_id: userId })
-    .select(SELECT)
-    .single();
-  if (error?.code === "23505") {
-    const existing = await fetchActiveDeletionRequest();
-    if (existing) return existing;
-  }
-  const parsed = error ? null : parseRequest(data);
-  if (!parsed) {
-    throw new AccountOperationError("request_deletion", "Your deletion request could not be recorded. Please try again.", { cause: error ?? undefined });
-  }
+  const { client } = await requireAuthenticatedClient();
+  const { data, error } = await client.rpc("request_account_deletion");
+  const parsed = error ? null : singleRow(data);
+  if (!parsed) throw new AccountOperationError("request_deletion", SAFE_REQUEST, { cause: error ?? undefined });
   return parsed;
 }
 
-/** Asks for a still-'requested' deletion to be cancelled. */
-export async function cancelAccountDeletion(requestId: string): Promise<DeletionRequest> {
-  const { client, userId } = await requireAuthenticatedClient();
-  const { data, error } = await client
-    .from("account_deletion_requests")
-    .update({ cancellation_requested_at: new Date().toISOString() })
-    .eq("id", requestId)
-    .eq("user_id", userId)
-    .eq("status", "requested")
-    .select(SELECT)
-    .maybeSingle();
-  const parsed = error ? null : parseRequest(data);
-  if (!parsed) {
-    throw new AccountOperationError(
-      "cancel_deletion",
-      "Your cancellation could not be recorded. Please contact us so we can stop the deletion.",
-      { cause: error ?? undefined },
-    );
-  }
+/** Cancels the caller's pending request while its window is still open. */
+export async function cancelAccountDeletion(): Promise<DeletionRequest> {
+  const { client } = await requireAuthenticatedClient();
+  const { data, error } = await client.rpc("cancel_account_deletion");
+  const parsed = error ? null : singleRow(data);
+  if (!parsed) throw new AccountOperationError("cancel_deletion", SAFE_CANCEL, { cause: error ?? undefined });
   return parsed;
+}
+
+/** True while the member can still cancel (status requested and window not yet passed). */
+export function canCancel(request: DeletionRequest, now: Date = new Date()): boolean {
+  if (request.status !== "requested") return false;
+  return request.scheduled_for === null || Date.parse(request.scheduled_for) > now.getTime();
 }

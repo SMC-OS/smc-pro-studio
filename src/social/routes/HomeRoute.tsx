@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
-import { StoriesTray } from "../components/StoriesTray";
 import { PostCard, type EngagementView } from "../components/PostCard";
 import { EditorialHeading } from "../components/ui";
 import { fetchHomeFeed, fetchMySavedPostIds, fetchPostEngagement, type FeedPost, type HomeFeedCursor, type PostEngagement } from "../services/socialClient";
@@ -292,9 +291,9 @@ export default function HomeRoute() {
 
   return (
     <div className="flex flex-col gap-5">
-      <StoriesTray auth={auth} />
-
-      <div className="border-t border-[var(--smc-border)] pt-5">
+      {/* V1 scope: Stories is not part of V1, so its placeholder tray is not
+          rendered (components/StoriesTray.tsx is kept for a later release). */}
+      <div>
         <EditorialHeading as="h2" className="text-lg">
           Professional activity
         </EditorialHeading>
