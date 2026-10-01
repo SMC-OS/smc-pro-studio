@@ -15,9 +15,11 @@ select policies_are('public', 'professional_profiles', array[
 select policies_are('public', 'user_roles', array[]::text[],
   'staff role assignments are deny-by-default to API users');
 
+-- V1 launch gate: requests and cancellations now go only through the
+-- request_account_deletion()/cancel_account_deletion() RPCs; owners keep read.
 select policies_are('public', 'account_deletion_requests', array[
-  'account_deletion_owner_cancel_request', 'account_deletion_owner_read', 'account_deletion_owner_request'
-], 'account deletion exposes only owner request policies');
+  'account_deletion_owner_read'
+], 'account deletion exposes only the owner read policy (mutations are RPC-only)');
 
 select policies_are('storage', 'objects', array[
   'storage_private_user_owner_delete', 'storage_private_user_owner_insert',
