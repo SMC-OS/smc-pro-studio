@@ -146,17 +146,17 @@ export default function BottomNav() {
 
         <ul className="relative flex h-full items-stretch justify-between px-2">
           {NAV_ITEMS.map((item, index) => {
-            const active = activeIndex === index;
+            const isBeadActive = activeIndex === index;
             return (
               <li key={item.to} className="flex-1">
                 <Link
                   ref={(el) => { itemRefs.current[index] = el; }}
                   to={item.to}
-                  aria-current={active ? "page" : undefined}
+                  aria-current={isBeadActive ? "page" : undefined}
                   className="group relative flex min-h-[48px] w-full flex-col items-center justify-center gap-0.5 rounded-[var(--smc-radius-card)] py-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
                 >
-                  {!active && <item.icon className="h-5 w-5" strokeWidth={1.7} color="var(--smc-charcoal-faint)" aria-hidden="true" />}
-                  {!active && <span className="max-[359px]:hidden text-[11px] font-medium text-[var(--smc-charcoal-faint)]">{item.label}</span>}
+                  {!isBeadActive && <item.icon className="h-5 w-5" strokeWidth={1.7} color="var(--smc-charcoal-faint)" aria-hidden="true" />}
+                  {!isBeadActive && <span className="max-[359px]:hidden text-[11px] font-medium text-[var(--smc-charcoal-faint)]">{item.label}</span>}
                   <span className="sr-only">{item.label}</span>
                 </Link>
               </li>
