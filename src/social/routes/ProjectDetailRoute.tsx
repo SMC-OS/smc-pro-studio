@@ -23,7 +23,8 @@ export default function ProjectDetailRoute() {
   const { projectId = "" } = useParams();
   const auth = useAuthSession();
   const [state, setState] = useState<
-    | { status: "idle" | "loading" }
+    | { status: "idle" }
+    | { status: "loading" }
     | { status: "ready"; project: LaunchProjectDetail | null }
     | { status: "error"; message: string }
   >({ status: "idle" });
