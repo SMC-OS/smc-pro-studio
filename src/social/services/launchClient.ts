@@ -33,11 +33,16 @@ export interface LaunchQuoteRequestSummary {
 export interface LaunchAppointmentSummary {
   id: string;
   project_id: string;
+  created_by: string;
   appointment_type: string;
   status: string;
   starts_at: string;
   ends_at: string;
   location: string | null;
+  notes: string | null;
+  customer_note: string | null;
+  confirmed_at: string | null;
+  cancelled_at: string | null;
   project: { title: string } | null;
 }
 
@@ -193,7 +198,7 @@ export async function fetchLaunchDashboard(): Promise<LaunchDashboard> {
       .limit(4),
     supabase
       .from("appointments")
-      .select("id, project_id, appointment_type, status, starts_at, ends_at, location, project:projects(title)")
+      .select("id, project_id, created_by, appointment_type, status, starts_at, ends_at, location, notes, customer_note, confirmed_at, cancelled_at, project:projects(title)")
       .gte("starts_at", new Date().toISOString())
       .order("starts_at", { ascending: true })
       .limit(4),
@@ -246,7 +251,7 @@ export async function fetchLaunchProject(projectId: string): Promise<LaunchProje
   const [membership, milestones, appointments, variations, documents, measurements, payments, warranties] = await Promise.all([
     supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", userId).maybeSingle(),
     supabase.from("project_milestones").select("id, title, description, status, position, due_at, completed_at").eq("project_id", projectId).order("position"),
-    supabase.from("appointments").select("id, project_id, appointment_type, status, starts_at, ends_at, location, project:projects(title)").eq("project_id", projectId).order("starts_at"),
+    supabase.from("appointments").select("id, project_id, created_by, appointment_type, status, starts_at, ends_at, location, notes, customer_note, confirmed_at, cancelled_at, project:projects(title)").eq("project_id", projectId).order("starts_at"),
     supabase.from("variations").select("id, created_by, title, description, amount_delta, days_delta, status, sent_at, decided_at, customer_note, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("project_documents").select("id, uploaded_by, kind, storage_path, file_name, mime_type, size_bytes, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("project_measurements").select("id, created_by, source, label, data, is_survey_grade, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
@@ -299,6 +304,79 @@ function safeProjectFileName(name: string): string {
     .replace(/-+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "");
   return (cleaned || "file").slice(-120);
+}
+
+export async function scheduleProjectAppointment(
+  projectId: string,
+  input: {
+    appointmentType: "consultation" | "site_survey" | "templating" | "delivery" | "installation" | "snagging" | "other";
+    startsAt: string;
+    endsAt: string;
+    location: string;
+    notes: string;
+  },
+): Promise<void> {
+  await currentUserId();
+  if (!input.startsAt || !input.endsAt) throw new Error("Choose a start and end time.");
+  const startsAt = new Date(input.startsAt);
+  const endsAt = new Date(input.endsAt);
+  if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
+    throw new Error("Appointment date or time is invalid.");
+  }
+  if (endsAt <= startsAt) throw new Error("Appointment end time must be after the start time.");
+  if (input.location.trim().length > 500) throw new Error("Location must be 500 characters or fewer.");
+  if (input.notes.trim().length > 3000) throw new Error("Appointment notes must be 3000 characters or fewer.");
+
+  const { error } = await client().rpc("schedule_project_appointment", {
+    p_project_id: projectId,
+    p_appointment_type: input.appointmentType,
+    p_starts_at: startsAt.toISOString(),
+    p_ends_at: endsAt.toISOString(),
+    p_location: input.location.trim() || null,
+    p_notes: input.notes.trim() || null,
+  });
+  if (error) throw new Error("The appointment could not be proposed. Please try again.", { cause: error });
+}
+
+export async function respondProjectAppointment(
+  appointmentId: string,
+  confirm: boolean,
+  note: string,
+): Promise<void> {
+  await currentUserId();
+  const cleanNote = note.trim();
+  if (cleanNote.length > 2000) throw new Error("Appointment note must be 2000 characters or fewer.");
+  const { error } = await client().rpc("respond_project_appointment", {
+    p_appointment_id: appointmentId,
+    p_confirm: confirm,
+    p_note: cleanNote || null,
+  });
+  if (error) throw new Error(
+    confirm ? "The appointment could not be confirmed. Please try again." : "The appointment could not be declined. Please try again.",
+    { cause: error },
+  );
+}
+
+export async function completeProjectAppointment(appointmentId: string): Promise<void> {
+  await currentUserId();
+  const { error } = await client().rpc("complete_project_appointment", {
+    p_appointment_id: appointmentId,
+  });
+  if (error) throw new Error("The appointment could not be completed. Please try again.", { cause: error });
+}
+
+export async function cancelProjectAppointment(
+  appointmentId: string,
+  note: string,
+): Promise<void> {
+  await currentUserId();
+  const cleanNote = note.trim();
+  if (cleanNote.length > 2000) throw new Error("Cancellation note must be 2000 characters or fewer.");
+  const { error } = await client().rpc("cancel_project_appointment", {
+    p_appointment_id: appointmentId,
+    p_note: cleanNote || null,
+  });
+  if (error) throw new Error("The appointment could not be cancelled. Please try again.", { cause: error });
 }
 
 export async function createDraftVariation(
