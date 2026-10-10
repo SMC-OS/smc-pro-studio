@@ -49,10 +49,11 @@ export default function QuoteRoute() {
   const [item, setItem] = useState({ description: "", quantity: "1", unit: "item", unitPrice: "", vat: "20" });
   const [declineOpen, setDeclineOpen] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
+  const sessionSubject = auth.status === "authenticated" ? auth.session.subject : null;
 
   const load = useCallback(() => {
     if (auth.status !== "authenticated" || !quoteId) return;
-    const userId = auth.session.subject;
+    const userId = sessionSubject;
     setState("loading");
     fetchQuote(quoteId)
       .then(async (row) => {
@@ -71,7 +72,7 @@ export default function QuoteRoute() {
         setMessage(describeError(error, "The quote could not be loaded.").message);
         setState("error");
       });
-  }, [auth.status, auth.status === "authenticated" ? auth.session.subject : null, quoteId]);
+  }, [auth.status, quoteId, sessionSubject]);
 
   useEffect(() => {
     if (auth.status === "authenticated") load();
