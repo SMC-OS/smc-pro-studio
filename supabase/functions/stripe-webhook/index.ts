@@ -85,7 +85,19 @@ Deno.serve(async (req: Request) => {
     p_provider_created_at: isoFromSeconds(event.created),
   });
   if (claimError) return json({ error: "webhook_event_claim_failed" }, 500);
-  if (!claimed) return json({ received: true, duplicate: true });
+  if (!claimed) {
+    const { data: existingEvent } = await admin
+      .from("stripe_webhook_events")
+      .select("processed_at")
+      .eq("event_id", event.id)
+      .maybeSingle();
+    if (existingEvent?.processed_at) return json({ received: true, duplicate: true });
+
+    // Another invocation is still processing this event, or a worker died
+    // after claiming it. Returning non-2xx makes Stripe retry; after the
+    // database claim lease expires, a new invocation can safely resume it.
+    return json({ error: "webhook_event_processing" }, 503);
+  }
 
   async function findPaymentId(object: Record<string, any>): Promise<string | null> {
     const metadataPaymentId = object.metadata?.smc_payment_id;
@@ -258,7 +270,14 @@ Deno.serve(async (req: Request) => {
 
     const rawStatus = typeof refund.status === "string" ? refund.status : "pending";
     const status = rawStatus === "canceled" ? "cancelled" : rawStatus;
+    const normalizedStatus = ["pending", "succeeded", "failed", "cancelled"].includes(status) ? status : "pending";
     const amount = Number(refund.amount ?? 0) / 100;
+
+    const { data: previousRefund } = await admin
+      .from("payment_refunds")
+      .select("status")
+      .eq("provider_refund_id", refund.id)
+      .maybeSingle();
 
     await admin.from("payment_refunds").upsert(
       {
@@ -266,7 +285,7 @@ Deno.serve(async (req: Request) => {
         provider_refund_id: refund.id,
         amount,
         currency: String(refund.currency ?? "gbp").toUpperCase(),
-        status: ["pending", "succeeded", "failed", "cancelled"].includes(status) ? status : "pending",
+        status: normalizedStatus,
         reason: typeof refund.reason === "string" ? refund.reason : null,
         provider_created_at: isoFromSeconds(refund.created),
         updated_at: new Date().toISOString(),
@@ -289,21 +308,30 @@ Deno.serve(async (req: Request) => {
       .from("payments")
       .update({
         refunded_amount: Math.min(refunded, Number(payment.amount)),
-        status: fullyRefunded ? "refunded" : "paid",
+        status: fullyRefunded ? "refunded" : payment.status === "refunded" ? "refunded" : "paid",
         last_provider_event_id: event.id,
         last_provider_event_at: isoFromSeconds(event.created),
       })
       .eq("id", paymentId);
     if (error) throw error;
 
-    await notifyPayment(
-      payment,
-      fullyRefunded ? "Payment refunded" : "Partial refund recorded",
-      fullyRefunded
-        ? "Stripe has confirmed that this project payment was refunded."
-        : "Stripe has confirmed a partial refund on this project payment.",
-      fullyRefunded ? "Project payment refunded" : "Project payment partially refunded",
-    );
+    if (normalizedStatus === "succeeded" && previousRefund?.status !== "succeeded") {
+      await notifyPayment(
+        payment,
+        fullyRefunded ? "Payment refunded" : "Partial refund recorded",
+        fullyRefunded
+          ? "Stripe has confirmed that this project payment was refunded."
+          : "Stripe has confirmed a partial refund on this project payment.",
+        fullyRefunded ? "Project payment refunded" : "Project payment partially refunded",
+      );
+    } else if (normalizedStatus === "failed" && previousRefund?.status !== "failed") {
+      await notifyPayment(
+        payment,
+        "Refund not completed",
+        "Stripe reported that a refund attempt for this project payment failed.",
+        "Project refund failed",
+      );
+    }
   }
 
   async function syncDispute(dispute: Record<string, any>) {
