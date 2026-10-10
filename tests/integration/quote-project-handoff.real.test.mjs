@@ -27,6 +27,7 @@ mock.module(new URL("../../src/services/supabaseClient.ts", import.meta.url).hre
 
 const quote = await import(new URL("../../src/social/services/quoteClient.ts", import.meta.url).href);
 const launch = await import(new URL("../../src/social/services/launchClient.ts", import.meta.url).href);
+const notifications = await import(new URL("../../src/social/services/notificationClient.ts", import.meta.url).href);
 const { saveOwnProfile } = await import(new URL("../../src/social/services/profileClient.ts", import.meta.url).href);
 
 const T = `qh${Date.now().toString(36)}`;
@@ -458,6 +459,36 @@ test("customer can decline a separate variation without adding it to the accepte
     project.variations.filter((row) => row.status === "accepted").reduce((sum, row) => sum + Number(row.amount_delta), 0),
     620,
   );
+});
+
+test("project notifications are private and read state is user-owned", { skip }, async () => {
+  const customerRows = await as(customer, () => notifications.fetchNotifications());
+  assert.ok(customerRows.length > 0, "customer has action notifications");
+  assert.equal(customerRows.every((row) => row.project_id === null || row.project_id === projectId), true);
+
+  const target = customerRows.find((row) => !row.read_at && row.project_id === projectId) ?? customerRows.find((row) => !row.read_at);
+  assert.ok(target, "customer has an unread notification to mark");
+
+  await as(otherCustomer, () => notifications.markNotificationRead(target.id));
+  let { data: beforeOwnerRead, error: beforeOwnerReadError } = await service
+    .from("notifications")
+    .select("read_at")
+    .eq("id", target.id)
+    .single();
+  assert.ifError(beforeOwnerReadError);
+  assert.equal(beforeOwnerRead.read_at, null, "another account cannot change this notification");
+
+  await as(customer, () => notifications.markNotificationRead(target.id));
+  const { data: afterOwnerRead, error: afterOwnerReadError } = await service
+    .from("notifications")
+    .select("read_at")
+    .eq("id", target.id)
+    .single();
+  assert.ifError(afterOwnerReadError);
+  assert.ok(afterOwnerRead.read_at, "owner read state persists");
+
+  const unrelatedRows = await as(otherCustomer, () => notifications.fetchNotifications());
+  assert.equal(unrelatedRows.some((row) => row.id === target.id), false);
 });
 
 test("project members can share private files while unrelated users cannot read them", { skip }, async () => {
