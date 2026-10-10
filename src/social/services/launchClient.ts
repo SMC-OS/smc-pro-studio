@@ -399,15 +399,28 @@ export async function uploadProjectDocument(
 }
 
 export async function deleteProjectDocument(document: ProjectDocument): Promise<void> {
-  await currentUserId();
+  const userId = await currentUserId();
+  if (document.uploaded_by !== userId) {
+    throw new Error("Only the person who uploaded this file can remove it from the app.");
+  }
+
   const supabase = client();
-  const { error: storageError } = await supabase.storage
+  const { data: removed, error: storageError } = await supabase.storage
     .from("private-project-media")
     .remove([document.storage_path]);
-  if (storageError) throw new Error("The project file could not be removed. Please try again.", { cause: storageError });
+  if (storageError || !removed?.some((row) => row.name === document.storage_path || document.storage_path.endsWith(row.name))) {
+    throw new Error("The project file could not be removed. Please try again.", { cause: storageError ?? undefined });
+  }
 
-  const { error: rowError } = await supabase.from("project_documents").delete().eq("id", document.id);
-  if (rowError) throw new Error("The project file record could not be removed. Please try again.", { cause: rowError });
+  const { data: deletedRows, error: rowError } = await supabase
+    .from("project_documents")
+    .delete()
+    .eq("id", document.id)
+    .eq("uploaded_by", userId)
+    .select("id");
+  if (rowError || deletedRows?.length !== 1) {
+    throw new Error("The project file record could not be removed. Please try again.", { cause: rowError ?? undefined });
+  }
 }
 
 export async function addApproximateProjectMeasurement(
