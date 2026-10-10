@@ -280,6 +280,109 @@ test("customer approval creates the project, both memberships and launch milesto
   assert.equal(accepted.status, "accepted");
 });
 
+test("project appointments follow professional proposal and customer confirmation boundaries", { skip }, async () => {
+  const start = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 90 * 60 * 1000);
+
+  await assert.rejects(
+    () => as(customer, () =>
+      launch.scheduleProjectAppointment(projectId, {
+        appointmentType: "site_survey",
+        startsAt: start.toISOString(),
+        endsAt: end.toISOString(),
+        location: "Customer property",
+        notes: "Access via side gate.",
+      }),
+    ),
+    /appointment could not be proposed/i,
+  );
+
+  await as(professional, () =>
+    launch.scheduleProjectAppointment(projectId, {
+      appointmentType: "site_survey",
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      location: "Customer property",
+      notes: "Access via side gate.",
+    }),
+  );
+
+  let project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const proposed = project.appointments.find((row) => row.appointment_type === "site_survey" && row.status === "proposed");
+  assert.ok(proposed, "customer sees the proposed site survey");
+
+  await assert.rejects(
+    () => as(professional, () => launch.respondProjectAppointment(proposed.id, true, "")),
+    /appointment could not be confirmed/i,
+  );
+
+  await as(customer, () =>
+    launch.respondProjectAppointment(proposed.id, true, "Confirmed. Someone will be home."),
+  );
+
+  project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const confirmed = project.appointments.find((row) => row.id === proposed.id);
+  assert.equal(confirmed.status, "confirmed");
+  assert.equal(confirmed.customer_note, "Confirmed. Someone will be home.");
+  assert.ok(confirmed.confirmed_at);
+
+  await assert.rejects(
+    () => as(professional, () => launch.completeProjectAppointment(proposed.id)),
+    /appointment could not be completed/i,
+  );
+
+  const pastStart = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const pastEnd = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { error: timeShiftError } = await service
+    .from("appointments")
+    .update({ starts_at: pastStart, ends_at: pastEnd })
+    .eq("id", proposed.id);
+  assert.ifError(timeShiftError);
+
+  await as(professional, () => launch.completeProjectAppointment(proposed.id));
+
+  project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  assert.equal(project.appointments.find((row) => row.id === proposed.id).status, "completed");
+
+  const { data: notices, error: noticeError } = await service
+    .from("notifications")
+    .select("user_id, kind")
+    .eq("project_id", projectId)
+    .in("kind", ["appointment_proposed", "appointment_response"]);
+  assert.ifError(noticeError);
+  assert.equal(notices.some((row) => row.kind === "appointment_proposed" && row.user_id === customer.id), true);
+  assert.equal(notices.some((row) => row.kind === "appointment_response" && row.user_id === professional.id), true);
+});
+
+test("customer can decline a separate proposed appointment", { skip }, async () => {
+  const start = new Date(Date.now() + 48 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+  await as(professional, () =>
+    launch.scheduleProjectAppointment(projectId, {
+      appointmentType: "templating",
+      startsAt: start.toISOString(),
+      endsAt: end.toISOString(),
+      location: "Customer property",
+      notes: "",
+    }),
+  );
+
+  let project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const proposed = project.appointments.find((row) => row.appointment_type === "templating" && row.status === "proposed");
+  assert.ok(proposed);
+
+  await as(customer, () =>
+    launch.respondProjectAppointment(proposed.id, false, "Please propose a later day."),
+  );
+
+  project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const declined = project.appointments.find((row) => row.id === proposed.id);
+  assert.equal(declined.status, "cancelled");
+  assert.equal(declined.customer_note, "Please propose a later day.");
+  assert.ok(declined.cancelled_at);
+});
+
 test("professional variation requires a customer decision and records the commercial impact", { skip }, async () => {
   await assert.rejects(
     () => as(customer, () =>
