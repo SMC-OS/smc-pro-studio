@@ -35,12 +35,12 @@ select policies_are('storage', 'objects', array[
 ], 'storage exposes only reviewed owner, catalogue and project-member policies');
 
 select results_eq(
-  $select count(*)::bigint
+  $q$select count(*)::bigint
       from pg_policies
      where schemaname = 'storage'
        and tablename = 'objects'
        and policyname = 'storage_private_project_member_read'
-       and coalesce(qual, '') like '%is_project_member_path%'$,
+       and coalesce(qual, '') like '%is_project_member_path%'$q$,
   array[1::bigint],
   'private project media read policy is explicitly project-member scoped'
 );
