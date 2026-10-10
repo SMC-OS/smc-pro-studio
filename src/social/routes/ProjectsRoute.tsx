@@ -14,7 +14,8 @@ function label(value: string): string {
 export default function ProjectsRoute() {
   const auth = useAuthSession();
   const [state, setState] = useState<
-    | { status: "idle" | "loading" }
+    | { status: "idle" }
+    | { status: "loading" }
     | { status: "ready"; projects: LaunchProjectSummary[] }
     | { status: "error"; message: string }
   >({ status: "idle" });
