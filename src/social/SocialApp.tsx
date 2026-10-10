@@ -12,6 +12,9 @@ import HomeRoute from "./routes/HomeRoute";
 import StudioRoute from "./routes/StudioRoute";
 import ProjectsRoute from "./routes/ProjectsRoute";
 import ProjectDetailRoute from "./routes/ProjectDetailRoute";
+import QuoteRequestRoute from "./routes/QuoteRequestRoute";
+import QuoteRequestDetailRoute from "./routes/QuoteRequestDetailRoute";
+import QuoteRoute from "./routes/QuoteRoute";
 import ConversationRoute from "./routes/ConversationRoute";
 import MessagesRoute from "./routes/MessagesRoute";
 import ModerationRoute from "./routes/ModerationRoute";
@@ -44,6 +47,9 @@ export default function SocialApp() {
           <Route path="studio" element={<StudioRoute />} />
           <Route path="projects" element={<ProjectsRoute />} />
           <Route path="projects/:projectId" element={<ProjectDetailRoute />} />
+          <Route path="quotes/new" element={<QuoteRequestRoute />} />
+          <Route path="quote-requests/:requestId" element={<QuoteRequestDetailRoute />} />
+          <Route path="quotes/:quoteId" element={<QuoteRoute />} />
           <Route path="network" element={<NetworkRoute />} />
           <Route path="discover" element={<Navigate to="/network" replace />} />
 
