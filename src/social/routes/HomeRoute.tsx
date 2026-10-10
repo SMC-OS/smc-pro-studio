@@ -28,7 +28,8 @@ function money(amount: number, currency: string): string {
 export default function HomeRoute() {
   const auth = useAuthSession();
   const [state, setState] = useState<
-    | { status: "idle" | "loading" }
+    | { status: "idle" }
+    | { status: "loading" }
     | { status: "ready"; dashboard: LaunchDashboard }
     | { status: "error"; message: string }
   >({ status: "idle" });
