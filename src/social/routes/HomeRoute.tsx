@@ -129,9 +129,12 @@ export default function HomeRoute() {
           description="Here is what needs your attention next."
         />
         {dashboard.unreadNotifications > 0 && (
-          <span className="rounded-full bg-[var(--smc-limestone)] px-3 py-2 text-xs font-semibold text-[var(--smc-charcoal)]">
+          <Link
+            to="/notifications"
+            className="rounded-full bg-[var(--smc-limestone)] px-3 py-2 text-xs font-semibold text-[var(--smc-charcoal)] hover:bg-[var(--smc-travertine)]"
+          >
             {dashboard.unreadNotifications} unread {dashboard.unreadNotifications === 1 ? "update" : "updates"}
-          </span>
+          </Link>
         )}
       </div>
 
