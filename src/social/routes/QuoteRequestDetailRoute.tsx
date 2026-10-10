@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Hammer, MapPin } from "lucide-react";
+import { ExternalLink, FileText, Hammer, MapPin, Paperclip, Trash2, Upload } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Card, SectionHeading } from "../components/ui";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
-import { createOrGetDraftQuote, fetchQuoteForRequest, fetchQuoteRequest, type QuoteRecord, type QuoteRequestRecord } from "../services/quoteClient";
+import {
+  createOrGetDraftQuote,
+  deleteQuoteRequestDocument,
+  fetchQuoteForRequest,
+  fetchQuoteRequest,
+  fetchQuoteRequestDocuments,
+  uploadQuoteRequestDocument,
+  type QuoteRecord,
+  type QuoteRequestDocumentRecord,
+  type QuoteRequestRecord,
+} from "../services/quoteClient";
 import { useAuthSession } from "../services/useAuthSession";
 import { describeError } from "../services/networkErrors";
 
@@ -17,16 +27,25 @@ export default function QuoteRequestDetailRoute() {
   const navigate = useNavigate();
   const [request, setRequest] = useState<QuoteRequestRecord | null>(null);
   const [quote, setQuote] = useState<QuoteRecord | null>(null);
+  const [documents, setDocuments] = useState<QuoteRequestDocumentRecord[]>([]);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "saving" | "error">("idle");
   const [message, setMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [documentKind, setDocumentKind] = useState<QuoteRequestDocumentRecord["kind"]>("photo");
 
   const load = useCallback(() => {
     if (auth.status !== "authenticated" || !requestId) return;
     setState("loading");
-    Promise.all([fetchQuoteRequest(requestId), fetchQuoteForRequest(requestId)])
-      .then(([requestRow, quoteRow]) => {
+    Promise.all([
+      fetchQuoteRequest(requestId),
+      fetchQuoteForRequest(requestId),
+      fetchQuoteRequestDocuments(requestId),
+    ])
+      .then(([requestRow, quoteRow, documentRows]) => {
         setRequest(requestRow);
         setQuote(quoteRow);
+        setDocuments(documentRows);
         setState("ready");
       })
       .catch((error: unknown) => {
@@ -47,6 +66,34 @@ export default function QuoteRequestDetailRoute() {
     } catch (error: unknown) {
       setMessage(describeError(error, "The quote could not be opened.").message);
       setState("error");
+    }
+  }
+
+  async function uploadDocument() {
+    if (!selectedFile) return;
+    try {
+      setUploading(true);
+      await uploadQuoteRequestDocument(requestId, selectedFile, documentKind);
+      setSelectedFile(null);
+      setDocuments(await fetchQuoteRequestDocuments(requestId));
+    } catch (error: unknown) {
+      setMessage(describeError(error, "The file could not be attached.").message);
+      setState("error");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeDocument(document: QuoteRequestDocumentRecord) {
+    try {
+      setUploading(true);
+      await deleteQuoteRequestDocument(document);
+      setDocuments(await fetchQuoteRequestDocuments(requestId));
+    } catch (error: unknown) {
+      setMessage(describeError(error, "The file could not be removed.").message);
+      setState("error");
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -85,6 +132,95 @@ export default function QuoteRequestDetailRoute() {
           <p>Customer: <strong>{request.requester?.display_name ?? "Customer"}</strong></p>
           <p>Professional: <strong>{request.professional?.display_name ?? "Assigned professional"}</strong></p>
         </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-center gap-2">
+          <Paperclip className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
+          <h2 className="font-semibold">Photos & files</h2>
+        </div>
+        <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">
+          Photos, drawings, PDFs and measurement files stay private to the customer, assigned professional and authorised SMC staff.
+        </p>
+
+        <div className="mt-4 grid gap-3">
+          {documents.length === 0 ? (
+            <p className="text-sm text-[var(--smc-charcoal-soft)]">No files attached yet.</p>
+          ) : (
+            documents.map((document) => (
+              <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--smc-radius-card)] bg-[var(--smc-surface-sunken)] p-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{document.file_name}</p>
+                  <p className="mt-1 text-xs text-[var(--smc-charcoal-faint)]">
+                    {label(document.kind)} · {Math.max(1, Math.round(document.size_bytes / 1024))} KB
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  {document.signed_url && (
+                    <a
+                      href={document.signed_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--smc-charcoal-soft)] hover:bg-white"
+                      aria-label={`Open ${document.file_name}`}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
+                  {isCustomer && document.uploaded_by === me && (request.status === "draft" || request.status === "submitted") && (
+                    <button
+                      type="button"
+                      onClick={() => void removeDocument(document)}
+                      disabled={uploading}
+                      className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--smc-charcoal-soft)] hover:bg-white disabled:opacity-50"
+                      aria-label={`Remove ${document.file_name}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {isCustomer && (request.status === "draft" || request.status === "submitted") && (
+          <div className="mt-5 grid gap-3 border-t border-[var(--smc-border)] pt-5">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
+              <label className="grid gap-2 text-sm font-medium">
+                Add file
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                  className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                File type
+                <select
+                  value={documentKind}
+                  onChange={(event) => setDocumentKind(event.target.value as QuoteRequestDocumentRecord["kind"])}
+                  className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                >
+                  <option value="photo">Photo</option>
+                  <option value="plan">Plan / drawing</option>
+                  <option value="measurement">Measurement</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() => void uploadDocument()}
+              disabled={!selectedFile || uploading}
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 self-start rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" /> {uploading ? "Uploading…" : "Attach file"}
+            </button>
+            <p className="text-xs text-[var(--smc-charcoal-faint)]">JPG, PNG, WebP or PDF · maximum 25 MB per file.</p>
+          </div>
+        )}
       </Card>
 
       {quote ? (
