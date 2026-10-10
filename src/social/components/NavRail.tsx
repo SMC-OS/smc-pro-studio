@@ -1,4 +1,4 @@
-import { FolderKanban, Home, MessageCircle, Sparkles, User, Users } from "lucide-react";
+import { Bell, FolderKanban, Home, MessageCircle, Sparkles, User, Users } from "lucide-react";
 import { Link, matchPath, NavLink, useLocation } from "react-router-dom";
 import { useAuthSession } from "../services/useAuthSession";
 
@@ -50,13 +50,22 @@ export default function NavRail() {
       </nav>
 
       {auth.status === "authenticated" && (
-        <Link
-          to="/messages"
-          className="mb-2 flex min-h-[48px] items-center gap-3 rounded-[var(--smc-radius-card)] px-3 text-sm font-medium text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-surface-sunken)]"
-        >
-          <MessageCircle className="h-[18px] w-[18px]" aria-hidden="true" />
-          Messages
-        </Link>
+        <div className="mb-2 grid gap-1">
+          <Link
+            to="/notifications"
+            className="flex min-h-[48px] items-center gap-3 rounded-[var(--smc-radius-card)] px-3 text-sm font-medium text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-surface-sunken)]"
+          >
+            <Bell className="h-[18px] w-[18px]" aria-hidden="true" />
+            Notifications
+          </Link>
+          <Link
+            to="/messages"
+            className="flex min-h-[48px] items-center gap-3 rounded-[var(--smc-radius-card)] px-3 text-sm font-medium text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-surface-sunken)]"
+          >
+            <MessageCircle className="h-[18px] w-[18px]" aria-hidden="true" />
+            Messages
+          </Link>
+        </div>
       )}
 
       {auth.status === "guest" && (
