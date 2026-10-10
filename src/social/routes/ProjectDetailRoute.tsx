@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, Check, ExternalLink, FileText, Plus, PoundSterling, Ruler, Send, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { CalendarDays, Check, ExternalLink, FileText, Plus, Ruler, Send, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import ProjectPaymentsCard from "../components/ProjectPaymentsCard";
 import { Card, SectionHeading } from "../components/ui";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
 import {
@@ -284,10 +285,6 @@ export default function ProjectDetailRoute() {
     project.current_user_role === "project_manager" ||
     project.lead_professional_id === me;
   const isCustomer = project.customer_id === me;
-  const acceptedVariationTotal = project.variations
-    .filter((variation) => variation.status === "accepted")
-    .reduce((sum, variation) => sum + Number(variation.amount_delta), 0);
-  const approvedProjectValue = Number(project.quote?.total ?? 0) + acceptedVariationTotal;
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -523,28 +520,13 @@ export default function ProjectDetailRoute() {
           )}
         </Card>
 
-        <Card className="p-5">
-          <div className="flex items-center gap-2"><PoundSterling className="h-5 w-5" /><h2 className="font-semibold">Financials</h2></div>
-          <div className="mt-4 grid gap-3">
-            {project.quote && (
-              <>
-                <p className="text-sm">Original approved quote: <strong>{money(project.quote.total, project.quote.currency)}</strong></p>
-                {acceptedVariationTotal !== 0 && (
-                  <p className="text-sm">
-                    Accepted variations: <strong>{acceptedVariationTotal >= 0 ? "+" : ""}{money(acceptedVariationTotal, project.quote.currency)}</strong>
-                  </p>
-                )}
-                <p className="text-sm">Approved project value: <strong>{money(approvedProjectValue, project.quote.currency)}</strong></p>
-              </>
-            )}
-            {project.payments.length === 0 ? <p className="text-sm text-[var(--smc-charcoal-soft)]">No payment schedule yet.</p> : project.payments.map((payment) => (
-              <div key={payment.id} className="flex items-center justify-between gap-3 text-sm">
-                <span>{label(payment.kind)} · {label(payment.status)}</span>
-                <strong>{money(payment.amount, payment.currency)}</strong>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <ProjectPaymentsCard
+          project={project}
+          me={me}
+          canManageProject={canManageProject}
+          isCustomer={isCustomer}
+          onChanged={load}
+        />
 
         <Card className="p-5">
           <div className="flex items-center gap-2"><FileText className="h-5 w-5" /><h2 className="font-semibold">Documents</h2></div>
