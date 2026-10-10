@@ -28,6 +28,7 @@ mock.module(new URL("../../src/services/supabaseClient.ts", import.meta.url).hre
 const quote = await import(new URL("../../src/social/services/quoteClient.ts", import.meta.url).href);
 const launch = await import(new URL("../../src/social/services/launchClient.ts", import.meta.url).href);
 const notifications = await import(new URL("../../src/social/services/notificationClient.ts", import.meta.url).href);
+const payments = await import(new URL("../../src/social/services/paymentClient.ts", import.meta.url).href);
 const { saveOwnProfile } = await import(new URL("../../src/social/services/profileClient.ts", import.meta.url).href);
 
 const T = `qh${Date.now().toString(36)}`;
@@ -459,6 +460,138 @@ test("customer can decline a separate variation without adding it to the accepte
     project.variations.filter((row) => row.status === "accepted").reduce((sum, row) => sum + Number(row.amount_delta), 0),
     620,
   );
+});
+
+test("project payment requests are server-bounded by approved value and customer identity", { skip }, async () => {
+  await assert.rejects(
+    () => as(customer, () =>
+      payments.requestProjectPayment({
+        projectId,
+        kind: "deposit",
+        amount: 100,
+        dueAt: null,
+        collectionMethod: "checkout",
+        note: "Customer must not create their own payment request.",
+      }),
+    ),
+    /payment could not be requested/i,
+  );
+
+  const deposit = await as(professional, () =>
+    payments.requestProjectPayment({
+      projectId,
+      kind: "deposit",
+      amount: 200,
+      dueAt: null,
+      collectionMethod: "checkout",
+      note: "Deposit before material ordering.",
+    }),
+  );
+
+  assert.equal(deposit.project_id, projectId);
+  assert.equal(deposit.customer_id, customer.id);
+  assert.equal(deposit.requested_by, professional.id);
+  assert.equal(deposit.status, "pending");
+  assert.equal(deposit.currency, "GBP");
+  assert.equal(Number(deposit.amount), 200);
+  assert.equal(deposit.collection_method, "checkout");
+
+  const customerPayment = await as(customer, () => payments.fetchPaymentDetail(deposit.id));
+  assert.equal(customerPayment.id, deposit.id);
+
+  const unrelatedPayment = await as(otherCustomer, () => payments.fetchPaymentDetail(deposit.id));
+  assert.equal(unrelatedPayment, null);
+
+  const { error: directInsertError } = await customer.client.from("payments").insert({
+    project_id: projectId,
+    quote_id: quoteId,
+    customer_id: customer.id,
+    kind: "deposit",
+    status: "paid",
+    currency: "GBP",
+    amount: 1,
+  });
+  assert.ok(directInsertError, "mobile clients cannot create or mark payment rows paid directly");
+
+  await assert.rejects(
+    () => as(professional, () =>
+      payments.requestProjectPayment({
+        projectId,
+        kind: "stage",
+        amount: 1000,
+        dueAt: null,
+        collectionMethod: "checkout",
+        note: "",
+      }),
+    ),
+    /payment could not be requested/i,
+  );
+
+  const invoiceDue = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const balance = await as(professional, () =>
+    payments.requestProjectPayment({
+      projectId,
+      kind: "balance",
+      amount: null,
+      dueAt: invoiceDue,
+      collectionMethod: "invoice",
+      note: "Remaining approved project value.",
+    }),
+  );
+
+  assert.equal(Number(balance.amount), 660, "£240 quote + £620 accepted variation - £200 deposit = £660");
+  assert.equal(balance.collection_method, "invoice");
+  assert.ok(balance.due_at);
+
+  await assert.rejects(
+    () => as(professional, () =>
+      payments.requestProjectPayment({
+        projectId,
+        kind: "other",
+        amount: 1,
+        dueAt: null,
+        collectionMethod: "checkout",
+        note: "",
+      }),
+    ),
+    /payment could not be requested/i,
+    "active requests reserve the approved project value and prevent duplicate over-collection",
+  );
+
+  const { data: notices, error: noticeError } = await service
+    .from("notifications")
+    .select("user_id, project_id, kind")
+    .eq("project_id", projectId)
+    .eq("kind", "payment_due");
+  assert.ifError(noticeError);
+  assert.equal(notices.filter((row) => row.user_id === customer.id).length, 2);
+});
+
+test("payment refund and dispute ledgers are not client-writable", { skip }, async () => {
+  const project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const payment = project.payments[0];
+  assert.ok(payment);
+
+  const { error: refundWriteError } = await customer.client.from("payment_refunds").insert({
+    payment_id: payment.id,
+    provider_refund_id: "re_client_must_not_write",
+    amount: 1,
+    currency: "GBP",
+    status: "succeeded",
+  });
+  assert.ok(refundWriteError);
+
+  const { error: disputeWriteError } = await professional.client.from("payment_disputes").insert({
+    payment_id: payment.id,
+    provider_dispute_id: "dp_client_must_not_write",
+    amount: 1,
+    currency: "GBP",
+    status: "needs_response",
+  });
+  assert.ok(disputeWriteError);
+
+  const otherAdjustments = await as(otherCustomer, () => payments.fetchPaymentAdjustments(payment.id));
+  assert.deepEqual(otherAdjustments, { refunds: [], disputes: [] });
 });
 
 test("project notifications are private and read state is user-owned", { skip }, async () => {
