@@ -30,6 +30,19 @@ export interface QuoteRequestRecord {
   professional: { id: string; display_name: string } | null;
 }
 
+export interface QuoteRequestDocumentRecord {
+  id: string;
+  quote_request_id: string;
+  uploaded_by: string;
+  kind: "photo" | "plan" | "measurement" | "other";
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  signed_url: string | null;
+}
+
 export interface QuoteItemRecord {
   id: string;
   description: string;
@@ -189,6 +202,97 @@ export async function fetchQuoteRequest(requestId: string): Promise<QuoteRequest
     .maybeSingle();
   if (error) throw new Error("The quote request could not be loaded. Please try again.", { cause: error });
   return data as unknown as QuoteRequestRecord | null;
+}
+
+const QUOTE_FILE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
+const MAX_QUOTE_FILE_BYTES = 25 * 1024 * 1024;
+
+function safeFileName(name: string): string {
+  const cleaned = name
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  return (cleaned || "file").slice(-120);
+}
+
+export async function fetchQuoteRequestDocuments(requestId: string): Promise<QuoteRequestDocumentRecord[]> {
+  await currentUserId();
+  const supabase = client();
+  const { data, error } = await supabase
+    .from("quote_request_documents")
+    .select("id, quote_request_id, uploaded_by, kind, storage_path, file_name, mime_type, size_bytes, created_at")
+    .eq("quote_request_id", requestId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error("Quote request files could not be loaded. Please try again.", { cause: error });
+
+  return Promise.all(
+    (data ?? []).map(async (row) => {
+      const { data: signed, error: signedError } = await supabase.storage
+        .from("private-project-media")
+        .createSignedUrl(row.storage_path, 600);
+      return {
+        ...(row as Omit<QuoteRequestDocumentRecord, "signed_url">),
+        signed_url: signedError ? null : signed?.signedUrl ?? null,
+      };
+    }),
+  );
+}
+
+export async function uploadQuoteRequestDocument(
+  requestId: string,
+  file: File,
+  kind: QuoteRequestDocumentRecord["kind"],
+): Promise<void> {
+  const userId = await currentUserId();
+  if (!QUOTE_FILE_TYPES.has(file.type)) {
+    throw new Error("Upload a JPG, PNG, WebP or PDF file.");
+  }
+  if (file.size <= 0 || file.size > MAX_QUOTE_FILE_BYTES) {
+    throw new Error("Files must be larger than 0 bytes and no more than 25 MB.");
+  }
+
+  const supabase = client();
+  const objectPath = `quote-requests/${requestId}/${userId}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+  const { error: uploadError } = await supabase.storage
+    .from("private-project-media")
+    .upload(objectPath, file, { cacheControl: "3600", contentType: file.type, upsert: false });
+  if (uploadError) throw new Error("The file could not be uploaded. Please try again.", { cause: uploadError });
+
+  const { error: rowError } = await supabase.from("quote_request_documents").insert({
+    quote_request_id: requestId,
+    uploaded_by: userId,
+    kind,
+    storage_path: objectPath,
+    file_name: file.name.slice(0, 255),
+    mime_type: file.type,
+    size_bytes: file.size,
+  });
+
+  if (rowError) {
+    await supabase.storage.from("private-project-media").remove([objectPath]);
+    throw new Error("The uploaded file could not be attached to the quote request.", { cause: rowError });
+  }
+}
+
+export async function deleteQuoteRequestDocument(document: QuoteRequestDocumentRecord): Promise<void> {
+  await currentUserId();
+  const supabase = client();
+  const { error: storageError } = await supabase.storage
+    .from("private-project-media")
+    .remove([document.storage_path]);
+  if (storageError) throw new Error("The file could not be removed. Please try again.", { cause: storageError });
+
+  const { error: rowError } = await supabase
+    .from("quote_request_documents")
+    .delete()
+    .eq("id", document.id);
+  if (rowError) throw new Error("The file record could not be removed. Please try again.", { cause: rowError });
 }
 
 export async function createOrGetDraftQuote(requestId: string): Promise<string> {
