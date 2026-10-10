@@ -18,6 +18,7 @@ import QuoteRoute from "./routes/QuoteRoute";
 import ConversationRoute from "./routes/ConversationRoute";
 import MessagesRoute from "./routes/MessagesRoute";
 import NotificationsRoute from "./routes/NotificationsRoute";
+import PaymentReturnRoute from "./routes/PaymentReturnRoute";
 import ModerationRoute from "./routes/ModerationRoute";
 import ProfileRoute from "./routes/ProfileRoute";
 import EditProfileRoute from "./routes/EditProfileRoute";
@@ -62,6 +63,7 @@ export default function SocialApp() {
           <Route path="create" element={<CreateRoute />} />
           <Route path="messages" element={<MessagesRoute />} />
           <Route path="notifications" element={<NotificationsRoute />} />
+          <Route path="payments/return" element={<PaymentReturnRoute />} />
           <Route path="messages/:conversationId" element={<ConversationRoute />} />
 
           <Route path="profile" element={<ProfileRoute />} />
