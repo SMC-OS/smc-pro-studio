@@ -38,6 +38,17 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      - name: Set up Deno for Edge Functions
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check Supabase Edge Functions
+        run: |
+          deno check supabase/functions/create-project-checkout/index.ts
+          deno check supabase/functions/create-project-invoice/index.ts
+          deno check supabase/functions/stripe-webhook/index.ts
+
       - name: Run tests
         run: bun run test
 
