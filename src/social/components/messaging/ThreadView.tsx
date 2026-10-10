@@ -17,6 +17,7 @@ import {
   type MessageRealtimeConnectionState,
 } from "../../services/messagingClient";
 import { emitConversationRead } from "../../services/readStateEvents";
+import { describeError } from "../../services/networkErrors";
 
 type ThreadState =
   | { status: "loading" }
@@ -150,7 +151,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
             setReadMarkStatus({
               kind: "failed",
               messageId: current.id,
-              message: error instanceof Error ? error.message : "Your read status could not be updated. Please try again.",
+              message: describeError(error, "Your read status could not be updated. Please try again.").message,
             });
           })
           .finally(() => {
@@ -228,7 +229,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
       })
       .catch((error: unknown) => {
         if (!mountedRef.current || initialLoadGenerationRef.current !== generation) return;
-        setState({ status: "error", message: error instanceof Error ? error.message : "Messages could not be loaded." });
+        setState({ status: "error", message: describeError(error, "Messages could not be loaded.").message });
       });
   }, [conversationId, attemptMarkRead]);
 
@@ -354,7 +355,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
       if (latest) attemptMarkRead(latest);
     } catch (error) {
       if (!mountedRef.current) return;
-      setPageActionError(error instanceof Error ? error.message : "Refresh failed. Please try again.");
+      setPageActionError(describeError(error, "Refresh failed. Please try again.").message);
     } finally {
       if (mountedRef.current) setRefreshing(false);
     }
@@ -371,7 +372,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
       setState((prev) => (prev.status === "ready" ? { status: "ready", messages: mergeMessages(prev.messages, page.messages), nextCursor: page.nextCursor } : prev));
     } catch (error) {
       if (!mountedRef.current) return;
-      setPageActionError(error instanceof Error ? error.message : "Older messages could not be loaded.");
+      setPageActionError(describeError(error, "Older messages could not be loaded.").message);
     } finally {
       if (mountedRef.current) setLoadingOlder(false);
     }
@@ -399,7 +400,7 @@ export function ThreadView({ conversationId, authUserId }: { conversationId: str
     } catch (error) {
       // Draft is deliberately left untouched on failure — see requirement.
       if (!mountedRef.current) return;
-      setSendError(error instanceof Error ? error.message : "This message could not be sent. Please try again.");
+      setSendError(describeError(error, "This message could not be sent. Please try again.").message);
     } finally {
       if (mountedRef.current) setSending(false);
     }

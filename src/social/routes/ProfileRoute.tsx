@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Globe, Layers, LogOut, MapPin, ShieldCheck, Users } from "lucide-react";
-import { Link } from "react-router-dom";
+import { BookOpen, Globe, Layers, LogOut, MapPin, Pencil, Settings, ShieldCheck, Users } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Avatar, Button, Card, EditorialHeading } from "../components/ui";
 import { signOut } from "../../services/authClient";
@@ -13,6 +13,7 @@ import {
 import { checkModeratorAccess } from "../services/moderationClient";
 import { checkCatalogueEditorAccess } from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -28,6 +29,8 @@ const VERIFICATION_LABELS: Record<OwnProfessionalProfile["verification_status"],
 
 export default function ProfileRoute() {
   const auth = useAuthSession();
+  const location = useLocation();
+  const justSaved = Boolean((location.state as { profileSaved?: boolean } | null)?.profileSaved);
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   // Phase 4 Slice J: the "Report review" discovery link. Deliberately
@@ -81,7 +84,7 @@ export default function ProfileRoute() {
     setState({ status: "loading" });
     Promise.all([fetchOwnProfile(), fetchOwnProfessionalProfile().catch(() => null)])
       .then(([profile, professional]) => setState({ status: "ready", profile, professional }))
-      .catch((error: unknown) => setState({ status: "error", message: error instanceof Error ? error.message : "Your profile could not be loaded." }));
+      .catch((error: unknown) => setState({ status: "error", message: describeError(error, "Your profile could not be loaded.").message }));
   }, [auth.status]);
 
   useEffect(() => {
@@ -90,7 +93,7 @@ export default function ProfileRoute() {
 
   if (auth.status === "loading") return <LoadingState label="Checking your account" />;
   if (auth.status === "guest") {
-    return <EmptyState title="Sign in to view your profile" description="Your posts, saved items, projects, and settings live here once you're signed in." />;
+    return <EmptyState title="Sign in to view your profile" description="Your profile, connections and settings live here once you're signed in." />;
   }
   if (state.status === "loading") return <LoadingState label="Loading your profile" />;
   if (state.status === "error") return <ErrorState message={state.message} onRetry={load} />;
@@ -101,6 +104,24 @@ export default function ProfileRoute() {
 
   return (
     <div className="flex flex-col gap-4">
+      {justSaved && (
+        <p role="status" className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border-strong)] bg-[var(--smc-surface-raised)] px-4 py-3 text-sm text-[var(--smc-charcoal)]">
+          Profile saved.
+        </p>
+      )}
+      {isProfessional && !profile.onboarding_completed && (
+        <Card className="flex flex-col gap-3 p-5">
+          <p className="text-sm text-[var(--smc-charcoal)]">
+            <span className="font-semibold">Complete your profile to appear in the Network.</span> Add your profession and the area you work in.
+          </p>
+          <Link
+            to="/profile/edit"
+            className="inline-flex min-h-[44px] items-center justify-center self-start rounded-[var(--smc-radius-pill)] bg-[var(--smc-mineral-bronze)] px-4 text-sm font-semibold text-[var(--smc-ivory)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)] focus-visible:ring-offset-2"
+          >
+            Complete profile
+          </Link>
+        </Card>
+      )}
       <Card className="p-6">
         <div className="flex items-start gap-4">
           <Avatar name={profile.display_name} size={64} />
@@ -121,6 +142,20 @@ export default function ProfileRoute() {
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            to="/profile/edit"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            Edit profile
+          </Link>
+          <Link
+            to="/settings"
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
+          >
+            <Settings className="h-4 w-4" aria-hidden="true" />
+            Settings
+          </Link>
           <Link
             to="/connections"
             className="inline-flex min-h-[44px] items-center gap-2 rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] outline-none hover:bg-[var(--smc-limestone)] focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]"
@@ -207,8 +242,6 @@ export default function ProfileRoute() {
           )}
         </Card>
       )}
-
-      <EmptyState title="No posts, saved items, or projects yet" description="These sections build out across the remaining Phase 3 slices." />
 
       <Button variant="secondary" onClick={() => void signOut()} className="self-start">
         <LogOut className="h-4 w-4" aria-hidden="true" />

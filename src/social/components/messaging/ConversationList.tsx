@@ -11,6 +11,7 @@ import {
 import { fetchPublicProfileById } from "../../services/socialClient";
 import { onConversationRead } from "../../services/readStateEvents";
 import { useAuthSession } from "../../services/useAuthSession";
+import { describeError } from "../../services/networkErrors";
 
 /** Shown instead of a raw UUID whenever the other member's profile can't be honestly resolved (private profile, deleted account, or a lookup failure). */
 const NEUTRAL_LABEL = "Conversation";
@@ -137,7 +138,7 @@ export function ConversationList({ activeConversationId }: { activeConversationI
       })
       .catch((error: unknown) => {
         if (generationRef.current !== generation) return;
-        setState({ status: "error", message: error instanceof Error ? error.message : "Your conversations could not be loaded." });
+        setState({ status: "error", message: describeError(error, "Your conversations could not be loaded.").message });
       });
   }, [authUserId]);
 

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Card, SectionHeading } from "../components/ui";
+import { MaterialImage } from "../components/MaterialImage";
 import { fetchMaterialBySlug, type Material, type MaterialCategory } from "../services/materialsClient";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -42,8 +44,9 @@ function NotFound() {
  * slug alike (RLS-collapsed, indistinguishable by design), so all three —
  * plus a missing/malformed slug param, handled below without ever querying
  * — render the identical NotFound state. No price, stock, discount, origin,
- * certification, standards, warranty, provenance, image, or storage content
- * exists on this screen.
+ * certification, standards, warranty, or provenance content exists on this
+ * screen. Slice C adds the material's single editorial image, when one has
+ * been uploaded — never a placeholder.
  */
 export default function MaterialDetailRoute() {
   const { slug } = useParams<{ slug: string }>();
@@ -58,7 +61,7 @@ export default function MaterialDetailRoute() {
     fetchMaterialBySlug(slug)
       .then((material) => setState({ status: "ready", material }))
       .catch((error: unknown) =>
-        setState({ status: "error", message: error instanceof Error ? error.message : "This material could not be loaded." })
+        setState({ status: "error", message: describeError(error, "This material could not be loaded.").message })
       );
   }, [slug]);
 
@@ -75,6 +78,7 @@ export default function MaterialDetailRoute() {
   return (
     <div className="flex flex-col gap-5">
       <SectionHeading eyebrow={CATEGORY_LABELS[material.category]} title={material.name} description={material.summary ?? undefined} />
+      <MaterialImage imagePath={material.image_path} name={material.name} variant="hero" />
       <Card className="flex flex-col gap-4 p-5">
         {material.description && (
           <p className="whitespace-pre-line text-sm text-[var(--smc-charcoal-soft)]">{material.description}</p>
@@ -97,6 +101,20 @@ export default function MaterialDetailRoute() {
           </div>
         )}
       </Card>
+      <div className="flex flex-wrap gap-3">
+        <Link
+          to={`/quotes/new?material=${material.id}`}
+          className="inline-flex min-h-[48px] items-center justify-center rounded-[var(--smc-radius-pill)] bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white"
+        >
+          Request a quote with this material
+        </Link>
+        <Link
+          to="/studio"
+          className="inline-flex min-h-[48px] items-center justify-center rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-5 text-sm font-semibold text-[var(--smc-charcoal)]"
+        >
+          Back to Studio
+        </Link>
+      </div>
     </div>
   );
 }

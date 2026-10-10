@@ -19,12 +19,13 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -42,3 +43,92 @@ jobs:
 
       - name: Build application
         run: bun run build
+
+      - name: Scan production bundle for fabricated content
+        run: node scripts/scan-bundle-for-fabricated-content.mjs
+
+      - name: Check production bundle excludes legacy code
+        run: node scripts/check-bundle-excludes-legacy.mjs
+
+      - name: Build server
+        run: bun run build:server
+
+  database:
+    name: Database (pgTAP) and real-backend integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Start local Supabase (pinned CLI)
+        run: npx --yes supabase@2.115.0 start -x studio,imgproxy,vector,logflare,edge-runtime,supavisor
+
+      - name: Run pgTAP suite
+        # Exit status is unchanged; on failure the failing lines are also raised as
+        # an annotation so they are readable from the PR checks and the REST API.
+        run: |
+          set -o pipefail
+          npx --yes supabase@2.115.0 test db 2>&1 | tee pgtap.log || {
+            status=$?
+            summary=$(grep -E "not ok|^# |Failed|ERROR|error:|Dubious|Parse errors|Result:" pgtap.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=pgTAP failures::${summary:-no failing lines matched; see the job log}"
+            exit $status
+          }
+
+      - name: Run real-backend integration tests
+        run: |
+          eval "$(npx --yes supabase@2.115.0 status -o env)"
+          export SMC_REAL_SUPABASE_URL="$API_URL"
+          export SMC_REAL_SUPABASE_ANON_KEY="$ANON_KEY"
+          export SMC_REAL_SUPABASE_SERVICE_KEY="$SERVICE_ROLE_KEY"
+          test -n "$SMC_REAL_SUPABASE_URL" && test -n "$SMC_REAL_SUPABASE_ANON_KEY" && test -n "$SMC_REAL_SUPABASE_SERVICE_KEY"
+          set -o pipefail
+          bun run test:integration 2>&1 | tee integration.log || {
+            status=$?
+            summary=$(grep -E "^✖|not ok|Error|ℹ (tests|pass|fail)" integration.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Integration failures::${summary:-see the job log}"
+            exit $status
+          }
+
+      - name: Supabase advisors (complete report)
+        if: always()
+        # Every finding at INFO and above, one line each, raised as a notice so
+        # the complete list is readable from the PR checks and the REST API.
+        run: |
+          npx --yes supabase@2.115.0 db advisors --local --type all --level info --output-format json > advisors.json 2> advisors.err || true
+          node scripts/ci/advisors-summary.mjs advisors.json > advisors.txt || cat advisors.err
+          cat advisors.txt
+          # Annotation messages are truncated at ~4 KB, so emit the TOTAL line
+          # first and split the findings across numbered notices.
+          { grep '^TOTAL' advisors.txt; grep -v '^TOTAL' advisors.txt; } > advisors.ordered.txt
+          node -e '
+            const lines = require("fs").readFileSync("advisors.ordered.txt", "utf8").trim().split("\n");
+            const parts = []; let cur = "";
+            for (const l of lines) { if (cur && (cur + l).length > 3800) { parts.push(cur); cur = ""; } cur += l + "\n"; }
+            if (cur) parts.push(cur);
+            const esc = (t) => t.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+            parts.forEach((t, i) => console.log(`::notice title=Supabase advisors (complete) ${i + 1}/${parts.length}::${esc(t)}`));
+          '
+
+      - name: Supabase advisors gate (fail on ERROR)
+        run: npx --yes supabase@2.115.0 db advisors --local --type all --level error --fail-on error
+
+      - name: Stop local Supabase
+        if: always()
+        run: npx --yes supabase@2.115.0 stop --no-backup

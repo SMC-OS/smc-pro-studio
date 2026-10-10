@@ -31,6 +31,7 @@ const VALID_ROW = {
   summary: "A fixture summary.",
   description: "A longer fixture description.",
   applications: ["Kitchen Worktops"],
+  image_path: null,
   status: "published",
 };
 
@@ -89,6 +90,7 @@ test("fetchPublishedMaterials: queries only status = published, ordered by name,
     summary: VALID_ROW.summary,
     description: VALID_ROW.description,
     applications: VALID_ROW.applications,
+    image_path: null,
   });
 });
 
@@ -204,6 +206,7 @@ test("fetchMaterialBySlug: returns the mapped material for a real published row"
     summary: VALID_ROW.summary,
     description: VALID_ROW.description,
     applications: VALID_ROW.applications,
+    image_path: null,
   });
 });
 
@@ -228,4 +231,38 @@ test("fetchMaterialBySlug: rejects a malformed row rather than returning it as-i
   const { client } = detailClient({ row: { ...VALID_ROW, category: "sandstone" } });
   currentClient = client;
   await assert.rejects(() => fetchMaterialBySlug("calacatta-quartz"), /This material could not be loaded/);
+});
+
+// ==========================================================================
+// Phase 5 Slice C: image_path validation on public reads
+// ==========================================================================
+
+test("fetchMaterialBySlug: maps a valid image_path inside the material's own folder", async () => {
+  const path = `materials/${VALID_ROW.id}/0f8b3c1e-1111-4222-8333-944455556666.jpg`;
+  const { client } = detailClient({ row: { ...VALID_ROW, image_path: path } });
+  currentClient = client;
+  const result = await fetchMaterialBySlug("calacatta-quartz");
+  assert.equal(result.image_path, path);
+});
+
+test("fetchPublishedMaterials: rejects a row whose image_path points into another material's folder", async () => {
+  const foreign = "materials/d0000000-0000-0000-0000-000000000999/photo.jpg";
+  const { client } = listClient({ rows: [{ ...VALID_ROW, image_path: foreign }] });
+  currentClient = client;
+  await assert.rejects(() => fetchPublishedMaterials(), /Materials could not be loaded/);
+});
+
+test("fetchPublishedMaterials: rejects a row whose image_path is a URL or traversal rather than a bucket key", async () => {
+  for (const bad of ["https://evil.example/x.jpg", `materials/${VALID_ROW.id}/../x.jpg`, `materials/${VALID_ROW.id}/x.gif`, 42]) {
+    const { client } = listClient({ rows: [{ ...VALID_ROW, image_path: bad }] });
+    currentClient = client;
+    await assert.rejects(() => fetchPublishedMaterials(), /Materials could not be loaded/, `rejects ${bad}`);
+  }
+});
+
+test("fetchPublishedMaterials: a row missing image_path entirely is a contract failure, not silently null", async () => {
+  const { image_path: _omit, ...withoutImage } = VALID_ROW;
+  const { client } = listClient({ rows: [withoutImage] });
+  currentClient = client;
+  await assert.rejects(() => fetchPublishedMaterials(), /Materials could not be loaded/);
 });

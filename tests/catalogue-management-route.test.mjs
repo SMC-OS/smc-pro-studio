@@ -44,9 +44,24 @@ mock.module(authUrl, {
   exports: { useAuthSession: () => authState },
 });
 
+const uploadCalls = [];
+const removeCalls = [];
+let uploadImpl = async (id) => ({ id, image_path: null });
+let removeImpl = async (id) => ({ id, image_path: null });
+
 mock.module(materialsClientUrl, {
   exports: {
     MATERIAL_CATEGORIES: ["quartz", "granite", "marble", "porcelain", "dekton"],
+    MATERIAL_IMAGE_TYPES: ["image/jpeg", "image/png", "image/webp"],
+    getMaterialImageUrl: (path) => (path ? `https://cdn.test/materials-media/${path}` : null),
+    uploadMaterialImage: async (...args) => {
+      uploadCalls.push(args);
+      return uploadImpl(...args);
+    },
+    removeMaterialImage: async (...args) => {
+      removeCalls.push(args);
+      return removeImpl(...args);
+    },
     checkCatalogueEditorAccess: async () => checkAccessImpl(),
     fetchMaterialsForEditor: async () => fetchListImpl(),
     createDraftMaterial: async (input) => {
@@ -112,6 +127,7 @@ const DRAFT_MATERIAL = {
   summary: "A fixture summary.",
   description: "A fixture description.",
   applications: ["Kitchen Worktops"],
+  image_path: null,
   status: "draft",
 };
 
@@ -124,6 +140,10 @@ test.beforeEach(() => {
   createCalls.length = 0;
   publishCalls.length = 0;
   archiveCalls.length = 0;
+  uploadCalls.length = 0;
+  removeCalls.length = 0;
+  uploadImpl = async (id) => ({ id, image_path: null });
+  removeImpl = async (id) => ({ id, image_path: null });
 });
 
 test("guest: no access check runs, and an accessible sign-in link is shown", async () => {
@@ -337,4 +357,78 @@ test("a published material offers no Edit control", async () => {
   await flush();
   const editButton = [...container.querySelectorAll("button")].find((b) => /^Edit$/.test(b.textContent.trim()));
   assert.equal(editButton, undefined, "a published material must not be directly editable via update_draft_material");
+});
+
+// ==========================================================================
+// Phase 5 Slice C: image management
+// ==========================================================================
+
+const IMAGE_PATH = `materials/${DRAFT_MATERIAL.id}/0f8b3c1e-1111-4222-8333-944455556666.jpg`;
+
+function chooseFile(input, file) {
+  Object.defineProperty(input, "files", { value: [file], configurable: true });
+  input.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+}
+
+test("image: a draft without an image offers Add image (JPEG/PNG/WebP only) and no Remove control", async () => {
+  fetchListImpl = async () => [DRAFT_MATERIAL];
+  const container = await mount();
+  await flush();
+  assert.match(container.textContent, /Add image/);
+  assert.doesNotMatch(container.textContent, /Remove image/);
+  const input = container.querySelector('input[type="file"]');
+  assert.equal(input.getAttribute("accept"), "image/jpeg,image/png,image/webp");
+  assert.match(input.getAttribute("aria-label"), /Calacatta Quartz.*8MB/);
+});
+
+test("image: choosing a file uploads it for that material, passing the current image for cleanup, then refreshes", async () => {
+  let listCall = 0;
+  fetchListImpl = async () => {
+    listCall += 1;
+    return listCall === 1 ? [{ ...DRAFT_MATERIAL, image_path: IMAGE_PATH }] : [{ ...DRAFT_MATERIAL, image_path: IMAGE_PATH.replace("944455556666", "944455550000") }];
+  };
+  const container = await mount();
+  await flush();
+  assert.match(container.textContent, /Replace image/);
+  const file = new dom.window.File([new Uint8Array(4)], "slab.jpg", { type: "image/jpeg" });
+  await React.act(async () => chooseFile(container.querySelector('input[type="file"]'), file));
+  await flush();
+  assert.equal(uploadCalls.length, 1);
+  assert.equal(uploadCalls[0][0], DRAFT_MATERIAL.id);
+  assert.equal(uploadCalls[0][1], file);
+  assert.equal(uploadCalls[0][2], IMAGE_PATH);
+  assert.equal(listCall, 2, "the list reloads after a successful upload");
+});
+
+test("image: an upload failure shows the safe message and keeps the current image", async () => {
+  fetchListImpl = async () => [{ ...DRAFT_MATERIAL, image_path: IMAGE_PATH }];
+  uploadImpl = async () => {
+    throw new Error("This image could not be uploaded. Please try again.");
+  };
+  const container = await mount();
+  await flush();
+  const file = new dom.window.File([new Uint8Array(4)], "slab.jpg", { type: "image/jpeg" });
+  await React.act(async () => chooseFile(container.querySelector('input[type="file"]'), file));
+  await flush();
+  assert.match(container.textContent, /This image could not be uploaded\. Please try again\./);
+  assert.ok(container.querySelector(`img[src="https://cdn.test/materials-media/${IMAGE_PATH}"]`));
+});
+
+test("image: Remove image clears it via removeMaterialImage with the current path", async () => {
+  fetchListImpl = async () => [{ ...PUBLISHED_MATERIAL, image_path: IMAGE_PATH.replace(DRAFT_MATERIAL.id, PUBLISHED_MATERIAL.id) }];
+  const container = await mount();
+  await flush();
+  const button = [...container.querySelectorAll("button")].find((b) => b.textContent.trim() === "Remove image");
+  assert.ok(button, "a published material with an image can have it removed");
+  await React.act(async () => button.click());
+  await flush();
+  assert.deepEqual(removeCalls, [[PUBLISHED_MATERIAL.id, IMAGE_PATH.replace(DRAFT_MATERIAL.id, PUBLISHED_MATERIAL.id)]]);
+});
+
+test("image: an archived material offers no image controls", async () => {
+  fetchListImpl = async () => [{ ...DRAFT_MATERIAL, status: "archived", image_path: IMAGE_PATH }];
+  const container = await mount();
+  await flush();
+  assert.equal(container.querySelectorAll('input[type="file"]').length, 0);
+  assert.doesNotMatch(container.textContent, /Add image|Replace image|Remove image/);
 });

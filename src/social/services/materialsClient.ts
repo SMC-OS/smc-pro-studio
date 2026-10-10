@@ -16,8 +16,10 @@ function isMaterialCategory(value: unknown): value is MaterialCategory {
 
 /**
  * Deliberately narrow: no price, stock, discount, origin, certification,
- * standards, warranty, provenance, or image/storage field exists on the
- * underlying table, so none is exposed here either.
+ * standards, warranty, or provenance field exists on the underlying table,
+ * so none is exposed here either. `image_path` (Phase 5 Slice C) is the one
+ * editorial image — an object key in the public materials-media bucket,
+ * never a URL; resolve it with getMaterialImageUrl().
  */
 export interface Material {
   id: string;
@@ -27,6 +29,21 @@ export interface Material {
   summary: string | null;
   description: string | null;
   applications: string[];
+  image_path: string | null;
+}
+
+/** Mirrors the materials.image_path CHECK constraint (Slice C migration). */
+const MATERIAL_IMAGE_PATH_PATTERN =
+  /^materials\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[A-Za-z0-9][A-Za-z0-9._-]*\.(jpg|jpeg|png|webp)$/;
+
+/**
+ * A row's image_path is trusted only if it is null or a well-formed key
+ * inside that same material's own folder — the same rule the database's
+ * CHECK constraint enforces, re-checked here rather than assumed.
+ */
+function isValidImagePathFor(materialId: string, value: unknown): value is string | null {
+  if (value === null) return true;
+  return typeof value === "string" && MATERIAL_IMAGE_PATH_PATTERN.test(value) && value.startsWith(`materials/${materialId}/`);
 }
 
 const SAFE_LIST_ERROR = "Materials could not be loaded. Please try again.";
@@ -37,7 +54,7 @@ const SAFE_DETAIL_ERROR = "This material could not be loaded. Please try again."
 // can influence.
 const MATERIALS_LIST_LIMIT = 100;
 
-const MATERIALS_SELECT = "id, slug, name, category, summary, description, applications, status";
+const MATERIALS_SELECT = "id, slug, name, category, summary, description, applications, image_path, status";
 
 /**
  * Validates every field by shape before trusting it, the same "never trust
@@ -60,6 +77,7 @@ function parseMaterial(raw: unknown, safeMessage: string): Material {
   if (!Array.isArray(record.applications) || !record.applications.every((item) => typeof item === "string")) {
     throw new Error(safeMessage);
   }
+  if (!isValidImagePathFor(record.id, record.image_path)) throw new Error(safeMessage);
   if (record.status !== "published") throw new Error(safeMessage);
 
   return {
@@ -70,6 +88,7 @@ function parseMaterial(raw: unknown, safeMessage: string): Material {
     summary: record.summary as string | null,
     description: record.description as string | null,
     applications: record.applications as string[],
+    image_path: record.image_path as string | null,
   };
 }
 
@@ -151,7 +170,10 @@ export type MaterialsOperation =
   | "create_draft"
   | "update_draft"
   | "publish"
-  | "archive";
+  | "archive"
+  | "upload_image"
+  | "set_image"
+  | "clear_image";
 
 /**
  * Every catalogue-write failure — access denied, a revoked role, a failed
@@ -298,6 +320,23 @@ function prepareMaterialInput(input: MaterialDraftInput): PreparedMaterialInput 
  * discipline parseMaterial and moderationClient.ts's parseQueueItem already
  * establish.
  */
+/**
+ * The Slice B mutation RPCs (create/update/publish/archive) return a fixed
+ * column list that predates Slice C and carries no image_path — none of them
+ * can change the image. Their results are therefore typed without it
+ * (EditorMaterialSummary) rather than inventing a value.
+ */
+export type EditorMaterialSummary = Omit<EditorMaterial, "image_path">;
+
+function parseEditorMaterialSummary(raw: unknown, operation: MaterialsOperation, safeMessage: string): EditorMaterialSummary {
+  const { image_path: _ignored, ...rest } = parseEditorMaterial(
+    raw && typeof raw === "object" ? { ...(raw as Record<string, unknown>), image_path: null } : raw,
+    operation,
+    safeMessage,
+  );
+  return rest;
+}
+
 function parseEditorMaterial(raw: unknown, operation: MaterialsOperation, safeMessage: string): EditorMaterial {
   if (!raw || typeof raw !== "object") throw new MaterialsOperationError(operation, safeMessage);
   const record = raw as Record<string, unknown>;
@@ -311,6 +350,7 @@ function parseEditorMaterial(raw: unknown, operation: MaterialsOperation, safeMe
   if (!Array.isArray(record.applications) || !record.applications.every((item) => typeof item === "string")) {
     throw new MaterialsOperationError(operation, safeMessage);
   }
+  if (!isValidImagePathFor(record.id, record.image_path)) throw new MaterialsOperationError(operation, safeMessage);
   if (!isMaterialStatus(record.status)) throw new MaterialsOperationError(operation, safeMessage);
 
   return {
@@ -321,6 +361,7 @@ function parseEditorMaterial(raw: unknown, operation: MaterialsOperation, safeMe
     summary: record.summary as string | null,
     description: record.description as string | null,
     applications: record.applications as string[],
+    image_path: record.image_path as string | null,
     status: record.status,
   };
 }
@@ -349,7 +390,7 @@ export async function checkCatalogueEditorAccess(): Promise<boolean> {
 }
 
 const SAFE_EDITOR_LIST_ERROR = "The catalogue could not be loaded. Please try again.";
-const EDITOR_SELECT = "id, slug, name, category, summary, description, applications, status";
+const EDITOR_SELECT = "id, slug, name, category, summary, description, applications, image_path, status";
 
 /**
  * Every status, not just published — relies entirely on materials_editor_
@@ -399,7 +440,12 @@ export async function createDraftMaterial(input: MaterialDraftInput): Promise<Ed
   if (!Array.isArray(data) || data.length !== 1) {
     throw new MaterialsOperationError("create_draft", SAFE_CREATE_ERROR);
   }
-  return parseEditorMaterial(data[0], "create_draft", SAFE_CREATE_ERROR);
+  // A freshly created draft genuinely has no image yet (image_path defaults to null).
+  return parseEditorMaterial(
+    data[0] && typeof data[0] === "object" ? { ...(data[0] as Record<string, unknown>), image_path: null } : data[0],
+    "create_draft",
+    SAFE_CREATE_ERROR,
+  );
 }
 
 const SAFE_UPDATE_ERROR = "This material could not be saved. Please try again.";
@@ -410,7 +456,7 @@ const SAFE_UPDATE_ERROR = "This material could not be saved. Please try again.";
  * matching the RPC's own contract; every editorial field is re-sent each
  * call. Only ever succeeds while the material is still a draft.
  */
-export async function updateDraftMaterial(id: string, input: MaterialDraftInput): Promise<EditorMaterial> {
+export async function updateDraftMaterial(id: string, input: MaterialDraftInput): Promise<EditorMaterialSummary> {
   const { client } = await requireAuthenticatedClient("Sign in to manage the catalogue.");
   requireUuid(id, "The material ID");
   const prepared = prepareMaterialInput(input);
@@ -430,13 +476,13 @@ export async function updateDraftMaterial(id: string, input: MaterialDraftInput)
   if (!Array.isArray(data) || data.length !== 1) {
     throw new MaterialsOperationError("update_draft", SAFE_UPDATE_ERROR);
   }
-  return parseEditorMaterial(data[0], "update_draft", SAFE_UPDATE_ERROR);
+  return parseEditorMaterialSummary(data[0], "update_draft", SAFE_UPDATE_ERROR);
 }
 
 const SAFE_PUBLISH_ERROR = "This material could not be published. Please try again.";
 
 /** Calls public.publish_material(p_id). Requires a draft with a non-empty summary — the database is authoritative for this rule. */
-export async function publishMaterial(id: string): Promise<EditorMaterial> {
+export async function publishMaterial(id: string): Promise<EditorMaterialSummary> {
   const { client } = await requireAuthenticatedClient("Sign in to manage the catalogue.");
   requireUuid(id, "The material ID");
 
@@ -447,13 +493,13 @@ export async function publishMaterial(id: string): Promise<EditorMaterial> {
   if (!Array.isArray(data) || data.length !== 1) {
     throw new MaterialsOperationError("publish", SAFE_PUBLISH_ERROR);
   }
-  return parseEditorMaterial(data[0], "publish", SAFE_PUBLISH_ERROR);
+  return parseEditorMaterialSummary(data[0], "publish", SAFE_PUBLISH_ERROR);
 }
 
 const SAFE_ARCHIVE_ERROR = "This material could not be archived. Please try again.";
 
 /** Calls public.archive_material(p_id). Works from either draft or published; archived is terminal this slice. */
-export async function archiveMaterial(id: string): Promise<EditorMaterial> {
+export async function archiveMaterial(id: string): Promise<EditorMaterialSummary> {
   const { client } = await requireAuthenticatedClient("Sign in to manage the catalogue.");
   requireUuid(id, "The material ID");
 
@@ -464,5 +510,131 @@ export async function archiveMaterial(id: string): Promise<EditorMaterial> {
   if (!Array.isArray(data) || data.length !== 1) {
     throw new MaterialsOperationError("archive", SAFE_ARCHIVE_ERROR);
   }
-  return parseEditorMaterial(data[0], "archive", SAFE_ARCHIVE_ERROR);
+  return parseEditorMaterialSummary(data[0], "archive", SAFE_ARCHIVE_ERROR);
+}
+
+// ==========================================================================
+// Phase 5 Slice C: one editorial image per material.
+//
+// Upload order is deliberate: (1) the file is uploaded to a fresh,
+// never-reused key under materials/<id>/ (upsert: false, so nothing is ever
+// overwritten in place); (2) set_material_image verifies the object really
+// exists and points the row at it; (3) only then is the previous object
+// removed. A failure at (1) or (2) leaves the material exactly as it was.
+// A failure at (3) leaves an orphaned file but a correct row — the cleanup
+// is best-effort and never fails the operation. Removal follows the same
+// rule: the row is cleared first, the object deleted second.
+//
+// Storage writes are gated by the role-checked materials-media policies, and
+// both RPCs independently re-verify an active catalogue editor.
+// ==========================================================================
+
+export const MATERIAL_IMAGES_BUCKET = "materials-media";
+export const MATERIAL_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+export const MATERIAL_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+const IMAGE_EXTENSION: Record<(typeof MATERIAL_IMAGE_TYPES)[number], string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+export interface MaterialImageResult {
+  id: string;
+  image_path: string | null;
+}
+
+const SAFE_UPLOAD_IMAGE_ERROR = "This image could not be uploaded. Please try again.";
+const SAFE_SET_IMAGE_ERROR = "This image could not be saved. Please try again.";
+const SAFE_CLEAR_IMAGE_ERROR = "This image could not be removed. Please try again.";
+
+/**
+ * Guest-safe: resolves a stored object key to the bucket's public URL. Returns
+ * null for no image, an unconfigured client, or a key that is not a valid
+ * materials-media path — never a guessed or placeholder URL.
+ */
+export function getMaterialImageUrl(imagePath: string | null): string | null {
+  if (imagePath === null || !isSupabaseConfigured) return null;
+  if (!MATERIAL_IMAGE_PATH_PATTERN.test(imagePath)) return null;
+  const { data } = getSupabaseClient().storage.from(MATERIAL_IMAGES_BUCKET).getPublicUrl(imagePath);
+  return data?.publicUrl ?? null;
+}
+
+function parseImageResult(data: unknown, materialId: string, operation: MaterialsOperation, safeMessage: string): MaterialImageResult {
+  if (!Array.isArray(data) || data.length !== 1) throw new MaterialsOperationError(operation, safeMessage);
+  const row = data[0] as Record<string, unknown> | null;
+  if (!row || typeof row !== "object" || row.id !== materialId) throw new MaterialsOperationError(operation, safeMessage);
+  if (row.image_path !== null && typeof row.image_path !== "string") throw new MaterialsOperationError(operation, safeMessage);
+  return { id: row.id as string, image_path: row.image_path as string | null };
+}
+
+/** Deletes an object only if it is a well-formed key inside this material's own folder; never throws. */
+async function removeImageObjectQuietly(
+  client: ReturnType<typeof getSupabaseClient>,
+  materialId: string,
+  imagePath: string | null | undefined,
+): Promise<void> {
+  if (!imagePath || !MATERIAL_IMAGE_PATH_PATTERN.test(imagePath) || !imagePath.startsWith(`materials/${materialId}/`)) return;
+  try {
+    await client.storage.from(MATERIAL_IMAGES_BUCKET).remove([imagePath]);
+  } catch {
+    // Best-effort: the database row is already correct; an orphaned object is harmless.
+  }
+}
+
+/**
+ * Uploads a JPEG/PNG/WebP (≤8MB) and makes it the material's image. Pass the
+ * material's current image_path as `previousImagePath` to have the old object
+ * removed once the row is confirmed updated.
+ */
+export async function uploadMaterialImage(
+  materialId: string,
+  file: File,
+  previousImagePath?: string | null,
+): Promise<MaterialImageResult> {
+  const { client } = await requireAuthenticatedClient("Sign in to manage the catalogue.");
+  requireUuid(materialId, "The material ID");
+  if (!(MATERIAL_IMAGE_TYPES as readonly string[]).includes(file.type)) {
+    throw new Error("Choose a JPEG, PNG, or WebP image.");
+  }
+  if (file.size > MATERIAL_IMAGE_MAX_BYTES) {
+    throw new Error("Images must be 8MB or smaller.");
+  }
+  if (file.size === 0) {
+    throw new Error("This image file is empty.");
+  }
+
+  const extension = IMAGE_EXTENSION[file.type as (typeof MATERIAL_IMAGE_TYPES)[number]];
+  const path = `materials/${materialId}/${crypto.randomUUID()}.${extension}`;
+
+  const { error: uploadError } = await client.storage
+    .from(MATERIAL_IMAGES_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false, cacheControl: "31536000" });
+  if (uploadError) {
+    throw new MaterialsOperationError("upload_image", SAFE_UPLOAD_IMAGE_ERROR, { cause: uploadError });
+  }
+
+  const { data, error } = await client.rpc("set_material_image", { p_id: materialId, p_image_path: path });
+  if (error) {
+    throw new MaterialsOperationError("set_image", SAFE_SET_IMAGE_ERROR, { cause: error });
+  }
+  const result = parseImageResult(data, materialId, "set_image", SAFE_SET_IMAGE_ERROR);
+
+  if (previousImagePath && previousImagePath !== result.image_path) {
+    await removeImageObjectQuietly(client, materialId, previousImagePath);
+  }
+  return result;
+}
+
+/** Clears the material's image, then deletes the stored object (best-effort). */
+export async function removeMaterialImage(materialId: string, currentImagePath: string | null): Promise<MaterialImageResult> {
+  const { client } = await requireAuthenticatedClient("Sign in to manage the catalogue.");
+  requireUuid(materialId, "The material ID");
+
+  const { data, error } = await client.rpc("clear_material_image", { p_id: materialId });
+  if (error) {
+    throw new MaterialsOperationError("clear_image", SAFE_CLEAR_IMAGE_ERROR, { cause: error });
+  }
+  const result = parseImageResult(data, materialId, "clear_image", SAFE_CLEAR_IMAGE_ERROR);
+  await removeImageObjectQuietly(client, materialId, currentImagePath);
+  return result;
 }
