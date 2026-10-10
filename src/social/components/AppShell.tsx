@@ -1,4 +1,4 @@
-import { MessageCircle } from "lucide-react";
+import { Bell, MessageCircle } from "lucide-react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import BottomNav from "./BottomNav";
 import NavRail from "./NavRail";
@@ -19,13 +19,22 @@ export default function AppShell() {
           </Link>
           <div className="flex items-center gap-2">
             {auth.status === "authenticated" && (
-              <Link
-                to="/messages"
-                aria-label="Messages"
-                className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-limestone)]"
-              >
-                <MessageCircle className="h-5 w-5" aria-hidden="true" />
-              </Link>
+              <>
+                <Link
+                  to="/notifications"
+                  aria-label="Notifications"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-limestone)]"
+                >
+                  <Bell className="h-5 w-5" aria-hidden="true" />
+                </Link>
+                <Link
+                  to="/messages"
+                  aria-label="Messages"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-[var(--smc-charcoal-soft)] hover:bg-[var(--smc-limestone)]"
+                >
+                  <MessageCircle className="h-5 w-5" aria-hidden="true" />
+                </Link>
+              </>
             )}
             {auth.status === "guest" && (
               <NavLink to="/auth" className="rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-3 py-2 text-xs font-semibold text-[var(--smc-charcoal)] hover:bg-[var(--smc-limestone)]">
