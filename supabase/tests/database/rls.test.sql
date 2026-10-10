@@ -28,13 +28,21 @@ select policies_are('storage', 'objects', array[
   'storage_public_media_owner_update',
   -- Phase 5 Slice C: role-gated (catalogue editor) write policies on materials-media.
   'storage_materials_media_editor_delete', 'storage_materials_media_editor_insert',
-  'storage_materials_media_editor_update', 'storage_materials_media_editor_read'
-], 'storage exposes only owner-scoped Phase 2 policies plus Slice C catalogue-editor media policies');
+  'storage_materials_media_editor_update', 'storage_materials_media_editor_read',
+  -- Launch: private project files are visible/writeable only through project membership.
+  'storage_private_project_member_delete', 'storage_private_project_member_insert',
+  'storage_private_project_member_read', 'storage_private_project_member_update'
+], 'storage exposes only reviewed owner, catalogue and project-member policies');
 
 select results_eq(
-  $$select count(*)::bigint from pg_policies where schemaname = 'storage' and tablename = 'objects' and coalesce(qual, '') like '%private-project-media%'$$,
-  array[0::bigint],
-  'private project media has no read policy before project membership exists'
+  $select count(*)::bigint
+      from pg_policies
+     where schemaname = 'storage'
+       and tablename = 'objects'
+       and policyname = 'storage_private_project_member_read'
+       and coalesce(qual, '') like '%is_project_member_path%'$,
+  array[1::bigint],
+  'private project media read policy is explicitly project-member scoped'
 );
 
 select has_table('public', 'profiles', 'profiles exists');
