@@ -599,6 +599,28 @@ test("project payment requests are server-bounded by approved value and customer
   assert.equal(notices.filter((row) => row.user_id === customer.id).length, 3);
 });
 
+test("a scope reduction cannot undercut already committed project payments", { skip }, async () => {
+  const reductionId = await as(professional, () =>
+    launch.createDraftVariation(projectId, {
+      title: "Remove optional shelf",
+      description: "Reduce the approved scope after payment requests already cover the project value.",
+      amountDelta: -50,
+      daysDelta: 0,
+    }),
+  );
+  await as(professional, () => launch.sendVariation(reductionId));
+
+  await assert.rejects(
+    () => as(customer, () => launch.decideVariation(reductionId, true, "Approve reduction")),
+    /variation could not be approved/i,
+  );
+
+  await as(customer, () => launch.decideVariation(reductionId, false, "Keep the current approved scope."));
+  const project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const reduction = project.variations.find((row) => row.id === reductionId);
+  assert.equal(reduction.status, "rejected");
+});
+
 test("payment refund and dispute ledgers are not client-writable", { skip }, async () => {
   const project = await as(customer, () => launch.fetchLaunchProject(projectId));
   const payment = project.payments[0];
