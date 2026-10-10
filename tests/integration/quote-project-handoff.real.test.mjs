@@ -26,6 +26,7 @@ mock.module(new URL("../../src/services/supabaseClient.ts", import.meta.url).hre
 });
 
 const quote = await import(new URL("../../src/social/services/quoteClient.ts", import.meta.url).href);
+const launch = await import(new URL("../../src/social/services/launchClient.ts", import.meta.url).href);
 const { saveOwnProfile } = await import(new URL("../../src/social/services/profileClient.ts", import.meta.url).href);
 
 const T = `qh${Date.now().toString(36)}`;
@@ -277,6 +278,63 @@ test("customer approval creates the project, both memberships and launch milesto
   const { data: accepted, error: acceptedError } = await service.from("quotes").select("status").eq("id", quoteId).single();
   assert.ifError(acceptedError);
   assert.equal(accepted.status, "accepted");
+});
+
+test("project members can share private files while unrelated users cannot read them", { skip }, async () => {
+  const installPlan = new File(["installation-plan"], `${T}-install.pdf`, { type: "application/pdf" });
+  await as(customer, () => launch.uploadProjectDocument(projectId, installPlan, "plan"));
+
+  const customerProject = await as(customer, () => launch.fetchLaunchProject(projectId));
+  assert.equal(customerProject.documents.length, 1);
+  assert.equal(customerProject.documents[0].file_name, `${T}-install.pdf`);
+  assert.ok(customerProject.documents[0].signed_url, "customer receives a signed private document URL");
+
+  const professionalProject = await as(professional, () => launch.fetchLaunchProject(projectId));
+  assert.equal(professionalProject.documents.length, 1);
+  assert.equal(professionalProject.documents[0].id, customerProject.documents[0].id);
+  assert.ok(professionalProject.documents[0].signed_url, "professional receives a signed private document URL");
+
+  const unrelatedProject = await as(otherCustomer, () => launch.fetchLaunchProject(projectId));
+  assert.equal(unrelatedProject, null);
+});
+
+test("customer measurements remain approximate and cannot be promoted to professional/survey-grade", { skip }, async () => {
+  await as(customer, () =>
+    launch.addApproximateProjectMeasurement(projectId, {
+      label: "Island",
+      details: "Approx. 1800 × 900 mm",
+    }),
+  );
+
+  const project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  assert.equal(project.measurements.length, 1);
+  assert.equal(project.measurements[0].source, "manual");
+  assert.equal(project.measurements[0].is_survey_grade, false);
+  assert.equal(project.measurements[0].data.details, "Approx. 1800 × 900 mm");
+
+  const { error: spoofError } = await customer.client.from("project_measurements").insert({
+    project_id: projectId,
+    created_by: customer.id,
+    source: "professional",
+    label: "Spoofed template",
+    data: { details: "Should be rejected" },
+    is_survey_grade: true,
+  });
+  assert.ok(spoofError, "customer cannot create professional/survey-grade measurements");
+
+  const { error: professionalError } = await professional.client.from("project_measurements").insert({
+    project_id: projectId,
+    created_by: professional.id,
+    source: "professional",
+    label: "Professional template",
+    data: { details: "Final dimensions recorded by project professional" },
+    is_survey_grade: true,
+  });
+  assert.ifError(professionalError);
+
+  const refreshed = await as(customer, () => launch.fetchLaunchProject(projectId));
+  assert.equal(refreshed.measurements.length, 2);
+  assert.equal(refreshed.measurements.some((row) => row.is_survey_grade && row.source === "professional"), true);
 });
 
 test("unrelated authenticated users cannot read the created project", { skip }, async () => {
