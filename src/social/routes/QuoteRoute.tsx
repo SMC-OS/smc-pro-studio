@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Plus, Send, Trash2 } from "lucide-react";
+import { Check, Plus, Send, Trash2, X } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Card, SectionHeading } from "../components/ui";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
@@ -8,6 +8,8 @@ import {
   addQuoteItem,
   deleteQuoteItem,
   fetchQuote,
+  markQuoteViewed,
+  rejectQuote,
   sendQuote,
   updateDraftQuote,
   type QuoteItemRecord,
@@ -45,23 +47,31 @@ export default function QuoteRoute() {
   const [terms, setTerms] = useState("");
   const [validUntil, setValidUntil] = useState("");
   const [item, setItem] = useState({ description: "", quantity: "1", unit: "item", unitPrice: "", vat: "20" });
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
 
   const load = useCallback(() => {
     if (auth.status !== "authenticated" || !quoteId) return;
+    const userId = auth.session.subject;
     setState("loading");
     fetchQuote(quoteId)
-      .then((row) => {
+      .then(async (row) => {
+        if (row && row.customer_id === userId && row.status === "sent") {
+          await markQuoteViewed(row.id);
+          row = await fetchQuote(quoteId);
+        }
         setQuote(row);
         setScopeSummary(row?.scope_summary ?? "");
         setTerms(row?.terms ?? "");
         setValidUntil(row?.valid_until ?? "");
+        setDeclineReason(row?.rejection_reason ?? "");
         setState("ready");
       })
       .catch((error: unknown) => {
         setMessage(describeError(error, "The quote could not be loaded.").message);
         setState("error");
       });
-  }, [auth.status, quoteId]);
+  }, [auth.status, auth.status === "authenticated" ? auth.session.subject : null, quoteId]);
 
   useEffect(() => {
     if (auth.status === "authenticated") load();
@@ -140,6 +150,19 @@ export default function QuoteRoute() {
       navigate(`/projects/${projectId}`);
     } catch (error: unknown) {
       setMessage(describeError(error, "The quote could not be approved.").message);
+      setState("error");
+    }
+  }
+
+  async function decline() {
+    if (!quote) return;
+    try {
+      setState("saving");
+      await rejectQuote(quote.id, declineReason);
+      setDeclineOpen(false);
+      await load();
+    } catch (error: unknown) {
+      setMessage(describeError(error, "The quote could not be declined.").message);
       setState("error");
     }
   }
@@ -260,12 +283,92 @@ export default function QuoteRoute() {
       )}
 
       {isCustomer && (quote.status === "sent" || quote.status === "viewed") && (
-        <button type="button" onClick={approve} disabled={state === "saving"} className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-6 text-sm font-semibold text-white disabled:opacity-50">
-          <Check className="h-4 w-4" /> {state === "saving" ? "Approving…" : "Approve quote & create project"}
-        </button>
+        <Card className="grid gap-4 p-5">
+          <div>
+            <h2 className="font-semibold">Your decision</h2>
+            <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">
+              Approving creates the live project and its first delivery milestones. Declining closes this quote without creating a project.
+            </p>
+          </div>
+
+          {!declineOpen ? (
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={approve}
+                disabled={state === "saving"}
+                className="inline-flex min-h-[54px] flex-1 items-center justify-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-6 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" /> {state === "saving" ? "Approving…" : "Approve quote & create project"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeclineOpen(true)}
+                disabled={state === "saving"}
+                className="inline-flex min-h-[54px] items-center justify-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-6 text-sm font-semibold text-[var(--smc-charcoal)] disabled:opacity-50"
+              >
+                <X className="h-4 w-4" /> Decline quote
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-3 rounded-[var(--smc-radius-card)] bg-[var(--smc-surface-sunken)] p-4">
+              <label className="grid gap-2 text-sm font-medium">
+                Why are you declining? <span className="font-normal text-[var(--smc-charcoal-faint)]">(optional)</span>
+                <textarea
+                  value={declineReason}
+                  onChange={(event) => setDeclineReason(event.target.value)}
+                  maxLength={2000}
+                  rows={4}
+                  placeholder="Share anything the professional should know before you discuss the next step."
+                  className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6"
+                />
+              </label>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={decline}
+                  disabled={state === "saving"}
+                  className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {state === "saving" ? "Declining…" : "Confirm decline"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeclineOpen(false)}
+                  disabled={state === "saving"}
+                  className="inline-flex min-h-[48px] items-center justify-center rounded-full border border-[var(--smc-border-strong)] px-5 text-sm font-semibold disabled:opacity-50"
+                >
+                  Keep quote
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
       )}
 
-      {quote.status === "accepted" && <Card className="p-5"><p className="font-semibold">Quote approved</p><p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">This work is now managed as a project.</p><Link to="/projects" className="mt-4 inline-flex text-sm font-semibold text-[var(--smc-mineral-bronze)]">Open Projects</Link></Card>}
+      {quote.status === "accepted" && (
+        <Card className="p-5">
+          <p className="font-semibold">Quote approved</p>
+          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">This work is now managed as a project.</p>
+          <Link to="/projects" className="mt-4 inline-flex text-sm font-semibold text-[var(--smc-mineral-bronze)]">Open Projects</Link>
+        </Card>
+      )}
+
+      {quote.status === "rejected" && (
+        <Card className="p-5">
+          <p className="font-semibold">Quote declined</p>
+          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">
+            No project was created from this quote. You can continue the conversation with the professional if the scope or price needs to change.
+          </p>
+          {quote.rejection_reason && (
+            <div className="mt-4 rounded-[var(--smc-radius-card)] bg-[var(--smc-surface-sunken)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--smc-charcoal-faint)]">Customer feedback</p>
+              <p className="mt-2 whitespace-pre-line text-sm text-[var(--smc-charcoal-soft)]">{quote.rejection_reason}</p>
+            </div>
+          )}
+          <Link to="/messages" className="mt-4 inline-flex text-sm font-semibold text-[var(--smc-mineral-bronze)]">Message professional</Link>
+        </Card>
+      )}
     </div>
   );
 }
