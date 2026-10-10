@@ -304,3 +304,16 @@ export async function acceptQuote(quoteId: string): Promise<string> {
   if (error || !data) throw new Error("The quote could not be approved. Please try again.", { cause: error ?? undefined });
   return String(data);
 }
+
+
+export async function fetchQuoteForRequest(requestId: string): Promise<QuoteRecord | null> {
+  await currentUserId();
+  const { data, error } = await client()
+    .from("quotes")
+    .select("id")
+    .eq("quote_request_id", requestId)
+    .maybeSingle();
+  if (error) throw new Error("The quote could not be loaded. Please try again.", { cause: error });
+  if (!data) return null;
+  return fetchQuote((data as { id: string }).id);
+}
