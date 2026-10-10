@@ -47,6 +47,9 @@ export default function QuoteRequestRoute() {
   const [projectType, setProjectType] = useState<(typeof PROJECT_TYPES)[number]>("Kitchen worktops");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [approximateMeasurements, setApproximateMeasurements] = useState("");
+  const [preferredTiming, setPreferredTiming] = useState("");
+  const [requirements, setRequirements] = useState<string[]>([]);
   const [showPropertyForm, setShowPropertyForm] = useState(false);
   const [newProperty, setNewProperty] = useState<CreatePropertyInput>(EMPTY_PROPERTY);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "saving" | "error">("idle");
@@ -108,6 +111,11 @@ export default function QuoteRequestRoute() {
         projectType,
         title,
         description,
+        selections: {
+          approximateMeasurements: approximateMeasurements.trim() || null,
+          preferredTiming: preferredTiming.trim() || null,
+          requirements: projectType === "Kitchen worktops" ? requirements : [],
+        },
       });
       navigate(`/quote-requests/${requestId}`);
     } catch (error: unknown) {
@@ -212,7 +220,78 @@ export default function QuoteRequestRoute() {
           <h2 className="text-base font-semibold">3. Project brief</h2>
           <label className="grid gap-2 text-sm font-medium">Project type<select value={projectType} onChange={(e) => setProjectType(e.target.value as (typeof PROJECT_TYPES)[number])} className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3">{PROJECT_TYPES.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label className="grid gap-2 text-sm font-medium">Project title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Kitchen worktops — Wembley" maxLength={160} className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3" required /></label>
-          <label className="grid gap-2 text-sm font-medium">What do you need?<textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Measurements, layout, preferred finish, sink/hob cut-outs, target timing, or anything else that will help the professional price the work." maxLength={5000} rows={7} className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6" /></label>
+          <label className="grid gap-2 text-sm font-medium">
+            Project details
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe the room, layout, finish, access or anything else that will help the professional understand the work."
+              maxLength={5000}
+              rows={6}
+              className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6"
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm font-medium">
+            Approximate measurements <span className="font-normal text-[var(--smc-charcoal-faint)]">(optional)</span>
+            <textarea
+              value={approximateMeasurements}
+              onChange={(e) => setApproximateMeasurements(e.target.value)}
+              placeholder="e.g. Main run 2400 × 620 mm; island 1800 × 900 mm. Approximate only — final dimensions are confirmed professionally."
+              maxLength={2000}
+              rows={3}
+              className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6"
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm font-medium">
+            Preferred timing <span className="font-normal text-[var(--smc-charcoal-faint)]">(optional)</span>
+            <input
+              value={preferredTiming}
+              onChange={(e) => setPreferredTiming(e.target.value)}
+              placeholder="e.g. Ready for templating in 3–4 weeks"
+              maxLength={200}
+              className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+            />
+          </label>
+
+          {projectType === "Kitchen worktops" && (
+            <fieldset className="grid gap-3">
+              <legend className="text-sm font-medium">Common worktop requirements</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  "Island",
+                  "Sink cut-out",
+                  "Hob cut-out",
+                  "Upstands / splashback",
+                  "Waterfall end",
+                  "Drainer grooves",
+                ].map((requirement) => {
+                  const checked = requirements.includes(requirement);
+                  return (
+                    <label
+                      key={requirement}
+                      className="flex min-h-[48px] cursor-pointer items-center gap-3 rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) =>
+                          setRequirements((current) =>
+                            event.target.checked
+                              ? [...current, requirement]
+                              : current.filter((item) => item !== requirement),
+                          )
+                        }
+                        className="h-5 w-5"
+                      />
+                      <span>{requirement}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
         </Card>
 
         <button type="submit" disabled={state === "saving" || !propertyId || !professionalId || !title.trim()} className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-6 text-sm font-semibold text-white disabled:opacity-50">
