@@ -186,6 +186,18 @@ test("professional adds scope and line items; server recalculates the sent total
   assert.equal(sent.items.length, 1);
 });
 
+test("only the customer can mark a sent quote viewed", { skip }, async () => {
+  await assert.rejects(
+    () => as(professional, () => quote.markQuoteViewed(quoteId)),
+    /quote view could not be recorded/i,
+  );
+
+  await as(customer, () => quote.markQuoteViewed(quoteId));
+  const viewed = await as(customer, () => quote.fetchQuote(quoteId));
+  assert.equal(viewed.status, "viewed");
+  assert.ok(viewed.viewed_at, "viewed_at is recorded");
+});
+
 test("customer approval creates the project, both memberships and launch milestones", { skip }, async () => {
   projectId = await as(customer, () => quote.acceptQuote(quoteId));
   assert.match(projectId, /^[0-9a-f-]{36}$/i);
@@ -234,4 +246,57 @@ test("unrelated authenticated users cannot read the created project", { skip }, 
   const { data, error } = await otherCustomer.client.from("projects").select("id").eq("id", projectId);
   assert.ifError(error);
   assert.deepEqual(data, []);
+});
+
+test("customer can decline a separate sent quote with feedback and no project is created", { skip }, async () => {
+  const declinedRequestId = await as(customer, () =>
+    quote.submitQuoteRequest({
+      propertyId: property.id,
+      professionalId: professional.id,
+      title: "Bathroom vanity worktop",
+      projectType: "Bathroom",
+      description: "Vanity top with basin cut-out.",
+    }),
+  );
+
+  const declinedQuoteId = await as(professional, () => quote.createOrGetDraftQuote(declinedRequestId));
+  await as(professional, () =>
+    quote.addQuoteItem(declinedQuoteId, {
+      description: "Vanity worktop",
+      quantity: 1,
+      unit: "item",
+      unitPrice: 500,
+      taxRate: 0.2,
+    }),
+  );
+  await as(professional, () => quote.sendQuote(declinedQuoteId, null));
+  await as(customer, () => quote.markQuoteViewed(declinedQuoteId));
+
+  await assert.rejects(
+    () => as(otherCustomer, () => quote.rejectQuote(declinedQuoteId, "Not mine")),
+    /quote could not be declined/i,
+  );
+
+  await as(customer, () => quote.rejectQuote(declinedQuoteId, "We are changing the bathroom layout first."));
+
+  const declined = await as(customer, () => quote.fetchQuote(declinedQuoteId));
+  assert.equal(declined.status, "rejected");
+  assert.equal(declined.rejection_reason, "We are changing the bathroom layout first.");
+  assert.ok(declined.rejected_at, "rejected_at is recorded");
+
+  const { data: projects, error: projectsError } = await service
+    .from("projects")
+    .select("id")
+    .eq("quote_id", declinedQuoteId);
+  assert.ifError(projectsError);
+  assert.deepEqual(projects, [], "declining a quote must never create a project");
+
+  const { data: notices, error: noticesError } = await service
+    .from("notifications")
+    .select("user_id, kind, quote_id")
+    .eq("quote_id", declinedQuoteId)
+    .eq("kind", "quote_rejected");
+  assert.ifError(noticesError);
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].user_id, professional.id);
 });
