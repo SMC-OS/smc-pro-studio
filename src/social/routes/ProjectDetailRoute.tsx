@@ -5,12 +5,16 @@ import { Card, SectionHeading } from "../components/ui";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
 import {
   addApproximateProjectMeasurement,
+  cancelProjectAppointment,
+  completeProjectAppointment,
   createDraftVariation,
   decideVariation,
   deleteDraftVariation,
   deleteProjectDocument,
   deleteProjectMeasurement,
   fetchLaunchProject,
+  respondProjectAppointment,
+  scheduleProjectAppointment,
   sendVariation,
   uploadProjectDocument,
   type LaunchProjectDetail,
@@ -52,6 +56,13 @@ export default function ProjectDetailRoute() {
   const [variationDays, setVariationDays] = useState("0");
   const [decisionVariationId, setDecisionVariationId] = useState<string | null>(null);
   const [variationNote, setVariationNote] = useState("");
+  const [appointmentType, setAppointmentType] = useState<"consultation" | "site_survey" | "templating" | "delivery" | "installation" | "snagging" | "other">("site_survey");
+  const [appointmentStartsAt, setAppointmentStartsAt] = useState("");
+  const [appointmentEndsAt, setAppointmentEndsAt] = useState("");
+  const [appointmentLocation, setAppointmentLocation] = useState("");
+  const [appointmentNotes, setAppointmentNotes] = useState("");
+  const [decisionAppointmentId, setDecisionAppointmentId] = useState<string | null>(null);
+  const [appointmentDecisionNote, setAppointmentDecisionNote] = useState("");
 
   const load = useCallback(() => {
     if (auth.status !== "authenticated" || !projectId) return;
@@ -187,6 +198,70 @@ export default function ProjectDetailRoute() {
     }
   }
 
+  async function proposeAppointment() {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await scheduleProjectAppointment(projectId, {
+        appointmentType,
+        startsAt: appointmentStartsAt,
+        endsAt: appointmentEndsAt,
+        location: appointmentLocation,
+        notes: appointmentNotes,
+      });
+      setAppointmentStartsAt("");
+      setAppointmentEndsAt("");
+      setAppointmentLocation("");
+      setAppointmentNotes("");
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, "The appointment could not be proposed.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function answerAppointment(appointmentId: string, confirm: boolean) {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await respondProjectAppointment(appointmentId, confirm, appointmentDecisionNote);
+      setDecisionAppointmentId(null);
+      setAppointmentDecisionNote("");
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, confirm ? "The appointment could not be confirmed." : "The appointment could not be declined.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function completeAppointment(appointmentId: string) {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await completeProjectAppointment(appointmentId);
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, "The appointment could not be completed.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function cancelAppointment(appointmentId: string) {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await cancelProjectAppointment(appointmentId, "");
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, "The appointment could not be cancelled.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   if (auth.status === "loading") return <LoadingState label="Checking your account" />;
   if (auth.status === "guest") {
     return (
@@ -266,14 +341,186 @@ export default function ProjectDetailRoute() {
       <section className="grid gap-3 md:grid-cols-2">
         <Card className="p-5">
           <div className="flex items-center gap-2"><CalendarDays className="h-5 w-5" /><h2 className="font-semibold">Appointments</h2></div>
+          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">
+            Site visits, templating and installation dates are proposed by the project team and confirmed by the customer.
+          </p>
+
           <div className="mt-4 grid gap-3">
-            {project.appointments.length === 0 ? <p className="text-sm text-[var(--smc-charcoal-soft)]">No appointments scheduled.</p> : project.appointments.map((appointment) => (
-              <div key={appointment.id}>
-                <p className="text-sm font-semibold">{label(appointment.appointment_type)}</p>
-                <p className="text-xs text-[var(--smc-charcoal-soft)]">{when(appointment.starts_at)} · {label(appointment.status)}</p>
+            {project.appointments.length === 0 ? (
+              <p className="text-sm text-[var(--smc-charcoal-soft)]">No appointments scheduled.</p>
+            ) : project.appointments.map((appointment) => (
+              <div key={appointment.id} className="rounded-[var(--smc-radius-card)] bg-[var(--smc-surface-sunken)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{label(appointment.appointment_type)}</p>
+                    <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">
+                      {when(appointment.starts_at)} – {new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(appointment.ends_at))}
+                    </p>
+                    {appointment.location && <p className="mt-1 text-xs text-[var(--smc-charcoal-faint)]">{appointment.location}</p>}
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-[var(--smc-charcoal)]">
+                    {label(appointment.status)}
+                  </span>
+                </div>
+
+                {appointment.notes && <p className="mt-3 whitespace-pre-line text-sm text-[var(--smc-charcoal-soft)]">{appointment.notes}</p>}
+                {appointment.customer_note && (
+                  <div className="mt-3 rounded-xl bg-white p-3">
+                    <p className="text-xs font-semibold text-[var(--smc-charcoal-faint)]">Customer note</p>
+                    <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{appointment.customer_note}</p>
+                  </div>
+                )}
+
+                {isCustomer && appointment.status === "proposed" && new Date(appointment.starts_at) > new Date() && (
+                  <div className="mt-4 grid gap-3">
+                    {decisionAppointmentId === appointment.id ? (
+                      <>
+                        <label className="grid gap-2 text-sm font-medium">
+                          Note <span className="font-normal text-[var(--smc-charcoal-faint)]">(optional)</span>
+                          <textarea
+                            value={appointmentDecisionNote}
+                            onChange={(event) => setAppointmentDecisionNote(event.target.value)}
+                            maxLength={2000}
+                            rows={3}
+                            placeholder="Add anything the project team should know."
+                            className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6"
+                          />
+                        </label>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={() => void answerAppointment(appointment.id, true)}
+                            disabled={actionBusy}
+                            className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                          >
+                            <Check className="h-4 w-4" /> Confirm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void answerAppointment(appointment.id, false)}
+                            disabled={actionBusy}
+                            className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold disabled:opacity-50"
+                          >
+                            <X className="h-4 w-4" /> Decline
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDecisionAppointmentId(null); setAppointmentDecisionNote(""); }}
+                            disabled={actionBusy}
+                            className="inline-flex min-h-[48px] items-center justify-center px-4 text-sm font-semibold text-[var(--smc-charcoal-soft)] disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDecisionAppointmentId(appointment.id)}
+                        className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white"
+                      >
+                        Respond to appointment
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {canManageProject && (appointment.status === "proposed" || appointment.status === "confirmed") && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {appointment.status === "confirmed" && new Date(appointment.starts_at) <= new Date() && (
+                      <button
+                        type="button"
+                        onClick={() => void completeAppointment(appointment.id)}
+                        disabled={actionBusy}
+                        className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        <Check className="h-4 w-4" /> Mark completed
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void cancelAppointment(appointment.id)}
+                      disabled={actionBusy}
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold disabled:opacity-50"
+                    >
+                      <X className="h-4 w-4" /> Cancel appointment
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
+
+          {canManageProject && (
+            <div className="mt-5 grid gap-3 border-t border-[var(--smc-border)] pt-5">
+              <h3 className="text-sm font-semibold">Propose appointment</h3>
+              <label className="grid gap-2 text-sm font-medium">
+                Appointment type
+                <select
+                  value={appointmentType}
+                  onChange={(event) => setAppointmentType(event.target.value as typeof appointmentType)}
+                  className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                >
+                  <option value="consultation">Consultation</option>
+                  <option value="site_survey">Site survey</option>
+                  <option value="templating">Templating</option>
+                  <option value="delivery">Delivery</option>
+                  <option value="installation">Installation</option>
+                  <option value="snagging">Snagging</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2 text-sm font-medium">
+                  Starts
+                  <input
+                    type="datetime-local"
+                    value={appointmentStartsAt}
+                    onChange={(event) => setAppointmentStartsAt(event.target.value)}
+                    className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  Ends
+                  <input
+                    type="datetime-local"
+                    value={appointmentEndsAt}
+                    onChange={(event) => setAppointmentEndsAt(event.target.value)}
+                    className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                  />
+                </label>
+              </div>
+              <label className="grid gap-2 text-sm font-medium">
+                Location <span className="font-normal text-[var(--smc-charcoal-faint)]">(optional)</span>
+                <input
+                  value={appointmentLocation}
+                  onChange={(event) => setAppointmentLocation(event.target.value)}
+                  maxLength={500}
+                  placeholder="Site address, showroom or meeting point"
+                  className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Notes <span className="font-normal text-[var(--smc-charcoal-faint)]">(optional)</span>
+                <textarea
+                  value={appointmentNotes}
+                  onChange={(event) => setAppointmentNotes(event.target.value)}
+                  maxLength={3000}
+                  rows={3}
+                  placeholder="Access, preparation or anything the customer should know."
+                  className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => void proposeAppointment()}
+                disabled={!appointmentStartsAt || !appointmentEndsAt || actionBusy}
+                className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-5 text-sm font-semibold disabled:opacity-50"
+              >
+                <CalendarDays className="h-4 w-4" /> Propose appointment
+              </button>
+            </div>
+          )}
         </Card>
 
         <Card className="p-5">
