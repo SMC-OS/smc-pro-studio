@@ -280,6 +280,83 @@ test("customer approval creates the project, both memberships and launch milesto
   assert.equal(accepted.status, "accepted");
 });
 
+test("professional variation requires a customer decision and records the commercial impact", { skip }, async () => {
+  await assert.rejects(
+    () => as(customer, () =>
+      launch.createDraftVariation(projectId, {
+        title: "Customer-created change",
+        description: "Customer accounts must not create commercial variations.",
+        amountDelta: 1,
+        daysDelta: 0,
+      }),
+    ),
+    /variation could not be created/i,
+  );
+
+  const variationId = await as(professional, () =>
+    launch.createDraftVariation(projectId, {
+      title: "Full-height splashback",
+      description: "Add matching material behind the full worktop run.",
+      amountDelta: 620,
+      daysDelta: 1,
+    }),
+  );
+
+  await as(professional, () => launch.sendVariation(variationId));
+
+  const customerProject = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const pending = customerProject.variations.find((row) => row.id === variationId);
+  assert.equal(pending.status, "sent");
+  assert.equal(Number(pending.amount_delta), 620);
+  assert.equal(pending.days_delta, 1);
+
+  await assert.rejects(
+    () => as(professional, () => launch.decideVariation(variationId, true, "Professional cannot decide for customer")),
+    /variation could not be approved/i,
+  );
+
+  await as(customer, () =>
+    launch.decideVariation(variationId, true, "Approved — please match the worktop material."),
+  );
+
+  const acceptedProject = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const accepted = acceptedProject.variations.find((row) => row.id === variationId);
+  assert.equal(accepted.status, "accepted");
+  assert.equal(accepted.customer_note, "Approved — please match the worktop material.");
+  assert.ok(accepted.decided_at);
+
+  const { data: notices, error: noticesError } = await service
+    .from("notifications")
+    .select("user_id, project_id, kind")
+    .eq("project_id", projectId)
+    .in("kind", ["variation_approval", "variation_decided"]);
+  assert.ifError(noticesError);
+  assert.equal(notices.some((row) => row.kind === "variation_approval" && row.user_id === customer.id), true);
+  assert.equal(notices.some((row) => row.kind === "variation_decided" && row.user_id === professional.id), true);
+});
+
+test("customer can decline a separate variation without adding it to the accepted change value", { skip }, async () => {
+  const variationId = await as(professional, () =>
+    launch.createDraftVariation(projectId, {
+      title: "Extra shelf",
+      description: "Optional stone shelf.",
+      amountDelta: 350,
+      daysDelta: 0,
+    }),
+  );
+  await as(professional, () => launch.sendVariation(variationId));
+  await as(customer, () => launch.decideVariation(variationId, false, "Not required."));
+
+  const project = await as(customer, () => launch.fetchLaunchProject(projectId));
+  const declined = project.variations.find((row) => row.id === variationId);
+  assert.equal(declined.status, "rejected");
+  assert.equal(declined.customer_note, "Not required.");
+  assert.equal(
+    project.variations.filter((row) => row.status === "accepted").reduce((sum, row) => sum + Number(row.amount_delta), 0),
+    620,
+  );
+});
+
 test("project members can share private files while unrelated users cannot read them", { skip }, async () => {
   const installPlan = new File(["installation-plan"], `${T}-install.pdf`, { type: "application/pdf" });
   await as(customer, () => launch.uploadProjectDocument(projectId, installPlan, "plan"));
