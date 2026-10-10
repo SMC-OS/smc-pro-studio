@@ -90,7 +90,7 @@ select is(
     'account_deletion_requests:anon:-:-',
     'account_deletion_requests:authenticated:select:-',
     'appointments:anon:-:-',
-    'appointments:authenticated:delete,insert,select,update:-',
+    'appointments:authenticated:select:-',
     'blocks:anon:-:-',
     'blocks:authenticated:delete,insert,select:-',
     'comments:anon:select:-',
