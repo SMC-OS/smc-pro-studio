@@ -72,10 +72,23 @@ export interface ProjectVariation {
 
 export interface ProjectDocument {
   id: string;
-  kind: string;
+  uploaded_by: string;
+  kind: "photo" | "plan" | "quote" | "contract" | "invoice" | "receipt" | "warranty" | "certificate" | "measurement" | "other";
+  storage_path: string;
   file_name: string;
   mime_type: string;
   size_bytes: number;
+  created_at: string;
+  signed_url: string | null;
+}
+
+export interface ProjectMeasurement {
+  id: string;
+  created_by: string;
+  source: "manual" | "assisted" | "professional";
+  label: string;
+  data: Record<string, unknown>;
+  is_survey_grade: boolean;
   created_at: string;
 }
 
@@ -123,6 +136,7 @@ export interface LaunchProjectDetail extends LaunchProjectSummary {
   appointments: LaunchAppointmentSummary[];
   variations: ProjectVariation[];
   documents: ProjectDocument[];
+  measurements: ProjectMeasurement[];
   payments: ProjectPayment[];
   warranties: ProjectWarranty[];
 }
@@ -222,28 +236,137 @@ export async function fetchLaunchProject(projectId: string): Promise<LaunchProje
   if (projectResult.error) throw new Error("This project could not be loaded. Please try again.", { cause: projectResult.error });
   if (!projectResult.data) return null;
 
-  const [milestones, appointments, variations, documents, payments, warranties] = await Promise.all([
+  const [milestones, appointments, variations, documents, measurements, payments, warranties] = await Promise.all([
     supabase.from("project_milestones").select("id, title, description, status, position, due_at, completed_at").eq("project_id", projectId).order("position"),
     supabase.from("appointments").select("id, project_id, appointment_type, status, starts_at, ends_at, location, project:projects(title)").eq("project_id", projectId).order("starts_at"),
     supabase.from("variations").select("id, title, description, amount_delta, days_delta, status, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
-    supabase.from("project_documents").select("id, kind, file_name, mime_type, size_bytes, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
+    supabase.from("project_documents").select("id, uploaded_by, kind, storage_path, file_name, mime_type, size_bytes, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
+    supabase.from("project_measurements").select("id, created_by, source, label, data, is_survey_grade, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("payments").select("id, kind, status, currency, amount, due_at, paid_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("warranties").select("id, warranty_type, provider_name, starts_on, ends_on, terms_summary").eq("project_id", projectId).order("starts_on", { ascending: false }),
   ]);
 
-  const failed = [milestones.error, appointments.error, variations.error, documents.error, payments.error, warranties.error].find(Boolean);
+  const failed = [milestones.error, appointments.error, variations.error, documents.error, measurements.error, payments.error, warranties.error].find(Boolean);
   if (failed) throw new Error("Some project details could not be loaded. Please try again.", { cause: failed });
 
-  const base = projectResult.data as unknown as Omit<LaunchProjectDetail, "milestones" | "appointments" | "variations" | "documents" | "payments" | "warranties">;
+  const signedDocuments = await Promise.all(
+    (documents.data ?? []).map(async (row) => {
+      const { data: signed, error: signedError } = await supabase.storage
+        .from("private-project-media")
+        .createSignedUrl(row.storage_path, 600);
+      return {
+        ...(row as Omit<ProjectDocument, "signed_url">),
+        signed_url: signedError ? null : signed?.signedUrl ?? null,
+      };
+    }),
+  );
+
+  const base = projectResult.data as unknown as Omit<LaunchProjectDetail, "milestones" | "appointments" | "variations" | "documents" | "measurements" | "payments" | "warranties">;
   return {
     ...base,
     milestones: (milestones.data ?? []) as ProjectMilestone[],
     appointments: (appointments.data ?? []) as unknown as LaunchAppointmentSummary[],
     variations: (variations.data ?? []) as ProjectVariation[],
-    documents: (documents.data ?? []) as ProjectDocument[],
+    documents: signedDocuments,
+    measurements: (measurements.data ?? []) as ProjectMeasurement[],
     payments: (payments.data ?? []) as ProjectPayment[],
     warranties: (warranties.data ?? []) as ProjectWarranty[],
   };
+}
+
+const PROJECT_FILE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "application/pdf",
+]);
+const MAX_PROJECT_FILE_BYTES = 25 * 1024 * 1024;
+
+function safeProjectFileName(name: string): string {
+  const cleaned = name
+    .normalize("NFKD")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^[-.]+|[-.]+$/g, "");
+  return (cleaned || "file").slice(-120);
+}
+
+export async function uploadProjectDocument(
+  projectId: string,
+  file: File,
+  kind: ProjectDocument["kind"],
+): Promise<void> {
+  const userId = await currentUserId();
+  if (!PROJECT_FILE_TYPES.has(file.type)) {
+    throw new Error("Upload a JPG, PNG, WebP, MP4 or PDF file.");
+  }
+  if (file.size <= 0 || file.size > MAX_PROJECT_FILE_BYTES) {
+    throw new Error("Files must be larger than 0 bytes and no more than 25 MB.");
+  }
+
+  const supabase = client();
+  const objectPath = `${projectId}/${userId}/${crypto.randomUUID()}-${safeProjectFileName(file.name)}`;
+  const { error: uploadError } = await supabase.storage
+    .from("private-project-media")
+    .upload(objectPath, file, { cacheControl: "3600", contentType: file.type, upsert: false });
+  if (uploadError) throw new Error("The project file could not be uploaded. Please try again.", { cause: uploadError });
+
+  const { error: rowError } = await supabase.from("project_documents").insert({
+    project_id: projectId,
+    uploaded_by: userId,
+    kind,
+    storage_path: objectPath,
+    file_name: file.name.slice(0, 255),
+    mime_type: file.type,
+    size_bytes: file.size,
+  });
+
+  if (rowError) {
+    await supabase.storage.from("private-project-media").remove([objectPath]);
+    throw new Error("The uploaded file could not be attached to the project.", { cause: rowError });
+  }
+}
+
+export async function deleteProjectDocument(document: ProjectDocument): Promise<void> {
+  await currentUserId();
+  const supabase = client();
+  const { error: storageError } = await supabase.storage
+    .from("private-project-media")
+    .remove([document.storage_path]);
+  if (storageError) throw new Error("The project file could not be removed. Please try again.", { cause: storageError });
+
+  const { error: rowError } = await supabase.from("project_documents").delete().eq("id", document.id);
+  if (rowError) throw new Error("The project file record could not be removed. Please try again.", { cause: rowError });
+}
+
+export async function addApproximateProjectMeasurement(
+  projectId: string,
+  input: { label: string; details: string; source?: "manual" | "assisted" },
+): Promise<void> {
+  const userId = await currentUserId();
+  const label = input.label.trim();
+  const details = input.details.trim();
+  if (!label) throw new Error("Measurement name is required.");
+  if (label.length > 160) throw new Error("Measurement name must be 160 characters or fewer.");
+  if (!details) throw new Error("Add the approximate dimensions or measurement notes.");
+  if (details.length > 4000) throw new Error("Measurement details must be 4000 characters or fewer.");
+
+  const { error } = await client().from("project_measurements").insert({
+    project_id: projectId,
+    created_by: userId,
+    source: input.source ?? "manual",
+    label,
+    data: { details },
+    is_survey_grade: false,
+  });
+  if (error) throw new Error("The measurement could not be saved. Please try again.", { cause: error });
+}
+
+export async function deleteProjectMeasurement(measurementId: string): Promise<void> {
+  await currentUserId();
+  const { error } = await client().from("project_measurements").delete().eq("id", measurementId);
+  if (error) throw new Error("The measurement could not be removed. Please try again.", { cause: error });
 }
 
 export async function fetchStudioDesigns(): Promise<StudioDesignSummary[]> {
