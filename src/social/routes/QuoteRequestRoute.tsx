@@ -82,8 +82,7 @@ export default function QuoteRequestRoute() {
     [professionalId, professionals],
   );
 
-  async function addProperty(event: FormEvent) {
-    event.preventDefault();
+  async function addProperty() {
     try {
       setState("saving");
       const property = await createProperty(newProperty);
@@ -178,7 +177,7 @@ export default function QuoteRequestRoute() {
                 <label className="grid gap-1 text-sm font-medium">Town or city<input value={newProperty.city} onChange={(e) => setNewProperty({ ...newProperty, city: e.target.value })} className="min-h-[46px] rounded-xl border border-[var(--smc-border)] bg-white px-3" required /></label>
                 <label className="grid gap-1 text-sm font-medium">Postcode<input value={newProperty.postcode} onChange={(e) => setNewProperty({ ...newProperty, postcode: e.target.value })} className="min-h-[46px] rounded-xl border border-[var(--smc-border)] bg-white px-3 uppercase" required /></label>
               </div>
-              <button type="button" onClick={(event) => void addProperty(event as unknown as FormEvent)} disabled={state === "saving"} className="inline-flex min-h-[44px] items-center justify-center self-start rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white disabled:opacity-50">
+              <button type="button" onClick={() => void addProperty()} disabled={state === "saving"} className="inline-flex min-h-[44px] items-center justify-center self-start rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white disabled:opacity-50">
                 Save property
               </button>
             </div>
