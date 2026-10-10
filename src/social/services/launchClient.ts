@@ -62,11 +62,15 @@ export interface ProjectMilestone {
 
 export interface ProjectVariation {
   id: string;
+  created_by: string;
   title: string;
   description: string | null;
   amount_delta: number;
   days_delta: number;
   status: string;
+  sent_at: string | null;
+  decided_at: string | null;
+  customer_note: string | null;
   created_at: string;
 }
 
@@ -243,7 +247,7 @@ export async function fetchLaunchProject(projectId: string): Promise<LaunchProje
     supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", userId).maybeSingle(),
     supabase.from("project_milestones").select("id, title, description, status, position, due_at, completed_at").eq("project_id", projectId).order("position"),
     supabase.from("appointments").select("id, project_id, appointment_type, status, starts_at, ends_at, location, project:projects(title)").eq("project_id", projectId).order("starts_at"),
-    supabase.from("variations").select("id, title, description, amount_delta, days_delta, status, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
+    supabase.from("variations").select("id, created_by, title, description, amount_delta, days_delta, status, sent_at, decided_at, customer_note, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("project_documents").select("id, uploaded_by, kind, storage_path, file_name, mime_type, size_bytes, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("project_measurements").select("id, created_by, source, label, data, is_survey_grade, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("payments").select("id, kind, status, currency, amount, due_at, paid_at").eq("project_id", projectId).order("created_at", { ascending: false }),
