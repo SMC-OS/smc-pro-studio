@@ -558,13 +558,45 @@ test("project payment requests are server-bounded by approved value and customer
     "active requests reserve the approved project value and prevent duplicate over-collection",
   );
 
+  const { error: failOldError } = await service
+    .from("payments")
+    .update({ status: "failed", failure_code: "test_decline" })
+    .eq("id", deposit.id);
+  assert.ifError(failOldError);
+
+  const replacementDeposit = await as(professional, () =>
+    payments.requestProjectPayment({
+      projectId,
+      kind: "deposit",
+      amount: 200,
+      dueAt: null,
+      collectionMethod: "checkout",
+      note: "Replacement request after the first attempt failed.",
+    }),
+  );
+  assert.equal(Number(replacementDeposit.amount), 200);
+
+  const { error: staleClaimError } = await service.rpc("claim_project_payment_for_collection", {
+    p_payment_id: deposit.id,
+    p_customer_id: customer.id,
+    p_collection_method: "checkout",
+  });
+  assert.ok(staleClaimError, "a failed request cannot be retried after replacement requests reserve the approved balance");
+
+  const { error: replacementClaimError } = await service.rpc("claim_project_payment_for_collection", {
+    p_payment_id: replacementDeposit.id,
+    p_customer_id: customer.id,
+    p_collection_method: "checkout",
+  });
+  assert.ifError(replacementClaimError);
+
   const { data: notices, error: noticeError } = await service
     .from("notifications")
     .select("user_id, project_id, kind")
     .eq("project_id", projectId)
     .eq("kind", "payment_due");
   assert.ifError(noticeError);
-  assert.equal(notices.filter((row) => row.user_id === customer.id).length, 2);
+  assert.equal(notices.filter((row) => row.user_id === customer.id).length, 3);
 });
 
 test("payment refund and dispute ledgers are not client-writable", { skip }, async () => {
