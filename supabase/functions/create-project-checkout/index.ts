@@ -88,9 +88,21 @@ Deno.serve(async (req: Request) => {
     return json({ error: "payment_already_settled" }, 409);
   }
 
+  const { error: claimError } = await admin.rpc("claim_project_payment_for_collection", {
+    p_payment_id: payment.id,
+    p_customer_id: payment.customer_id,
+    p_collection_method: "checkout",
+  });
+  if (claimError) {
+    return json({
+      error: "payment_no_longer_collectible",
+      message: "This payment can no longer be collected because the approved project balance is already covered by other payments or requests.",
+    }, 409);
+  }
+
   const stripe = new Stripe(stripeKey, { apiVersion: "2026-08-26.dahlia" });
 
-  if (payment.provider_checkout_session_id && (payment.status === "pending" || payment.status === "requires_action")) {
+  if (payment.provider_checkout_session_id) {
     try {
       const existing = await stripe.checkout.sessions.retrieve(payment.provider_checkout_session_id);
       if (existing.status === "open" && existing.url) {
