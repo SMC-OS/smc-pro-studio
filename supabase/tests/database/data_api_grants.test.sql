@@ -141,6 +141,8 @@ select is(
     'property_record_entries:authenticated:delete,insert,select:-',
     'quote_items:anon:-:-',
     'quote_items:authenticated:delete,insert,select,update:-',
+    'quote_request_documents:anon:-:-',
+    'quote_request_documents:authenticated:delete,insert,select:-',
     'quote_requests:anon:-:-',
     'quote_requests:authenticated:insert,select,update:-',
     'quotes:anon:-:-',
