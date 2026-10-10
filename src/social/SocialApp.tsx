@@ -17,6 +17,7 @@ import QuoteRequestDetailRoute from "./routes/QuoteRequestDetailRoute";
 import QuoteRoute from "./routes/QuoteRoute";
 import ConversationRoute from "./routes/ConversationRoute";
 import MessagesRoute from "./routes/MessagesRoute";
+import NotificationsRoute from "./routes/NotificationsRoute";
 import ModerationRoute from "./routes/ModerationRoute";
 import ProfileRoute from "./routes/ProfileRoute";
 import EditProfileRoute from "./routes/EditProfileRoute";
@@ -60,6 +61,7 @@ export default function SocialApp() {
               contextual capabilities, but no longer define primary navigation. */}
           <Route path="create" element={<CreateRoute />} />
           <Route path="messages" element={<MessagesRoute />} />
+          <Route path="notifications" element={<NotificationsRoute />} />
           <Route path="messages/:conversationId" element={<ConversationRoute />} />
 
           <Route path="profile" element={<ProfileRoute />} />
