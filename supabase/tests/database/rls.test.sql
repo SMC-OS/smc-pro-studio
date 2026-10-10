@@ -31,8 +31,11 @@ select policies_are('storage', 'objects', array[
   'storage_materials_media_editor_update', 'storage_materials_media_editor_read',
   -- Launch: private project files are visible/writeable only through project membership.
   'storage_private_project_member_delete', 'storage_private_project_member_insert',
-  'storage_private_project_member_read', 'storage_private_project_member_update'
-], 'storage exposes only reviewed owner, catalogue and project-member policies');
+  'storage_private_project_member_read', 'storage_private_project_member_update',
+  -- Launch quote requests use the same private bucket under an isolated prefix.
+  'storage_quote_request_member_read', 'storage_quote_request_owner_insert',
+  'storage_quote_request_owner_delete'
+], 'storage exposes only reviewed owner, catalogue, project-member and quote-request policies');
 
 select results_eq(
   $q$select count(*)::bigint
