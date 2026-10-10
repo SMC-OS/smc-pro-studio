@@ -57,6 +57,8 @@ export interface QuoteRecord {
   sent_at: string | null;
   viewed_at: string | null;
   accepted_at: string | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
   created_at: string;
   updated_at: string;
   request: {
@@ -226,7 +228,7 @@ export async function fetchQuote(quoteId: string): Promise<QuoteRecord | null> {
   const quoteResult = await supabase
     .from("quotes")
     .select(
-      "id, quote_request_id, customer_id, issuer_id, status, currency, scope_summary, terms, subtotal, tax_total, total, valid_until, sent_at, viewed_at, accepted_at, created_at, updated_at, " +
+      "id, quote_request_id, customer_id, issuer_id, status, currency, scope_summary, terms, subtotal, tax_total, total, valid_until, sent_at, viewed_at, accepted_at, rejected_at, rejection_reason, created_at, updated_at, " +
         "request:quote_requests(id, title, project_type, description, property:properties(id, label, property_kind, address_line1, address_line2, city, postcode, country_code), material:materials(id, name, slug)), " +
         "customer:profiles!quotes_customer_id_fkey(id, display_name), " +
         "issuer:profiles!quotes_issuer_id_fkey(id, display_name)",
@@ -298,13 +300,29 @@ export async function sendQuote(quoteId: string, validUntil: string | null): Pro
   if (error) throw new Error("The quote could not be sent. Please check it and try again.", { cause: error });
 }
 
+export async function markQuoteViewed(quoteId: string): Promise<void> {
+  await currentUserId();
+  const { error } = await client().rpc("mark_quote_viewed", { p_quote_id: quoteId });
+  if (error) throw new Error("The quote view could not be recorded. Please try again.", { cause: error });
+}
+
+export async function rejectQuote(quoteId: string, reason: string): Promise<void> {
+  await currentUserId();
+  const cleanReason = reason.trim();
+  if (cleanReason.length > 2000) throw new Error("Decline reason must be 2000 characters or fewer.");
+  const { error } = await client().rpc("reject_quote", {
+    p_quote_id: quoteId,
+    p_reason: cleanReason || null,
+  });
+  if (error) throw new Error("The quote could not be declined. Please try again.", { cause: error });
+}
+
 export async function acceptQuote(quoteId: string): Promise<string> {
   await currentUserId();
   const { data, error } = await client().rpc("accept_quote", { p_quote_id: quoteId });
   if (error || !data) throw new Error("The quote could not be approved. Please try again.", { cause: error ?? undefined });
   return String(data);
 }
-
 
 export async function fetchQuoteForRequest(requestId: string): Promise<QuoteRecord | null> {
   await currentUserId();
