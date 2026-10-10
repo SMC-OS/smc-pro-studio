@@ -164,6 +164,21 @@ export default function ProjectPaymentsCard({
         Project amounts come from the approved quote and accepted variations. Stripe verification — not the return screen — decides whether a payment is paid.
       </p>
 
+      {project.quote && (
+        <div className="mt-4 grid gap-2 rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] p-4 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[var(--smc-charcoal-soft)]">Approved quote</span>
+            <strong className="tabular-nums">{money(Number(project.quote.total), currency)}</strong>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[var(--smc-charcoal-soft)]">Accepted variations</span>
+            <strong className="tabular-nums">
+              {approvedVariationTotal >= 0 ? "+" : ""}{money(approvedVariationTotal, currency)}
+            </strong>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <div className="rounded-[var(--smc-radius-card)] bg-[var(--smc-surface-sunken)] p-4">
           <p className="text-xs font-medium text-[var(--smc-charcoal-faint)]">Approved project value</p>
