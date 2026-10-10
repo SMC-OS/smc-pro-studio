@@ -145,6 +145,26 @@ test("customer submits a real quote request to an onboarded professional", { ski
   assert.equal(request.property.postcode, "HA0 1AA");
 });
 
+test("quote request files are private to the customer and assigned professional", { skip }, async () => {
+  const sitePhoto = new File(["site-photo"], `${T}-site.jpg`, { type: "image/jpeg" });
+
+  await as(customer, () => quote.uploadQuoteRequestDocument(requestId, sitePhoto, "photo"));
+
+  const customerFiles = await as(customer, () => quote.fetchQuoteRequestDocuments(requestId));
+  assert.equal(customerFiles.length, 1);
+  assert.equal(customerFiles[0].kind, "photo");
+  assert.equal(customerFiles[0].file_name, `${T}-site.jpg`);
+  assert.match(customerFiles[0].storage_path, new RegExp(`^quote-requests/${requestId}/${customer.id}/`));
+
+  const professionalFiles = await as(professional, () => quote.fetchQuoteRequestDocuments(requestId));
+  assert.equal(professionalFiles.length, 1);
+  assert.equal(professionalFiles[0].id, customerFiles[0].id);
+  assert.ok(professionalFiles[0].signed_url, "assigned professional receives a short-lived private URL");
+
+  const unrelatedFiles = await as(otherCustomer, () => quote.fetchQuoteRequestDocuments(requestId));
+  assert.deepEqual(unrelatedFiles, []);
+});
+
 test("assigned professional can open the request and create one draft quote", { skip }, async () => {
   const request = await as(professional, () => quote.fetchQuoteRequest(requestId));
   assert.equal(request.id, requestId);
@@ -184,6 +204,15 @@ test("professional adds scope and line items; server recalculates the sent total
   assert.equal(Number(sent.tax_total), 40);
   assert.equal(Number(sent.total), 240);
   assert.equal(sent.items.length, 1);
+});
+
+test("customer quote-request evidence is locked once a quote has been issued", { skip }, async () => {
+  const files = await as(customer, () => quote.fetchQuoteRequestDocuments(requestId));
+  assert.equal(files.length, 1);
+  await assert.rejects(
+    () => as(customer, () => quote.deleteQuoteRequestDocument(files[0])),
+    /file could not be removed/i,
+  );
 });
 
 test("only the customer can mark a sent quote viewed", { skip }, async () => {
