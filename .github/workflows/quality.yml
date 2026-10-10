@@ -45,9 +45,9 @@ jobs:
 
       - name: Type-check Supabase Edge Functions
         run: |
-          deno check supabase/functions/create-project-checkout/index.ts
-          deno check supabase/functions/create-project-invoice/index.ts
-          deno check supabase/functions/stripe-webhook/index.ts
+          deno check --node-modules-dir=auto supabase/functions/create-project-checkout/index.ts
+          deno check --node-modules-dir=auto supabase/functions/create-project-invoice/index.ts
+          deno check --node-modules-dir=auto supabase/functions/stripe-webhook/index.ts
 
       - name: Run tests
         run: bun run test
