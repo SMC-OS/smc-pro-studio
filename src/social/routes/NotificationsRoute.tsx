@@ -25,7 +25,8 @@ function destination(notification: LaunchNotification): string | null {
 export default function NotificationsRoute() {
   const auth = useAuthSession();
   const [state, setState] = useState<
-    | { status: "idle" | "loading" }
+    | { status: "idle" }
+    | { status: "loading" }
     | { status: "ready"; rows: LaunchNotification[] }
     | { status: "error"; message: string }
   >({ status: "idle" });
