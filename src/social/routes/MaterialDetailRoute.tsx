@@ -101,6 +101,20 @@ export default function MaterialDetailRoute() {
           </div>
         )}
       </Card>
+      <div className="flex flex-wrap gap-3">
+        <Link
+          to={`/quotes/new?material=${material.id}`}
+          className="inline-flex min-h-[48px] items-center justify-center rounded-[var(--smc-radius-pill)] bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white"
+        >
+          Request a quote with this material
+        </Link>
+        <Link
+          to="/studio"
+          className="inline-flex min-h-[48px] items-center justify-center rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-5 text-sm font-semibold text-[var(--smc-charcoal)]"
+        >
+          Back to Studio
+        </Link>
+      </div>
     </div>
   );
 }
