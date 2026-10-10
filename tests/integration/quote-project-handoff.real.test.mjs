@@ -135,6 +135,11 @@ test("customer submits a real quote request to an onboarded professional", { ski
       title: "Calacatta kitchen worktops",
       projectType: "Kitchen worktops",
       description: "Worktops, island, sink and hob cut-outs.",
+      selections: {
+        approximateMeasurements: "Main run 2400 × 620 mm; island 1800 × 900 mm",
+        preferredTiming: "Ready for templating in 3 weeks",
+        requirements: ["Island", "Sink cut-out", "Hob cut-out"],
+      },
     }),
   );
 
@@ -143,6 +148,9 @@ test("customer submits a real quote request to an onboarded professional", { ski
   assert.equal(request.assigned_professional_id, professional.id);
   assert.equal(request.status, "submitted");
   assert.equal(request.property.postcode, "HA0 1AA");
+  assert.equal(request.selections.approximateMeasurements, "Main run 2400 × 620 mm; island 1800 × 900 mm");
+  assert.equal(request.selections.preferredTiming, "Ready for templating in 3 weeks");
+  assert.deepEqual(request.selections.requirements, ["Island", "Sink cut-out", "Hob cut-out"]);
 });
 
 test("quote request files are private to the customer and assigned professional", { skip }, async () => {
