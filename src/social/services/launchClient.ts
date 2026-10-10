@@ -112,6 +112,9 @@ export interface ProjectWarranty {
 }
 
 export interface LaunchProjectDetail extends LaunchProjectSummary {
+  customer_id: string;
+  lead_professional_id: string | null;
+  current_user_role: string | null;
   description: string | null;
   start_date: string | null;
   completed_at: string | null;
@@ -220,13 +223,13 @@ export async function fetchLaunchProjects(): Promise<LaunchProjectSummary[]> {
 }
 
 export async function fetchLaunchProject(projectId: string): Promise<LaunchProjectDetail | null> {
-  await currentUserId();
+  const userId = await currentUserId();
   const supabase = client();
 
   const projectResult = await supabase
     .from("projects")
     .select(
-      "id, title, description, status, progress, start_date, target_completion_date, completed_at, updated_at, " +
+      "id, customer_id, lead_professional_id, title, description, status, progress, start_date, target_completion_date, completed_at, updated_at, " +
         "property:properties(id, label, property_kind, address_line1, address_line2, city, postcode), " +
         "quote:quotes(id, status, total, currency, scope_summary, valid_until)"
     )
@@ -236,7 +239,8 @@ export async function fetchLaunchProject(projectId: string): Promise<LaunchProje
   if (projectResult.error) throw new Error("This project could not be loaded. Please try again.", { cause: projectResult.error });
   if (!projectResult.data) return null;
 
-  const [milestones, appointments, variations, documents, measurements, payments, warranties] = await Promise.all([
+  const [membership, milestones, appointments, variations, documents, measurements, payments, warranties] = await Promise.all([
+    supabase.from("project_members").select("role").eq("project_id", projectId).eq("user_id", userId).maybeSingle(),
     supabase.from("project_milestones").select("id, title, description, status, position, due_at, completed_at").eq("project_id", projectId).order("position"),
     supabase.from("appointments").select("id, project_id, appointment_type, status, starts_at, ends_at, location, project:projects(title)").eq("project_id", projectId).order("starts_at"),
     supabase.from("variations").select("id, title, description, amount_delta, days_delta, status, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
@@ -246,7 +250,7 @@ export async function fetchLaunchProject(projectId: string): Promise<LaunchProje
     supabase.from("warranties").select("id, warranty_type, provider_name, starts_on, ends_on, terms_summary").eq("project_id", projectId).order("starts_on", { ascending: false }),
   ]);
 
-  const failed = [milestones.error, appointments.error, variations.error, documents.error, measurements.error, payments.error, warranties.error].find(Boolean);
+  const failed = [membership.error, milestones.error, appointments.error, variations.error, documents.error, measurements.error, payments.error, warranties.error].find(Boolean);
   if (failed) throw new Error("Some project details could not be loaded. Please try again.", { cause: failed });
 
   const signedDocuments = await Promise.all(
@@ -264,6 +268,7 @@ export async function fetchLaunchProject(projectId: string): Promise<LaunchProje
   const base = projectResult.data as unknown as Omit<LaunchProjectDetail, "milestones" | "appointments" | "variations" | "documents" | "measurements" | "payments" | "warranties">;
   return {
     ...base,
+    current_user_role: (membership.data as { role?: string } | null)?.role ?? null,
     milestones: (milestones.data ?? []) as ProjectMilestone[],
     appointments: (appointments.data ?? []) as unknown as LaunchAppointmentSummary[],
     variations: (variations.data ?? []) as ProjectVariation[],
@@ -290,6 +295,67 @@ function safeProjectFileName(name: string): string {
     .replace(/-+/g, "-")
     .replace(/^[-.]+|[-.]+$/g, "");
   return (cleaned || "file").slice(-120);
+}
+
+export async function createDraftVariation(
+  projectId: string,
+  input: { title: string; description: string; amountDelta: number; daysDelta: number },
+): Promise<string> {
+  const userId = await currentUserId();
+  const title = input.title.trim();
+  const description = input.description.trim();
+  if (!title) throw new Error("Variation title is required.");
+  if (title.length > 180) throw new Error("Variation title must be 180 characters or fewer.");
+  if (description.length > 5000) throw new Error("Variation description must be 5000 characters or fewer.");
+  if (!Number.isFinite(input.amountDelta)) throw new Error("Variation amount is invalid.");
+  if (!Number.isInteger(input.daysDelta)) throw new Error("Schedule impact must be a whole number of days.");
+
+  const { data, error } = await client()
+    .from("variations")
+    .insert({
+      project_id: projectId,
+      created_by: userId,
+      title,
+      description: description || null,
+      amount_delta: input.amountDelta,
+      days_delta: input.daysDelta,
+      status: "draft",
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error("The variation could not be created. Please try again.", { cause: error ?? undefined });
+  return String((data as { id: string }).id);
+}
+
+export async function deleteDraftVariation(variationId: string): Promise<void> {
+  await currentUserId();
+  const { error } = await client().from("variations").delete().eq("id", variationId).eq("status", "draft");
+  if (error) throw new Error("The variation could not be removed. Please try again.", { cause: error });
+}
+
+export async function sendVariation(variationId: string): Promise<void> {
+  await currentUserId();
+  const { error } = await client().rpc("send_variation", { p_variation_id: variationId });
+  if (error) throw new Error("The variation could not be sent for approval. Please try again.", { cause: error });
+}
+
+export async function decideVariation(
+  variationId: string,
+  accept: boolean,
+  note: string,
+): Promise<void> {
+  await currentUserId();
+  const cleanNote = note.trim();
+  if (cleanNote.length > 2000) throw new Error("Variation note must be 2000 characters or fewer.");
+  const { error } = await client().rpc("decide_variation", {
+    p_variation_id: variationId,
+    p_accept: accept,
+    p_note: cleanNote || null,
+  });
+  if (error) throw new Error(
+    accept ? "The variation could not be approved. Please try again." : "The variation could not be declined. Please try again.",
+    { cause: error },
+  );
 }
 
 export async function uploadProjectDocument(
