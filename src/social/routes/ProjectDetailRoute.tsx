@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { CalendarDays, ExternalLink, FileText, PoundSterling, Ruler, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { CalendarDays, Check, ExternalLink, FileText, Plus, PoundSterling, Ruler, Send, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { Card, SectionHeading } from "../components/ui";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
 import {
   addApproximateProjectMeasurement,
+  createDraftVariation,
+  decideVariation,
+  deleteDraftVariation,
   deleteProjectDocument,
   deleteProjectMeasurement,
   fetchLaunchProject,
+  sendVariation,
   uploadProjectDocument,
   type LaunchProjectDetail,
   type ProjectDocument,
@@ -42,6 +46,12 @@ export default function ProjectDetailRoute() {
   const [documentKind, setDocumentKind] = useState<ProjectDocument["kind"]>("photo");
   const [measurementLabel, setMeasurementLabel] = useState("");
   const [measurementDetails, setMeasurementDetails] = useState("");
+  const [variationTitle, setVariationTitle] = useState("");
+  const [variationDescription, setVariationDescription] = useState("");
+  const [variationAmount, setVariationAmount] = useState("");
+  const [variationDays, setVariationDays] = useState("0");
+  const [decisionVariationId, setDecisionVariationId] = useState<string | null>(null);
+  const [variationNote, setVariationNote] = useState("");
 
   const load = useCallback(() => {
     if (auth.status !== "authenticated" || !projectId) return;
@@ -114,6 +124,69 @@ export default function ProjectDetailRoute() {
     }
   }
 
+  async function addVariation() {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await createDraftVariation(projectId, {
+        title: variationTitle,
+        description: variationDescription,
+        amountDelta: Number(variationAmount || "0"),
+        daysDelta: Number(variationDays || "0"),
+      });
+      setVariationTitle("");
+      setVariationDescription("");
+      setVariationAmount("");
+      setVariationDays("0");
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, "The variation could not be created.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function submitVariation(variationId: string) {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await sendVariation(variationId);
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, "The variation could not be sent.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function removeVariation(variationId: string) {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await deleteDraftVariation(variationId);
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, "The variation could not be removed.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function answerVariation(variationId: string, accept: boolean) {
+    try {
+      setActionBusy(true);
+      setActionError("");
+      await decideVariation(variationId, accept, variationNote);
+      setDecisionVariationId(null);
+      setVariationNote("");
+      await load();
+    } catch (error: unknown) {
+      setActionError(describeError(error, accept ? "The variation could not be approved." : "The variation could not be declined.").message);
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   if (auth.status === "loading") return <LoadingState label="Checking your account" />;
   if (auth.status === "guest") {
     return (
@@ -131,6 +204,15 @@ export default function ProjectDetailRoute() {
 
   const project = state.project;
   const me = auth.session.subject;
+  const canManageProject =
+    project.current_user_role === "professional" ||
+    project.current_user_role === "project_manager" ||
+    project.lead_professional_id === me;
+  const isCustomer = project.customer_id === me;
+  const acceptedVariationTotal = project.variations
+    .filter((variation) => variation.status === "accepted")
+    .reduce((sum, variation) => sum + Number(variation.amount_delta), 0);
+  const approvedProjectValue = Number(project.quote?.total ?? 0) + acceptedVariationTotal;
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -197,7 +279,17 @@ export default function ProjectDetailRoute() {
         <Card className="p-5">
           <div className="flex items-center gap-2"><PoundSterling className="h-5 w-5" /><h2 className="font-semibold">Financials</h2></div>
           <div className="mt-4 grid gap-3">
-            {project.quote && <p className="text-sm">Approved scope: <strong>{money(project.quote.total, project.quote.currency)}</strong></p>}
+            {project.quote && (
+              <>
+                <p className="text-sm">Original approved quote: <strong>{money(project.quote.total, project.quote.currency)}</strong></p>
+                {acceptedVariationTotal !== 0 && (
+                  <p className="text-sm">
+                    Accepted variations: <strong>{acceptedVariationTotal >= 0 ? "+" : ""}{money(acceptedVariationTotal, project.quote.currency)}</strong>
+                  </p>
+                )}
+                <p className="text-sm">Approved project value: <strong>{money(approvedProjectValue, project.quote.currency)}</strong></p>
+              </>
+            )}
             {project.payments.length === 0 ? <p className="text-sm text-[var(--smc-charcoal-soft)]">No payment schedule yet.</p> : project.payments.map((payment) => (
               <div key={payment.id} className="flex items-center justify-between gap-3 text-sm">
                 <span>{label(payment.kind)} · {label(payment.status)}</span>
@@ -354,18 +446,190 @@ export default function ProjectDetailRoute() {
         </Card>
 
         <Card className="p-5">
-          <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" /><h2 className="font-semibold">Variations & warranty</h2></div>
+          <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" /><h2 className="font-semibold">Variations</h2></div>
+          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">
+            Any change to scope, price or timing is recorded here and requires a clear customer decision.
+          </p>
+
           <div className="mt-4 grid gap-3">
-            {project.variations.length === 0 && project.warranties.length === 0 && (
-              <p className="text-sm text-[var(--smc-charcoal-soft)]">Nothing recorded yet.</p>
+            {project.variations.length === 0 && (
+              <p className="text-sm text-[var(--smc-charcoal-soft)]">No variations recorded.</p>
             )}
+
             {project.variations.map((variation) => (
-              <div key={variation.id}>
-                <p className="text-sm font-semibold">{variation.title}</p>
-                <p className="text-xs text-[var(--smc-charcoal-soft)]">{label(variation.status)} · {variation.amount_delta >= 0 ? "+" : ""}{money(variation.amount_delta, "GBP")}</p>
+              <div key={variation.id} className="rounded-[var(--smc-radius-card)] bg-[var(--smc-surface-sunken)] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{variation.title}</p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--smc-mineral-bronze)]">
+                      {label(variation.status)}
+                    </p>
+                  </div>
+                  <div className="text-right text-sm">
+                    <p className="font-semibold">
+                      {variation.amount_delta >= 0 ? "+" : ""}{money(Number(variation.amount_delta), project.quote?.currency ?? "GBP")}
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--smc-charcoal-faint)]">
+                      {variation.days_delta === 0
+                        ? "No schedule change"
+                        : `${variation.days_delta > 0 ? "+" : ""}${variation.days_delta} day${Math.abs(variation.days_delta) === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
+                </div>
+
+                {variation.description && (
+                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-[var(--smc-charcoal-soft)]">{variation.description}</p>
+                )}
+                {variation.customer_note && (
+                  <div className="mt-3 rounded-xl bg-white p-3">
+                    <p className="text-xs font-semibold text-[var(--smc-charcoal-faint)]">Customer note</p>
+                    <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{variation.customer_note}</p>
+                  </div>
+                )}
+
+                {canManageProject && variation.status === "draft" && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void submitVariation(variation.id)}
+                      disabled={actionBusy}
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      <Send className="h-4 w-4" /> Send for approval
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void removeVariation(variation.id)}
+                      disabled={actionBusy}
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" /> Remove draft
+                    </button>
+                  </div>
+                )}
+
+                {isCustomer && variation.status === "sent" && (
+                  <div className="mt-4 grid gap-3">
+                    {decisionVariationId === variation.id ? (
+                      <>
+                        <label className="grid gap-2 text-sm font-medium">
+                          Note <span className="font-normal text-[var(--smc-charcoal-faint)]">(optional)</span>
+                          <textarea
+                            value={variationNote}
+                            onChange={(event) => setVariationNote(event.target.value)}
+                            maxLength={2000}
+                            rows={3}
+                            className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6"
+                            placeholder="Add context for the professional."
+                          />
+                        </label>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={() => void answerVariation(variation.id, true)}
+                            disabled={actionBusy}
+                            className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                          >
+                            <Check className="h-4 w-4" /> Approve variation
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void answerVariation(variation.id, false)}
+                            disabled={actionBusy}
+                            className="inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold disabled:opacity-50"
+                          >
+                            <X className="h-4 w-4" /> Decline variation
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDecisionVariationId(null); setVariationNote(""); }}
+                            disabled={actionBusy}
+                            className="inline-flex min-h-[48px] items-center justify-center px-4 text-sm font-semibold text-[var(--smc-charcoal-soft)] disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDecisionVariationId(variation.id)}
+                        className="inline-flex min-h-[48px] items-center justify-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white"
+                      >
+                        Review variation
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
-            {project.warranties.map((warranty) => (
+          </div>
+
+          {canManageProject && (
+            <div className="mt-5 grid gap-3 border-t border-[var(--smc-border)] pt-5">
+              <h3 className="text-sm font-semibold">Create variation</h3>
+              <label className="grid gap-2 text-sm font-medium">
+                Title
+                <input
+                  value={variationTitle}
+                  onChange={(event) => setVariationTitle(event.target.value)}
+                  maxLength={180}
+                  placeholder="e.g. Add full-height splashback"
+                  className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Description
+                <textarea
+                  value={variationDescription}
+                  onChange={(event) => setVariationDescription(event.target.value)}
+                  maxLength={5000}
+                  rows={4}
+                  placeholder="Describe exactly what changes from the approved scope."
+                  className="rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white p-3 leading-6"
+                />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-2 text-sm font-medium">
+                  Price change (£)
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={variationAmount}
+                    onChange={(event) => setVariationAmount(event.target.value)}
+                    placeholder="0.00"
+                    className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  Schedule change (days)
+                  <input
+                    type="number"
+                    step="1"
+                    value={variationDays}
+                    onChange={(event) => setVariationDays(event.target.value)}
+                    className="min-h-[48px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-white px-3"
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={() => void addVariation()}
+                disabled={!variationTitle.trim() || actionBusy}
+                className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-5 text-sm font-semibold disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" /> Save variation draft
+              </button>
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5" /><h2 className="font-semibold">Warranty</h2></div>
+          <div className="mt-4 grid gap-3">
+            {project.warranties.length === 0 ? (
+              <p className="text-sm text-[var(--smc-charcoal-soft)]">No warranty recorded yet.</p>
+            ) : project.warranties.map((warranty) => (
               <div key={warranty.id}>
                 <p className="text-sm font-semibold">{warranty.warranty_type}</p>
                 <p className="text-xs text-[var(--smc-charcoal-soft)]">{warranty.provider_name ?? "Project warranty"}</p>
