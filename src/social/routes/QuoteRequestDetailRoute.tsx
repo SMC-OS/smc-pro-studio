@@ -106,6 +106,17 @@ export default function QuoteRequestDetailRoute() {
   const me = auth.session.subject;
   const isProfessional = request.assigned_professional_id === me;
   const isCustomer = request.requester_id === me;
+  const approximateMeasurements =
+    typeof request.selections?.approximateMeasurements === "string"
+      ? request.selections.approximateMeasurements
+      : "";
+  const preferredTiming =
+    typeof request.selections?.preferredTiming === "string"
+      ? request.selections.preferredTiming
+      : "";
+  const requirements = Array.isArray(request.selections?.requirements)
+    ? request.selections.requirements.filter((item): item is string => typeof item === "string")
+    : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,6 +136,39 @@ export default function QuoteRequestDetailRoute() {
           {request.property && <p className="mt-2 text-sm text-[var(--smc-charcoal-soft)]">{request.property.address_line1}, {request.property.city} {request.property.postcode}</p>}
         </Card>
       </div>
+
+      {(approximateMeasurements || preferredTiming || requirements.length > 0) && (
+        <Card className="p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--smc-mineral-bronze)]">Project brief</p>
+          <div className="mt-3 grid gap-4">
+            {approximateMeasurements && (
+              <div>
+                <p className="text-sm font-semibold">Approximate measurements</p>
+                <p className="mt-1 whitespace-pre-line text-sm leading-6 text-[var(--smc-charcoal-soft)]">{approximateMeasurements}</p>
+                <p className="mt-1 text-xs text-[var(--smc-charcoal-faint)]">Customer-provided approximation — not a professional template or survey.</p>
+              </div>
+            )}
+            {preferredTiming && (
+              <div>
+                <p className="text-sm font-semibold">Preferred timing</p>
+                <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{preferredTiming}</p>
+              </div>
+            )}
+            {requirements.length > 0 && (
+              <div>
+                <p className="text-sm font-semibold">Requirements</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {requirements.map((item) => (
+                    <span key={item} className="rounded-full bg-[var(--smc-limestone)] px-3 py-1.5 text-xs font-medium text-[var(--smc-charcoal)]">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-5">
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--smc-mineral-bronze)]">People</p>
