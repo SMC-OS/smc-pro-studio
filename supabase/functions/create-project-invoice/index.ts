@@ -89,6 +89,18 @@ Deno.serve(async (req: Request) => {
   const dueAt = new Date(payment.due_at);
   if (Number.isNaN(dueAt.getTime()) || dueAt <= new Date()) return json({ error: "invoice_due_date_invalid" }, 409);
 
+  const { error: claimError } = await admin.rpc("claim_project_payment_for_collection", {
+    p_payment_id: payment.id,
+    p_customer_id: payment.customer_id,
+    p_collection_method: "invoice",
+  });
+  if (claimError) {
+    return json({
+      error: "payment_no_longer_collectible",
+      message: "This invoice can no longer be issued because the approved project balance is already covered by other payments or requests.",
+    }, 409);
+  }
+
   const stripe = new Stripe(stripeKey, { apiVersion: "2026-08-26.dahlia" });
 
   if (payment.provider_invoice_id) {
