@@ -76,34 +76,16 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const existing = await admin
-    .from("stripe_webhook_events")
-    .select("processed_at")
-    .eq("event_id", event.id)
-    .maybeSingle();
-
-  if (existing.data?.processed_at) {
-    return json({ received: true, duplicate: true });
-  }
-
-  if (!existing.data) {
-    const object = event.data.object as { id?: string };
-    const { error: eventInsertError } = await admin.from("stripe_webhook_events").insert({
-      event_id: event.id,
-      event_type: event.type,
-      livemode: event.livemode,
-      object_id: typeof object?.id === "string" ? object.id : null,
-      provider_created_at: isoFromSeconds(event.created),
-    });
-    if (eventInsertError && eventInsertError.code !== "23505") {
-      return json({ error: "webhook_event_record_failed" }, 500);
-    }
-  } else {
-    await admin
-      .from("stripe_webhook_events")
-      .update({ error_text: null })
-      .eq("event_id", event.id);
-  }
+  const objectForClaim = event.data.object as { id?: string };
+  const { data: claimed, error: claimError } = await admin.rpc("claim_stripe_webhook_event", {
+    p_event_id: event.id,
+    p_event_type: event.type,
+    p_livemode: event.livemode,
+    p_object_id: typeof objectForClaim?.id === "string" ? objectForClaim.id : null,
+    p_provider_created_at: isoFromSeconds(event.created),
+  });
+  if (claimError) return json({ error: "webhook_event_claim_failed" }, 500);
+  if (!claimed) return json({ received: true, duplicate: true });
 
   async function findPaymentId(object: Record<string, any>): Promise<string | null> {
     const metadataPaymentId = object.metadata?.smc_payment_id;
