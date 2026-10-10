@@ -281,18 +281,33 @@ export async function uploadQuoteRequestDocument(
 }
 
 export async function deleteQuoteRequestDocument(document: QuoteRequestDocumentRecord): Promise<void> {
-  await currentUserId();
+  const userId = await currentUserId();
   const supabase = client();
-  const { error: storageError } = await supabase.storage
+
+  const request = await fetchQuoteRequest(document.quote_request_id);
+  if (!request || request.requester_id !== userId) {
+    throw new Error("Only the customer who attached this file can remove it.");
+  }
+  if (request.status !== "draft" && request.status !== "submitted") {
+    throw new Error("The file could not be removed because the quote request is already being used as project evidence.");
+  }
+
+  const { data: removed, error: storageError } = await supabase.storage
     .from("private-project-media")
     .remove([document.storage_path]);
-  if (storageError) throw new Error("The file could not be removed. Please try again.", { cause: storageError });
+  if (storageError || !removed?.some((row) => row.name === document.storage_path || document.storage_path.endsWith(row.name))) {
+    throw new Error("The file could not be removed. Please try again.", { cause: storageError ?? undefined });
+  }
 
-  const { error: rowError } = await supabase
+  const { data: deletedRows, error: rowError } = await supabase
     .from("quote_request_documents")
     .delete()
-    .eq("id", document.id);
-  if (rowError) throw new Error("The file record could not be removed. Please try again.", { cause: rowError });
+    .eq("id", document.id)
+    .eq("uploaded_by", userId)
+    .select("id");
+  if (rowError || deletedRows?.length !== 1) {
+    throw new Error("The file record could not be removed. Please try again.", { cause: rowError ?? undefined });
+  }
 }
 
 export async function createOrGetDraftQuote(requestId: string): Promise<string> {
