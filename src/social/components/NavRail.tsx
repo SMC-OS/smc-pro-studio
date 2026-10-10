@@ -12,10 +12,9 @@ const NAV_ITEMS = [
 
 function isNavItemActive(item: (typeof NAV_ITEMS)[number], pathname: string): boolean {
   if (matchPath({ path: item.to, end: item.end }, pathname)) return true;
-  return item.to === "/profile" && (
-    Boolean(matchPath({ path: "/connections", end: false }, pathname)) ||
-    Boolean(matchPath({ path: "/settings", end: false }, pathname))
-  );
+  if (item.to === "/profile" && Boolean(matchPath({ path: "/connections", end: false }, pathname))) return true;
+  if (item.to === "/profile" && Boolean(matchPath({ path: "/settings", end: false }, pathname))) return true;
+  return false;
 }
 
 export default function NavRail() {
@@ -35,15 +34,15 @@ export default function NavRail() {
 
       <nav className="mt-8 flex flex-1 flex-col gap-1">
         {NAV_ITEMS.map((item) => {
-          const active = isNavItemActive(item, location.pathname);
+          const isActive = isNavItemActive(item, location.pathname);
           return (
             <Link
               key={item.to}
               to={item.to}
-              aria-current={active ? "page" : undefined}
-              className={`flex min-h-[48px] items-center gap-3 rounded-[var(--smc-radius-card)] px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)] ${active ? "bg-[var(--smc-limestone)] text-[var(--smc-charcoal)]" : "text-[var(--smc-charcoal-faint)] hover:bg-[var(--smc-surface-sunken)]"}`}
+              aria-current={isActive ? "page" : undefined}
+              className={`flex min-h-[48px] items-center gap-3 rounded-[var(--smc-radius-card)] px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)] ${isActive ? "bg-[var(--smc-limestone)] text-[var(--smc-charcoal)]" : "text-[var(--smc-charcoal-faint)] hover:bg-[var(--smc-surface-sunken)]"}`}
             >
-              <item.icon className="h-[18px] w-[18px]" strokeWidth={active ? 2.1 : 1.7} aria-hidden="true" />
+              <item.icon className="h-[18px] w-[18px]" strokeWidth={isActive ? 2.1 : 1.7} aria-hidden="true" />
               <span>{item.label}</span>
             </Link>
           );
