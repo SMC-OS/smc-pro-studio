@@ -103,6 +103,7 @@ export interface ProjectMeasurement {
 
 export interface ProjectPayment {
   id: string;
+  seller_id: string | null;
   requested_by: string | null;
   kind: string;
   status: string;
@@ -110,6 +111,7 @@ export interface ProjectPayment {
   amount: number;
   request_note: string | null;
   collection_method: "checkout" | "invoice";
+  provider_account_id: string | null;
   due_at: string | null;
   paid_at: string | null;
   cancelled_at: string | null;
@@ -267,7 +269,7 @@ export async function fetchLaunchProject(projectId: string): Promise<LaunchProje
     supabase.from("variations").select("id, created_by, title, description, amount_delta, days_delta, status, sent_at, decided_at, customer_note, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("project_documents").select("id, uploaded_by, kind, storage_path, file_name, mime_type, size_bytes, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("project_measurements").select("id, created_by, source, label, data, is_survey_grade, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
-    supabase.from("payments").select("id, requested_by, kind, status, currency, amount, request_note, collection_method, due_at, paid_at, cancelled_at, refunded_amount, disputed_amount, receipt_url, hosted_invoice_url, invoice_pdf_url, failure_code, failure_message, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
+    supabase.from("payments").select("id, seller_id, requested_by, kind, status, currency, amount, request_note, collection_method, provider_account_id, due_at, paid_at, cancelled_at, refunded_amount, disputed_amount, receipt_url, hosted_invoice_url, invoice_pdf_url, failure_code, failure_message, created_at").eq("project_id", projectId).order("created_at", { ascending: false }),
     supabase.from("warranties").select("id, warranty_type, provider_name, starts_on, ends_on, terms_summary").eq("project_id", projectId).order("starts_on", { ascending: false }),
   ]);
 
