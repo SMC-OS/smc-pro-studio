@@ -5,6 +5,7 @@ import type { LaunchProjectDetail } from "../services/launchClient";
 import {
   createProjectCheckout,
   createProjectInvoice,
+  refundProjectPayment,
   requestProjectPayment,
   type ProjectPaymentCollectionMethod,
   type ProjectPaymentKind,
@@ -62,6 +63,7 @@ export default function ProjectPaymentsCard({
   const [error, setError] = useState("");
 
   const currency = project.quote?.currency ?? "GBP";
+  const isSeller = project.lead_professional_id === me;
   const approvedVariationTotal = useMemo(
     () =>
       project.variations
@@ -136,6 +138,21 @@ export default function ProjectPaymentsCard({
       await onChanged();
     } catch (cause: unknown) {
       setError(describeError(cause, "Secure Stripe Checkout could not be opened.").message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function refundRemaining(paymentId: string, remaining: number) {
+    if (remaining <= 0) return;
+    if (!window.confirm(`Refund ${money(remaining, currency)} to the customer through Stripe?`)) return;
+    try {
+      setBusyId(paymentId);
+      setError("");
+      await refundProjectPayment(paymentId, remaining);
+      await onChanged();
+    } catch (cause: unknown) {
+      setError(describeError(cause, "The Stripe refund could not be started.").message);
     } finally {
       setBusyId(null);
     }
@@ -280,7 +297,7 @@ export default function ProjectPaymentsCard({
                     </a>
                   )}
 
-                  {canManageProject &&
+                  {isSeller &&
                     isRequester &&
                     payment.collection_method === "invoice" &&
                     !payment.hosted_invoice_url &&
@@ -294,6 +311,24 @@ export default function ProjectPaymentsCard({
                       >
                         <FileText className="h-4 w-4" aria-hidden="true" />
                         {paymentBusy ? "Creating invoice…" : "Create Stripe invoice"}
+                      </button>
+                    )}
+
+                  {isSeller &&
+                    payment.status === "paid" &&
+                    Number(payment.amount) - Number(payment.refunded_amount ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void refundRemaining(
+                            payment.id,
+                            Number(payment.amount) - Number(payment.refunded_amount ?? 0),
+                          )
+                        }
+                        disabled={paymentBusy}
+                        className="inline-flex min-h-[44px] items-center gap-2 rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold disabled:opacity-50"
+                      >
+                        {paymentBusy ? "Starting refund…" : "Refund remaining"}
                       </button>
                     )}
 
@@ -324,7 +359,7 @@ export default function ProjectPaymentsCard({
         )}
       </div>
 
-      {canManageProject && remainingToRequest > 0 && (
+      {isSeller && remainingToRequest > 0 && (
         <div className="mt-5 grid gap-3 border-t border-[var(--smc-border)] pt-5">
           <div>
             <h3 className="text-sm font-semibold">Request project payment</h3>
@@ -411,7 +446,7 @@ export default function ProjectPaymentsCard({
         </div>
       )}
 
-      {canManageProject && remainingToRequest <= 0 && (
+      {isSeller && remainingToRequest <= 0 && (
         <p className="mt-5 border-t border-[var(--smc-border)] pt-5 text-sm text-[var(--smc-charcoal-soft)]">
           All currently approved project value is already paid or covered by active payment requests.
         </p>
