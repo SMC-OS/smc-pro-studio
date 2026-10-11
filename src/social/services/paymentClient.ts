@@ -10,6 +10,7 @@ export interface PaymentDetail {
   quote_id: string | null;
   variation_id: string | null;
   customer_id: string;
+  seller_id: string | null;
   requested_by: string | null;
   kind: ProjectPaymentKind | "refund";
   status: ProjectPaymentStatus;
@@ -17,6 +18,7 @@ export interface PaymentDetail {
   amount: number;
   request_note: string | null;
   collection_method: ProjectPaymentCollectionMethod;
+  provider_account_id: string | null;
   due_at: string | null;
   paid_at: string | null;
   cancelled_at: string | null;
@@ -138,7 +140,7 @@ export async function fetchPaymentDetail(paymentId: string): Promise<PaymentDeta
   const { data, error } = await client()
     .from("payments")
     .select(
-      "id, project_id, quote_id, variation_id, customer_id, requested_by, kind, status, currency, amount, request_note, collection_method, due_at, paid_at, cancelled_at, refunded_amount, disputed_amount, receipt_url, hosted_invoice_url, invoice_pdf_url, failure_code, failure_message, created_at, updated_at",
+      "id, project_id, quote_id, variation_id, customer_id, seller_id, requested_by, kind, status, currency, amount, request_note, collection_method, provider_account_id, due_at, paid_at, cancelled_at, refunded_amount, disputed_amount, receipt_url, hosted_invoice_url, invoice_pdf_url, failure_code, failure_message, created_at, updated_at",
     )
     .eq("id", paymentId)
     .maybeSingle();
@@ -173,4 +175,28 @@ export async function fetchPaymentAdjustments(paymentId: string): Promise<{
     refunds: (refundResult.data ?? []) as PaymentRefund[],
     disputes: (disputeResult.data ?? []) as PaymentDispute[],
   };
+}
+
+
+export async function refundProjectPayment(
+  paymentId: string,
+  amount: number | null = null,
+): Promise<{
+  refundId: string;
+  status: string | null;
+  amount: number;
+  currency: string;
+  pendingWebhookReconciliation: boolean;
+}> {
+  await currentUserId();
+  if (amount !== null && (!Number.isFinite(amount) || amount <= 0)) {
+    throw new Error("Refund amount must be greater than zero.");
+  }
+  const { data, error } = await client().functions.invoke("refund-project-payment", {
+    body: { paymentId, amount },
+  });
+  if (error) throw new Error("The Stripe refund could not be started. Please try again.", { cause: error });
+  if (data?.error) throw new Error(data.message || "The Stripe refund could not be started.");
+  if (!data?.refundId) throw new Error("Stripe did not return a refund.");
+  return data;
 }
