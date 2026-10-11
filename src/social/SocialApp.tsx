@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
+import NativeUrlBridge from "./components/NativeUrlBridge";
 import AuthRoute from "./routes/AuthRoute";
 import CommunityGuidelinesRoute from "./routes/CommunityGuidelinesRoute";
 import ConnectionsRoute from "./routes/ConnectionsRoute";
@@ -43,6 +44,7 @@ export default function SocialApp() {
 
   return (
     <BrowserRouter>
+      <NativeUrlBridge />
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<HomeRoute />} />
