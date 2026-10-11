@@ -125,9 +125,26 @@ const authClientUrl = new URL("../src/services/authClient.ts", import.meta.url).
 // real materialsClient.ts here would fail at module-load time with "does
 // not provide an export named 'SocialUnavailableError'".
 const materialsClientUrl = new URL("../src/social/services/materialsClient.ts", import.meta.url).href;
+const stripeConnectClientUrl = new URL("../src/social/services/stripeConnectClient.ts", import.meta.url).href;
+
 mock.module(materialsClientUrl, {
   exports: {
     checkCatalogueEditorAccess: async () => false,
+  },
+});
+
+// ProfileRoute now imports ProfessionalStripeCard. The discovery-link tests in
+// this file use a customer profile, so Stripe Connect must never be exercised;
+// mock its service at the module boundary to keep this Node/jsdom test isolated
+// from Vite-only import.meta.env and from any real Supabase/Stripe network.
+mock.module(stripeConnectClientUrl, {
+  exports: {
+    fetchProfessionalStripeStatus: async () => {
+      throw new Error("Stripe Connect should not be called for a customer profile");
+    },
+    beginProfessionalStripeOnboarding: async () => {
+      throw new Error("Stripe Connect should not be called for a customer profile");
+    },
   },
 });
 
