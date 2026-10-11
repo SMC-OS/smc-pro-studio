@@ -62,6 +62,7 @@ const as = async (user, fn) => {
 
 let customer;
 let professional;
+let otherProfessional;
 let otherCustomer;
 let property;
 let requestId;
@@ -77,6 +78,11 @@ before(async () => {
     account_type: "professional",
     display_name: `${T} Stone Studio`,
     professional_category: "stone_fabricator",
+  });
+  otherProfessional = await signUp("other-pro", {
+    account_type: "professional",
+    display_name: `${T} Project Manager`,
+    professional_category: "general_contractor",
   });
 
   await as(professional, () =>
@@ -273,6 +279,14 @@ test("customer approval creates the project, both memberships and launch milesto
   assert.ifError(milestonesError);
   assert.deepEqual(milestones.map((row) => row.title), ["Site survey", "Templating", "Fabrication", "Installation", "Handover"]);
 
+  const { error: managerMemberError } = await service.from("project_members").insert({
+    project_id: projectId,
+    user_id: otherProfessional.id,
+    role: "project_manager",
+    added_by: professional.id,
+  });
+  assert.ifError(managerMemberError);
+
   const { data: request, error: requestError } = await service.from("quote_requests").select("status").eq("id", requestId).single();
   assert.ifError(requestError);
   assert.equal(request.status, "converted");
@@ -462,7 +476,22 @@ test("customer can decline a separate variation without adding it to the accepte
   );
 });
 
-test("project payment requests are server-bounded by approved value and customer identity", { skip }, async () => {
+test("project payment requests are seller-only, server-bounded and customer-isolated", { skip }, async () => {
+  await assert.rejects(
+    () => as(otherProfessional, () =>
+      payments.requestProjectPayment({
+        projectId,
+        kind: "deposit",
+        amount: 100,
+        dueAt: null,
+        collectionMethod: "checkout",
+        note: "A project manager who is not the seller must not request money.",
+      }),
+    ),
+    /payment could not be requested/i,
+    "non-seller project managers cannot become the merchant for this project",
+  );
+
   await assert.rejects(
     () => as(customer, () =>
       payments.requestProjectPayment({
@@ -490,6 +519,7 @@ test("project payment requests are server-bounded by approved value and customer
 
   assert.equal(deposit.project_id, projectId);
   assert.equal(deposit.customer_id, customer.id);
+  assert.equal(deposit.seller_id, professional.id);
   assert.equal(deposit.requested_by, professional.id);
   assert.equal(deposit.status, "pending");
   assert.equal(deposit.currency, "GBP");
@@ -619,6 +649,53 @@ test("a scope reduction cannot undercut already committed project payments", { s
   const project = await as(customer, () => launch.fetchLaunchProject(projectId));
   const reduction = project.variations.find((row) => row.id === reductionId);
   assert.equal(reduction.status, "rejected");
+});
+
+test("Stripe Connect account mappings are owner-readable and server-write-only", { skip }, async () => {
+  const fakeAccountId = `acct_${T.replace(/[^a-zA-Z0-9]/g, "")}Seller`;
+  const { error: insertError } = await service.from("stripe_connected_accounts").insert({
+    professional_id: professional.id,
+    environment: "sandbox",
+    provider_account_id: fakeAccountId,
+    dashboard: "full",
+    fees_collector: "stripe",
+    losses_collector: "stripe",
+    requirements_collector: "stripe",
+    card_payments_status: "inactive",
+    charges_enabled: false,
+    payouts_enabled: false,
+    onboarding_complete: false,
+  });
+  assert.ifError(insertError);
+
+  const { data: ownerRows, error: ownerReadError } = await professional.client
+    .from("stripe_connected_accounts")
+    .select("professional_id, environment, provider_account_id, dashboard, fees_collector, losses_collector")
+    .eq("professional_id", professional.id);
+  assert.ifError(ownerReadError);
+  assert.equal(ownerRows.length, 1);
+  assert.equal(ownerRows[0].provider_account_id, fakeAccountId);
+  assert.equal(ownerRows[0].fees_collector, "stripe");
+  assert.equal(ownerRows[0].losses_collector, "stripe");
+
+  const { data: customerRows, error: customerReadError } = await customer.client
+    .from("stripe_connected_accounts")
+    .select("provider_account_id")
+    .eq("professional_id", professional.id);
+  assert.ifError(customerReadError);
+  assert.deepEqual(customerRows, []);
+
+  const { data: otherProRows, error: otherProReadError } = await otherProfessional.client
+    .from("stripe_connected_accounts")
+    .select("provider_account_id")
+    .eq("professional_id", professional.id);
+  assert.ifError(otherProReadError);
+  assert.deepEqual(otherProRows, []);
+
+  const { error: clientWriteError } = await professional.client.from("stripe_connected_accounts").update({
+    losses_collector: "application",
+  }).eq("professional_id", professional.id);
+  assert.ok(clientWriteError, "professional cannot rewrite Stripe responsibility settings through the client");
 });
 
 test("payment refund and dispute ledgers are not client-writable", { skip }, async () => {
