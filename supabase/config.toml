@@ -160,7 +160,7 @@ site_url = "http://127.0.0.1:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://127.0.0.1:5173/auth/callback", "smcprostudio://auth/callback"]
+additional_redirect_urls = ["http://127.0.0.1:5173/auth/callback", "http://127.0.0.1:5173/auth/reset-password", "smcprostudio://auth/callback", "smcprostudio://auth/reset-password", "smcprostudio://auth-callback"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -248,6 +248,14 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+[auth.email.template.confirmation]
+subject = "Your SMC Pro Studio verification code"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Your SMC Pro Studio password recovery code"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
@@ -285,13 +293,9 @@ max_frequency = "5s"
 # enabled = true
 # uri = "pg-functions://<database>/<schema>/<hook_name>"
 
-# Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
-[auth.sms.twilio]
-enabled = false
-account_sid = ""
-message_service_sid = ""
-# DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
-auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
+# Configure an SMS provider only when SMS authentication is deliberately enabled.
+# Keeping an unused provider block here can overwrite hosted credentials during
+# config promotion, even while [auth.sms] itself remains disabled locally.
 
 # Multi-factor-authentication is available to Supabase Pro plan.
 [auth.mfa]
@@ -430,3 +434,40 @@ verify_jwt = true
 
 [functions.refund-project-payment]
 verify_jwt = true
+
+# Hosted staging overrides are intentionally narrow. Keep unrelated remote
+# services and credentials managed in the Supabase dashboard unchanged.
+[remotes.staging]
+project_id = "qezixxtknqbijnudvhal"
+
+[remotes.staging.auth]
+additional_redirect_urls = ["smcprostudio://auth/callback", "smcprostudio://auth/reset-password", "http://127.0.0.1:5173/auth/callback", "http://127.0.0.1:5173/auth/reset-password"]
+minimum_password_length = 8
+site_url = "http://localhost:3000"
+
+[remotes.staging.auth.email]
+max_frequency = "1m0s"
+otp_length = 8
+
+[remotes.staging.auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[remotes.staging.db.pooler]
+default_pool_size = 15
+max_client_conn = 200
+
+[remotes.staging.storage.analytics]
+enabled = true
+max_namespaces = 10
+
+[remotes.staging.storage.image_transformation]
+enabled = true
+
+[remotes.staging.auth.email.template.confirmation]
+subject = "Your SMC Pro Studio verification code"
+content_path = "./supabase/templates/confirmation.html"
+
+[remotes.staging.auth.email.template.recovery]
+subject = "Your SMC Pro Studio password recovery code"
+content_path = "./supabase/templates/recovery.html"

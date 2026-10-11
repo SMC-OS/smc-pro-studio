@@ -63,6 +63,9 @@ export function routeFromNativeUrl(rawUrl: string): string | null {
     if (url.hostname === "auth" && url.pathname === "/callback") {
       return `/auth/callback${url.search}${url.hash}`;
     }
+    if (url.hostname === "auth" && url.pathname === "/reset-password") {
+      return `/auth/reset-password${url.search}${url.hash}`;
+    }
   }
 
   return null;

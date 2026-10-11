@@ -7,9 +7,12 @@ import {
   routeFromNativeUrl,
 } from "../../services/nativeLinks";
 
-function withoutAuthCode(route: string): string {
+function withoutAuthCredentials(route: string): string {
   const url = new URL(route, "https://smcprostudio.app");
   url.searchParams.delete("code");
+  url.searchParams.delete("token_hash");
+  url.searchParams.delete("type");
+  url.hash = "";
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
@@ -25,17 +28,23 @@ export default function NativeUrlBridge() {
       const route = routeFromNativeUrl(rawUrl);
       if (!route) return;
 
-      if (route.startsWith("/auth/callback")) {
+      const isAuthCallback = route.startsWith("/auth/callback");
+      const isPasswordRecovery = route.startsWith("/auth/reset-password");
+      if (isAuthCallback || isPasswordRecovery) {
         try {
           await completeAuthRedirect(rawUrl);
         } catch {
-          navigate("/auth", { replace: true });
+          await closeNativeBrowser();
+          navigate("/auth?verification=failed", { replace: true });
           return;
         }
       }
 
       await closeNativeBrowser();
-      if (!disposed) navigate(withoutAuthCode(route), { replace: false });
+      if (!disposed) {
+        if (isAuthCallback) navigate("/auth?verification=success", { replace: true });
+        else navigate(withoutAuthCredentials(route), { replace: false });
+      }
     })
       .then((remove) => {
         if (disposed) void remove();

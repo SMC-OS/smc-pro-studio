@@ -12,6 +12,7 @@ if (!manifest.includes(marker)) {
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="smcprostudio" android:host="auth" android:pathPrefix="/callback" />
+            <data android:scheme="smcprostudio" android:host="auth" android:pathPrefix="/reset-password" />
             <data android:scheme="smcprostudio" android:host="auth-callback" />
         </intent-filter>
 
@@ -20,6 +21,7 @@ if (!manifest.includes(marker)) {
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" android:host="smcprostudio.app" android:pathPrefix="/auth/callback" />
+            <data android:scheme="https" android:host="smcprostudio.app" android:pathPrefix="/auth/reset-password" />
             <data android:scheme="https" android:host="smcprostudio.app" android:pathPrefix="/projects" />
             <data android:scheme="https" android:host="smcprostudio.app" android:pathPrefix="/quotes" />
             <data android:scheme="https" android:host="smcprostudio.app" android:pathPrefix="/property-record" />
@@ -27,6 +29,7 @@ if (!manifest.includes(marker)) {
             <data android:scheme="https" android:host="smcprostudio.app" android:pathPrefix="/payments/return" />
             <data android:scheme="https" android:host="smcprostudio.app" android:pathPrefix="/profile" />
             <data android:scheme="https" android:host="staging.smcprostudio.app" android:pathPrefix="/auth/callback" />
+            <data android:scheme="https" android:host="staging.smcprostudio.app" android:pathPrefix="/auth/reset-password" />
             <data android:scheme="https" android:host="staging.smcprostudio.app" android:pathPrefix="/projects" />
             <data android:scheme="https" android:host="staging.smcprostudio.app" android:pathPrefix="/quotes" />
             <data android:scheme="https" android:host="staging.smcprostudio.app" android:pathPrefix="/property-record" />

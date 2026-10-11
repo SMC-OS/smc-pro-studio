@@ -31,6 +31,10 @@ test("custom auth callback compatibility stays narrow", () => {
     routeFromNativeUrl("smcprostudio://auth-callback?code=abc"),
     "/auth/callback?code=abc",
   );
+  assert.equal(
+    routeFromNativeUrl("smcprostudio://auth/reset-password?code=recovery-code"),
+    "/auth/reset-password?code=recovery-code",
+  );
   assert.equal(routeFromNativeUrl("smcprostudio://projects/123"), null);
 });
 
@@ -39,4 +43,7 @@ test("Android generation script includes payment return on both verified domains
   assert.match(source, /android:host="smcprostudio\.app" android:pathPrefix="\/payments\/return"/);
   assert.match(source, /android:host="staging\.smcprostudio\.app" android:pathPrefix="\/payments\/return"/);
   assert.match(source, /android:launchMode="singleTask"/);
+  assert.match(source, /android:scheme="smcprostudio" android:host="auth" android:pathPrefix="\/reset-password"/);
+  assert.match(source, /android:host="smcprostudio\.app" android:pathPrefix="\/auth\/reset-password"/);
+  assert.match(source, /android:host="staging\.smcprostudio\.app" android:pathPrefix="\/auth\/reset-password"/);
 });

@@ -12,11 +12,12 @@ globalThis.document = dom.window.document;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const calls = [];
+let mockedSession = { subject: "u1", email: "a@example.test", emailVerified: true, roles: [] };
 mock.module(new URL("../src/services/authClient.ts", import.meta.url).href, {
   exports: {
     getAuthSession: async (options) => {
       calls.push(options);
-      return { subject: "u1", email: "a@example.test", emailVerified: true, roles: [] };
+      return mockedSession;
     },
     onAuthSessionChange: () => () => undefined,
   },
@@ -37,4 +38,21 @@ test("useAuthSession reads the session without the Express API round-trip", asyn
   await React.act(async () => new Promise((r) => setTimeout(r, 10)));
   assert.deepEqual(calls, [{ includeServerRoles: false }]);
   assert.equal(seen.status, "authenticated");
+  await React.act(async () => root.unmount());
+});
+
+test("useAuthSession fails closed when Supabase has not recorded email confirmation", async () => {
+  mockedSession = { subject: "u2", email: "pending@example.test", emailVerified: false, roles: [] };
+  let seen;
+  function Probe() {
+    seen = useAuthSession();
+    return null;
+  }
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await React.act(async () => root.render(React.createElement(Probe)));
+  await React.act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  assert.equal(seen.status, "guest");
+  await React.act(async () => root.unmount());
 });

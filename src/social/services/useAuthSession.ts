@@ -38,7 +38,10 @@ export function useAuthSession(): AuthSessionState {
         const session = await getAuthSession({ includeServerRoles: false });
         if (cancelled) return;
         unavailable = false;
-        setState(session ? { status: "authenticated", session } : { status: "guest" });
+        // Fail closed if a provider or environment ever returns a session for
+        // an unconfirmed email. Protected social features unlock only after
+        // Supabase records email_confirmed_at.
+        setState(session?.emailVerified ? { status: "authenticated", session } : { status: "guest" });
       } catch (error) {
         if (cancelled) return;
         if (error instanceof Error && error.name === "AuthSessionUnavailableError") {

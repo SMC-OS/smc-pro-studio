@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
 import NativeUrlBridge from "./components/NativeUrlBridge";
@@ -31,17 +30,13 @@ import NotFoundRoute from "./routes/NotFoundRoute";
 import { PRIVACY_POLICY, TERMS_OF_USE } from "./legal/documents";
 import PublicProfileRoute from "./routes/PublicProfileRoute";
 import ResetPasswordRoute from "./routes/ResetPasswordRoute";
-import { completeAuthRedirect } from "../services/authClient";
+import AuthCallbackRoute from "./routes/AuthCallbackRoute";
 import "./tokens.css";
 
 import OtpPreviewRoute from "./routes/OtpPreviewRoute";
 import InteractionPreviewRoute from "./routes/InteractionPreviewRoute";
 
 export default function SocialApp() {
-  useEffect(() => {
-    void completeAuthRedirect().catch(() => undefined);
-  }, []);
-
   return (
     <BrowserRouter>
       <NativeUrlBridge />
@@ -81,6 +76,7 @@ export default function SocialApp() {
           <Route path="support" element={<SupportRoute />} />
           <Route path="delete-account" element={<DeleteAccountRoute />} />
           <Route path="auth" element={<AuthRoute />} />
+          <Route path="auth/callback" element={<AuthCallbackRoute />} />
           <Route path="auth/reset-password" element={<ResetPasswordRoute />} />
 
           {import.meta.env.DEV && <Route path="dev/otp-preview" element={<OtpPreviewRoute />} />}

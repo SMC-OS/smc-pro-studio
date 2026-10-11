@@ -1,5 +1,6 @@
-import type { AuthChangeEvent, Provider, Session } from "@supabase/supabase-js";
+import type { AuthChangeEvent, EmailOtpType, Provider, Session } from "@supabase/supabase-js";
 import { apiFetch } from "./apiClient";
+import { getAuthErrorCode, safeAuthFailure } from "./authErrors";
 import { getAuthRedirectUrl, getSupabaseClient, isSupabaseConfigured, SupabaseConfigurationError } from "./supabaseClient";
 
 export type AccountType = "customer" | "professional";
@@ -79,7 +80,12 @@ export async function signUpWithPassword(input: { email: string; password: strin
 export async function signInWithPassword(email: string, password: string): Promise<void> {
   if (!password) throw new Error("Password is required.");
   const { error } = await requireConfigured().auth.signInWithPassword({ email: validateEmail(email), password });
-  if (error) throw new Error("The email or password is incorrect, or the account is not ready for sign-in.", { cause: error });
+  if (error) {
+    throw safeAuthFailure(
+      error,
+      "Sign-in could not be completed. Check your details and, if you recently registered, verify your email before trying again.",
+    );
+  }
 }
 
 export async function signInWithOAuth(provider: SupportedOAuthProvider): Promise<void> {
@@ -95,7 +101,43 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const { error } = await requireConfigured().auth.resetPasswordForEmail(validateEmail(email), {
     redirectTo: getAuthRedirectUrl("/auth/reset-password"),
   });
-  if (error) throw new Error("Password recovery could not be started. Please try again later.");
+  if (error) throw safeAuthFailure(error, "Password recovery could not be started. Please try again later.");
+}
+
+export async function resendSignupConfirmation(email: string): Promise<void> {
+  const { error } = await requireConfigured().auth.resend({
+    type: "signup",
+    email: validateEmail(email),
+    options: { emailRedirectTo: getAuthRedirectUrl() },
+  });
+  if (getAuthErrorCode(error) === "user_not_found") return;
+  if (error) throw safeAuthFailure(error, "A new verification message could not be requested. Please try again later.");
+}
+
+export async function verifySignupCode(email: string, token: string): Promise<void> {
+  const normalizedToken = token.replace(/\s/g, "");
+  if (!/^\d{6,10}$/.test(normalizedToken)) throw new Error("Enter the verification code from your email.");
+  const { data, error } = await requireConfigured().auth.verifyOtp({
+    email: validateEmail(email),
+    token: normalizedToken,
+    type: "signup",
+  });
+  if (error || !data.user?.email_confirmed_at) {
+    throw safeAuthFailure(error, "The verification code is invalid or has expired. Request a new message and try again.");
+  }
+}
+
+export async function verifyRecoveryCode(email: string, token: string): Promise<void> {
+  const normalizedToken = token.replace(/\s/g, "");
+  if (!/^\d{6,10}$/.test(normalizedToken)) throw new Error("Enter the recovery code from your email.");
+  const { data, error } = await requireConfigured().auth.verifyOtp({
+    email: validateEmail(email),
+    token: normalizedToken,
+    type: "recovery",
+  });
+  if (error || !data.session) {
+    throw safeAuthFailure(error, "The recovery code is invalid or has expired. Request a new message and try again.");
+  }
 }
 
 export async function updatePassword(password: string): Promise<void> {
@@ -107,14 +149,42 @@ export async function updatePassword(password: string): Promise<void> {
 export async function completeAuthRedirect(url = window.location.href): Promise<void> {
   if (!isSupabaseConfigured) return;
   const parsed = new URL(url);
-  const errorDescription = parsed.searchParams.get("error_description");
+  const fragment = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+  const errorDescription = parsed.searchParams.get("error_description") ?? fragment.get("error_description");
   if (errorDescription) throw new Error(errorDescription);
   const code = parsed.searchParams.get("code");
+  let handled = false;
   if (code) {
     const { error } = await getSupabaseClient().auth.exchangeCodeForSession(code);
     if (error) throw new Error("The authentication link is invalid or has expired.");
+    handled = true;
+  } else {
+    const tokenHash = parsed.searchParams.get("token_hash");
+    const type = parsed.searchParams.get("type");
+    const allowedTypes = new Set<EmailOtpType>(["signup", "recovery", "email", "magiclink", "email_change"]);
+    if (tokenHash && type && allowedTypes.has(type as EmailOtpType)) {
+      const { error } = await getSupabaseClient().auth.verifyOtp({ token_hash: tokenHash, type: type as EmailOtpType });
+      if (error) throw new Error("The authentication link is invalid or has expired.");
+      handled = true;
+    } else {
+      const accessToken = fragment.get("access_token");
+      const refreshToken = fragment.get("refresh_token");
+      if (accessToken && refreshToken) {
+        const { error } = await getSupabaseClient().auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) throw new Error("The authentication link is invalid or has expired.");
+        handled = true;
+      }
+    }
+  }
+
+  if (!handled) throw new Error("The authentication link is incomplete.");
+
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
     parsed.searchParams.delete("code");
-    window.history.replaceState({}, document.title, `${parsed.pathname}${parsed.search}${parsed.hash}`);
+    parsed.searchParams.delete("token_hash");
+    parsed.searchParams.delete("type");
+    parsed.hash = "";
+    window.history.replaceState({}, document.title, `${parsed.pathname}${parsed.search}`);
   }
 }
 

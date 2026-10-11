@@ -142,7 +142,7 @@ export const WhatsAppAgentModal: React.FC<WhatsAppAgentModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      (messagesEndRef.current as Element | null)?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isOpen, isTyping]);
 
