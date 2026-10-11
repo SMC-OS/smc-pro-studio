@@ -523,7 +523,6 @@ export default function ProjectDetailRoute() {
         <ProjectPaymentsCard
           project={project}
           me={me}
-          canManageProject={canManageProject}
           isCustomer={isCustomer}
           onChanged={load}
         />
