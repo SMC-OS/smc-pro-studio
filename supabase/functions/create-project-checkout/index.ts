@@ -151,6 +151,7 @@ Deno.serve(async (req: Request) => {
     try {
       const existing = await stripe.checkout.sessions.retrieve(
         payment.provider_checkout_session_id,
+        {},
         { stripeAccount: connectedAccountId },
       );
       if (existing.status === "open" && existing.url) {
