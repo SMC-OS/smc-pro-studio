@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ExternalLink, FileText, PoundSterling, ReceiptText, ShieldCheck } from "lucide-react";
 import { Card } from "./ui";
+import { openExternalUrl } from "../../services/nativeLinks";
 import type { LaunchProjectDetail } from "../services/launchClient";
 import {
   createProjectCheckout,
@@ -33,12 +34,6 @@ function when(value: string): string {
   }).format(new Date(value));
 }
 
-function openHostedPayment(url: string) {
-  // On web this navigates directly to Stripe. In the Android build the HTTPS
-  // return URL is associated with SMC Pro Studio, so the completed flow can
-  // return through the existing App Link configuration.
-  window.location.assign(url);
-}
 
 export default function ProjectPaymentsCard({
   project,
@@ -130,7 +125,7 @@ export default function ProjectPaymentsCard({
       setError("");
       const result = await createProjectCheckout(paymentId);
       if (result.checkoutUrl) {
-        openHostedPayment(result.checkoutUrl);
+        await openExternalUrl(result.checkoutUrl);
         return;
       }
       await onChanged();
