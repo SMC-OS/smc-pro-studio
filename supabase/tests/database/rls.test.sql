@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(13);
 
 select policies_are('public', 'profiles', array[
   'profiles_owner_insert', 'profiles_owner_read', 'profiles_owner_update', 'profiles_public_read'
@@ -14,6 +14,10 @@ select policies_are('public', 'professional_profiles', array[
 
 select policies_are('public', 'user_roles', array[]::text[],
   'staff role assignments are deny-by-default to API users');
+
+select policies_are('public', 'stripe_connected_accounts', array[
+  'stripe_connected_accounts_owner_read'
+], 'professionals can only read their own Stripe Connect mapping');
 
 -- V1 launch gate: requests and cancellations now go only through the
 -- request_account_deletion()/cancel_account_deletion() RPCs; owners keep read.
