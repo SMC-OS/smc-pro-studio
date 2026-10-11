@@ -161,6 +161,8 @@ select is(
     'saved_posts:authenticated:delete,insert,select:-',
     'signoffs:anon:-:-',
     'signoffs:authenticated:insert,select:-',
+    'stripe_connected_accounts:anon:-:-',
+    'stripe_connected_accounts:authenticated:select:-',
     'stripe_customers:anon:-:-',
     'stripe_customers:authenticated:-:-',
     'stripe_webhook_events:anon:-:-',
