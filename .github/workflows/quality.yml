@@ -145,3 +145,119 @@ jobs:
       - name: Stop local Supabase
         if: always()
         run: npx --yes supabase@2.115.0 stop --no-backup
+
+
+  android-staging:
+    name: Android staging APK
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VITE_APP_URL: https://staging.smcprostudio.app
+      VITE_API_BASE_URL: https://staging.smcprostudio.app
+      VITE_SUPABASE_URL: https://qezixxtknqbijnudvhal.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_olxZJ4esZqiQlwX1UwKUYA_-_tw7uGl
+      VITE_SUPABASE_OAUTH_GOOGLE_ENABLED: "false"
+      VITE_SUPABASE_OAUTH_APPLE_ENABLED: "false"
+      VITE_SUPABASE_OAUTH_FACEBOOK_ENABLED: "false"
+      VITE_LEGACY_APP_OPT_IN: "false"
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install web dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install transient Capacitor Android plugins
+        run: npm install --no-save --package-lock=false @capacitor/android@8.5.2 @capacitor/app@8 @capacitor/browser@8
+
+      - name: Build staging web bundle
+        run: bun run build
+
+      - name: Generate Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+          node scripts/configure-android-staging.mjs
+
+      - name: Build unsigned release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Sign and verify canonical staging APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_KEYSTORE_BASE64:-}" || { echo "::error::ANDROID_KEYSTORE_BASE64 is not configured"; exit 1; }
+          test -n "${ANDROID_KEYSTORE_PASSWORD:-}" || { echo "::error::ANDROID_KEYSTORE_PASSWORD is not configured"; exit 1; }
+          test -n "${ANDROID_KEY_PASSWORD:-}" || { echo "::error::ANDROID_KEY_PASSWORD is not configured"; exit 1; }
+
+          KEY_ALIAS="${ANDROID_KEY_ALIAS:-smcprostudio}"
+          KEYSTORE="/tmp/smcprostudio-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+
+          UNSIGNED="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
+          test -n "$UNSIGNED" || { echo "::error::Unsigned release APK not found"; find android/app/build/outputs -type f -maxdepth 6 -print; exit 1; }
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
+          test -x "$ZIPALIGN" && test -x "$APKSIGNER"
+
+          "$ZIPALIGN" -f 4 "$UNSIGNED" /tmp/smc-pro-studio-staging-aligned.apk
+          "$APKSIGNER" sign             --ks "$KEYSTORE"             --ks-key-alias "$KEY_ALIAS"             --ks-pass env:ANDROID_KEYSTORE_PASSWORD             --key-pass env:ANDROID_KEY_PASSWORD             --out smc-pro-studio-staging.apk             /tmp/smc-pro-studio-staging-aligned.apk
+
+          VERIFY_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs smc-pro-studio-staging.apk)"
+          printf '%s\n' "$VERIFY_OUTPUT"
+
+          ACTUAL_SHA256="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          EXPECTED_SHA256="12790dc53a15f98a0ce5e8169bf036f61cd5505e3e26ff9e2e93c0bca0acec8e"
+          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256" || {
+            echo "::error::APK signing certificate does not match the canonical SMC Pro Studio certificate"
+            exit 1
+          }
+
+          cat > build-info.txt <<EOF
+          commit=${GITHUB_SHA}
+          package=app.smcprostudio
+          environment=staging
+          supabase_project=qezixxtknqbijnudvhal
+          signing_sha256=12:79:0D:C5:3A:15:F9:8A:0C:E5:E8:16:9B:F0:36:F6:1C:D5:50:5E:3E:26:FF:9E:2E:93:C0:BC:A0:AC:EC:8E
+          EOF
+
+      - name: Upload Samsung S24 Ultra staging APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smc-pro-studio-staging-apk-${{ github.sha }}
+          path: |
+            smc-pro-studio-staging.apk
+            build-info.txt
+          if-no-files-found: error
+          retention-days: 14
