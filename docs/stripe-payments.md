@@ -1,97 +1,93 @@
 # SMC Pro Studio Stripe payment architecture
 
-## Status
+## Locked V1 commercial model
 
-This integration is intentionally **test/sandbox only** until the payment release gate is approved.
+For project work sold through SMC Pro Studio:
 
-The Android/web client never owns a payable amount and never marks a payment paid. Supabase/Postgres is the project ledger; Stripe is the payment processor; verified Stripe webhooks reconcile provider state back into the ledger.
+- the independent construction professional is the **legal seller**;
+- the professional is the **invoice issuer**;
+- homeowner payments use **Stripe Connect direct charges** on that professional's connected account;
+- Stripe collects its processing fees from the connected professional;
+- SMC Pro Studio's V1 transaction commission is **0%**;
+- connected accounts use the full Stripe Dashboard;
+- new connected accounts are created with Accounts v2 Merchant configuration;
+- `defaults.responsibilities.fees_collector = stripe`;
+- `defaults.responsibilities.losses_collector = stripe` (Stripe Managed Risk);
+- card payments are requested during account creation;
+- the professional manages direct-charge disputes and refunds from their connected Stripe account.
 
-## Payment flow
+No project-payment code uses destination charges, separate charges and transfers, application fees, `transfer_data`, or `on_behalf_of`.
 
-1. A professional/project manager creates a payment request with `request_project_payment()`.
-2. Postgres locks the project and calculates the maximum collectible value from:
-   - the accepted quote total; plus
-   - accepted variation deltas.
-3. Existing pending/requires-action requests and net verified payments are counted before another request can be created.
-4. The customer starts Stripe Checkout using only the payment UUID. The Edge Function reads the authoritative GBP amount from Postgres.
-5. A retry must first pass `claim_project_payment_for_collection()`, which locks the project and prevents a stale failed request from being retried after replacement requests have reserved the balance.
-6. Stripe-hosted Checkout collects payment details. No Stripe secret is present in the mobile bundle.
-7. The return screen is informational only. It polls the protected payment row and never marks payment success.
-8. The signed Stripe webhook is the authority for paid/failed/cancelled/refunded/dispute reconciliation.
-9. Stripe event IDs are atomically claimed before processing to prevent duplicate side effects from webhook retries.
-10. Receipts/invoice PDFs are exposed only after provider state is reconciled.
+## Trust boundary
 
-## Invoicing
+Postgres is authoritative for project commercial value. Stripe is authoritative for provider payment state.
 
-A project payment request can use `collection_method=invoice`.
+1. The seller creates a payment request with `request_project_payment()`.
+2. Postgres locks the project and derives the collectible amount from the accepted quote plus accepted variations.
+3. The request snapshots `seller_id`; only the project's lead professional can create the request.
+4. The homeowner client sends only the payment UUID to the Checkout function.
+5. The server resolves the seller's connected account and creates Stripe Checkout **on that account**.
+6. Stripe-hosted Checkout collects payment details.
+7. The return route is read-only. It never marks a payment paid.
+8. A verified connected-account Stripe webhook reconciles paid/failed/cancelled/refunded/dispute state.
+9. Webhook reconciliation verifies the connected account, seller identity, currency and amount before changing the ledger.
+10. Event IDs are atomically claimed to make webhook retries idempotent.
 
-The professional who requested it can ask the staging Edge Function to create a Stripe invoice. The server:
-- resolves the customer email from Supabase Auth;
-- creates/reuses the Stripe Customer mapping;
-- creates the invoice and invoice item from the persisted GBP amount;
-- finalizes and sends the invoice;
-- stores hosted invoice/PDF URLs;
-- still waits for Stripe webhooks before setting the project payment to paid.
+## Professional-issued invoices
 
-Automatic Stripe Tax is intentionally not enabled because no tax-registration decision has been supplied for this integration.
+For `collection_method=invoice`:
+
+- only the seller who created the request can issue the invoice;
+- the Stripe Customer is created inside the seller's connected account;
+- the invoice, line item, finalisation and send operation all execute with that connected-account context;
+- therefore the professional's Stripe account is the invoice issuer;
+- the project payment is marked paid only after the connected-account webhook confirms it.
 
 ## Refunds and disputes
 
-Stripe webhook events reconcile:
-- refund lifecycle into `payment_refunds`;
-- dispute lifecycle into `payment_disputes`;
-- aggregate refunded/disputed amounts onto `payments`.
+Only the seller can initiate a refund through SMC Pro Studio. The server resolves the original connected-account PaymentIntent/Charge and creates the refund on that account. Stripe prevents refunds above the charge amount; the signed webhook remains authoritative for final refund state.
 
-Authenticated clients have read-only access scoped through project membership. Only server-side service credentials can write provider reconciliation rows.
+Direct-charge dispute events must include the connected account. Dispute records are scoped to the same seller account and surfaced to the professional. SMC Pro Studio does not move dispute losses to the platform balance.
 
-## Connect
+## Connect onboarding
 
-SMC Pro Studio is a two-sided platform. **Stripe Connect becomes necessary when SMC Pro Studio routes project funds or payouts to independent professionals.**
+`connect-professional-account` creates or refreshes the professional's Stripe account.
 
-No Connect charge pattern is implemented yet. The following owner/commercial decisions must be approved first:
-- who is merchant of record for each flow;
-- whether SMC owns the customer payment relationship;
-- platform fee/take-rate structure;
-- payout timing;
-- refund responsibility;
-- dispute responsibility;
-- negative-balance/loss liability.
+Required immutable V1 responsibilities:
 
-Until those are approved, the code deliberately contains no:
-- `application_fee_amount`;
-- `transfer_data`;
-- `on_behalf_of`;
-- connected-account payout routing.
+- dashboard: `full`
+- fees collector: `stripe`
+- losses collector: `stripe`
+- merchant card-payments capability requested
+- country: `GB`
 
-This avoids silently choosing commercial/legal responsibility in code.
+The status refresh compares Stripe's actual Accounts v2 responsibility fields with this contract and fails if they differ. It also reads the compatible Accounts v1 representation to persist actual `details_submitted`, `charges_enabled`, `payouts_enabled`, payout schedule, payout delay and `debit_negative_balances`.
 
-## Staging Edge Functions
+## Staging-only configuration
 
-- `create-project-checkout` — authenticated customer, `verify_jwt=true`
-- `create-project-invoice` — authenticated requesting professional, `verify_jwt=true`
-- `stripe-webhook` — Stripe signature authentication, `verify_jwt=false`
+Staging Supabase project: `qezixxtknqbijnudvhal`.
 
-Staging project:
-`qezixxtknqbijnudvhal`
+Edge Functions:
 
-Webhook URL:
-`https://qezixxtknqbijnudvhal.supabase.co/functions/v1/stripe-webhook`
+- `connect-professional-account` — authenticated professional
+- `create-project-checkout` — authenticated homeowner
+- `create-project-invoice` — authenticated seller
+- `refund-project-payment` — authenticated seller
+- `stripe-webhook` — Stripe Connect signature authentication
 
-## Required staging secrets
+Staging secrets must be set through a secure secret channel:
 
-Set these in **Supabase Edge Function Secrets**, not source control:
-
-- `STRIPE_MODE=test`
-- `STRIPE_SECRET_KEY=<Stripe sandbox/test restricted or secret key>`
-- `STRIPE_WEBHOOK_SIGNING_SECRET=<test webhook endpoint signing secret>`
+- `STRIPE_ENVIRONMENT=sandbox`
+- `STRIPE_SECRET_KEY=<authorised Stripe Sandbox secret>`
+- `STRIPE_CONNECT_WEBHOOK_SIGNING_SECRET=<Sandbox Connect event destination signing secret>`
 - `APP_BASE_URL=https://smcprostudio.app`
-- leave `ALLOW_LIVE_STRIPE` unset or `false`
+- `ALLOW_LIVE_STRIPE=false`
 
-The functions fail closed when the Stripe key/mode disagree or when live mode is requested without the explicit live enable flag.
+Never place these secrets in source control, a VITE variable, Android resources or chat.
 
-## Required Stripe test webhook events
+## Required connected-account events
 
-Register the staging webhook for:
+The Sandbox event destination must receive events on connected accounts for:
 
 - `checkout.session.completed`
 - `checkout.session.async_payment_succeeded`
@@ -111,20 +107,22 @@ Register the staging webhook for:
 - `charge.dispute.updated`
 - `charge.dispute.closed`
 
-## Payment release gate
+## Release evidence required
 
-Do not mark the payment release gate GO until all of these have actual evidence:
+The payment gate is not GO until there is verified evidence for:
 
-- test/sandbox Checkout success;
-- verified webhook transitions payment to paid;
-- failed/cancelled Checkout;
-- duplicate webhook delivery;
-- delayed/asynchronous outcome where supported;
-- Stripe invoice creation and payment reconciliation;
-- refund reconciliation;
-- dispute reconciliation;
-- cross-user/tenant isolation;
-- Android checkout and HTTPS App Link return on the physical target device;
-- full CI green after the payment implementation.
+- professional Sandbox account creation and onboarding;
+- actual returned responsibility values: Stripe fees collector + Stripe losses collector;
+- actual card-payment and payout capability state;
+- actual payout schedule/settings;
+- a direct Checkout payment with zero platform application fee;
+- connected-account webhook reconciliation to paid;
+- professional-issued Stripe invoice and payment reconciliation;
+- seller-initiated refund and webhook reconciliation;
+- duplicate webhook delivery safety;
+- failure/cancel path;
+- tenant/seller isolation;
+- Android Checkout and App Link return on the staging build;
+- fresh full CI green.
 
 No live Stripe mutation is part of the staging mission.
