@@ -423,3 +423,10 @@ verify_jwt = true
 [functions.stripe-webhook]
 # Stripe signs the raw request body instead of sending a Supabase user JWT.
 verify_jwt = false
+
+
+[functions.connect-professional-account]
+verify_jwt = true
+
+[functions.refund-project-payment]
+verify_jwt = true
