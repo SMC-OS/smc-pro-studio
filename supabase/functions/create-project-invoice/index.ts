@@ -3,7 +3,7 @@ import { corsHeaders } from "jsr:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2.112.3";
 import Stripe from "npm:stripe@22.6.0";
 
-const stripeMode = Deno.env.get("STRIPE_MODE") ?? "test";
+const stripeEnvironment = Deno.env.get("STRIPE_ENVIRONMENT") ?? "sandbox";
 const allowLive = Deno.env.get("ALLOW_LIVE_STRIPE") === "true";
 const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 
@@ -28,10 +28,18 @@ function publicKey(): string {
 
 function assertStripeEnvironment(): string | null {
   if (!stripeKey) return "Stripe is not configured for this environment.";
-  if (stripeMode !== "test" && stripeMode !== "live") return "STRIPE_MODE must be test or live.";
-  if (stripeMode === "test" && stripeKey.includes("_live_")) return "A live Stripe key cannot be used in test mode.";
-  if (stripeMode === "live" && !allowLive) return "Live Stripe payments are disabled for this deployment.";
-  if (stripeMode === "live" && stripeKey.includes("_test_")) return "A test Stripe key cannot be used in live mode.";
+  if (!["sandbox", "live"].includes(stripeEnvironment)) {
+    return "STRIPE_ENVIRONMENT must be sandbox or live.";
+  }
+  if (stripeEnvironment === "sandbox" && stripeKey.includes("_live_")) {
+    return "A live Stripe key cannot be used in the sandbox environment.";
+  }
+  if (stripeEnvironment === "live" && !allowLive) {
+    return "Live Stripe payments are disabled for this deployment.";
+  }
+  if (stripeEnvironment === "live" && stripeKey.includes("_test_")) {
+    return "A sandbox/test Stripe key cannot be used in the live environment.";
+  }
   return null;
 }
 
@@ -74,12 +82,13 @@ Deno.serve(async (req: Request) => {
 
   const { data: payment, error: paymentError } = await userClient
     .from("payments")
-    .select("id, project_id, customer_id, requested_by, kind, status, currency, amount, due_at, collection_method, provider_invoice_id")
+    .select("id, project_id, customer_id, seller_id, requested_by, kind, status, currency, amount, due_at, collection_method, provider_account_id, provider_invoice_id")
     .eq("id", payload.paymentId)
     .maybeSingle();
 
   if (paymentError) return json({ error: "payment_lookup_failed" }, 500);
   if (!payment) return json({ error: "payment_not_found" }, 404);
+  if (!payment.seller_id || payment.seller_id !== userData.user.id) return json({ error: "seller_only" }, 403);
   if (payment.requested_by !== userData.user.id) return json({ error: "not_authorized" }, 403);
   if (payment.collection_method !== "invoice") return json({ error: "payment_uses_checkout" }, 409);
   if (payment.currency !== "GBP") return json({ error: "unsupported_currency" }, 409);
@@ -87,7 +96,45 @@ Deno.serve(async (req: Request) => {
   if (payment.status === "paid" || payment.status === "refunded") return json({ error: "payment_already_settled" }, 409);
 
   const dueAt = new Date(payment.due_at);
-  if (Number.isNaN(dueAt.getTime()) || dueAt <= new Date()) return json({ error: "invoice_due_date_invalid" }, 409);
+  if (Number.isNaN(dueAt.getTime()) || dueAt <= new Date()) {
+    return json({ error: "invoice_due_date_invalid" }, 409);
+  }
+
+  const { data: sellerAccount, error: sellerAccountError } = await admin
+    .from("stripe_connected_accounts")
+    .select("provider_account_id, dashboard, fees_collector, losses_collector, card_payments_status, charges_enabled, onboarding_complete")
+    .eq("professional_id", payment.seller_id)
+    .eq("environment", stripeEnvironment)
+    .maybeSingle();
+
+  if (sellerAccountError) return json({ error: "seller_account_lookup_failed" }, 500);
+  if (!sellerAccount) {
+    return json({
+      error: "seller_stripe_account_required",
+      message: "Connect Stripe before issuing project invoices.",
+    }, 409);
+  }
+  if (
+    sellerAccount.dashboard !== "full" ||
+    sellerAccount.fees_collector !== "stripe" ||
+    sellerAccount.losses_collector !== "stripe"
+  ) {
+    return json({
+      error: "seller_stripe_configuration_invalid",
+      message: "Your Stripe account does not match the approved SMC Pro Studio direct-charge model.",
+    }, 409);
+  }
+  if (!sellerAccount.onboarding_complete || !sellerAccount.charges_enabled || sellerAccount.card_payments_status !== "active") {
+    return json({
+      error: "seller_stripe_account_not_ready",
+      message: "Finish Stripe onboarding before issuing project invoices.",
+    }, 409);
+  }
+
+  const connectedAccountId = sellerAccount.provider_account_id;
+  if (payment.provider_account_id && payment.provider_account_id !== connectedAccountId) {
+    return json({ error: "payment_seller_account_mismatch" }, 409);
+  }
 
   const { error: claimError } = await admin.rpc("claim_project_payment_for_collection", {
     p_payment_id: payment.id,
@@ -105,34 +152,44 @@ Deno.serve(async (req: Request) => {
 
   if (payment.provider_invoice_id) {
     try {
-      const existing = await stripe.invoices.retrieve(payment.provider_invoice_id);
+      const existing = await stripe.invoices.retrieve(
+        payment.provider_invoice_id,
+        { stripeAccount: connectedAccountId },
+      );
       return json({
         invoiceId: existing.id,
         hostedInvoiceUrl: existing.hosted_invoice_url ?? null,
         invoicePdfUrl: existing.invoice_pdf ?? null,
+        sellerAccountId: connectedAccountId,
         reused: true,
       });
     } catch {
-      // If the provider object is missing in the current sandbox, rebuild it idempotently below.
+      // If the invoice is missing in this sandbox, an idempotent rebuild follows.
     }
   }
 
   const { data: project, error: projectError } = await userClient
     .from("projects")
-    .select("id, title")
+    .select("id, title, lead_professional_id")
     .eq("id", payment.project_id)
     .maybeSingle();
   if (projectError || !project) return json({ error: "project_not_found" }, 404);
+  if (project.lead_professional_id !== payment.seller_id) {
+    return json({ error: "project_seller_mismatch" }, 409);
+  }
 
   const { data: customerAuth, error: customerAuthError } = await admin.auth.admin.getUserById(payment.customer_id);
-  if (customerAuthError || !customerAuth.user?.email) return json({ error: "customer_email_required" }, 409);
+  if (customerAuthError || !customerAuth.user?.email) {
+    return json({ error: "customer_email_required" }, 409);
+  }
 
   let providerCustomerId: string | null = null;
   const { data: mappedCustomer } = await admin
     .from("stripe_customers")
     .select("provider_customer_id")
     .eq("profile_id", payment.customer_id)
-    .eq("mode", stripeMode)
+    .eq("provider_account_id", connectedAccountId)
+    .eq("mode", stripeEnvironment)
     .maybeSingle();
 
   providerCustomerId = mappedCustomer?.provider_customer_id ?? null;
@@ -144,21 +201,26 @@ Deno.serve(async (req: Request) => {
           email: customerAuth.user.email,
           metadata: {
             smc_profile_id: payment.customer_id,
-            smc_environment: stripeMode,
+            smc_seller_id: payment.seller_id,
+            smc_environment: stripeEnvironment,
           },
         },
-        { idempotencyKey: `smc-customer-${payment.customer_id}-${stripeMode}` },
+        {
+          stripeAccount: connectedAccountId,
+          idempotencyKey: `smc-direct-customer-${payment.customer_id}-${connectedAccountId}-${stripeEnvironment}`,
+        },
       );
       providerCustomerId = providerCustomer.id;
 
       const { error: customerMapError } = await admin.from("stripe_customers").upsert(
         {
           profile_id: payment.customer_id,
-          mode: stripeMode,
+          provider_account_id: connectedAccountId,
+          mode: stripeEnvironment,
           provider_customer_id: providerCustomerId,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "profile_id,mode" },
+        { onConflict: "profile_id,provider_account_id,mode" },
       );
       if (customerMapError) return json({ error: "customer_mapping_failed" }, 500);
     }
@@ -167,7 +229,8 @@ Deno.serve(async (req: Request) => {
       smc_payment_id: payment.id,
       smc_project_id: payment.project_id,
       smc_customer_id: payment.customer_id,
-      smc_environment: stripeMode,
+      smc_seller_id: payment.seller_id,
+      smc_environment: stripeEnvironment,
     };
 
     const draft = await stripe.invoices.create(
@@ -176,11 +239,14 @@ Deno.serve(async (req: Request) => {
         collection_method: "send_invoice",
         due_date: Math.floor(dueAt.getTime() / 1000),
         currency: "gbp",
-        description: `SMC Pro Studio project payment — ${project.title}`,
+        description: `Project payment — ${project.title}`,
         metadata,
         auto_advance: false,
       },
-      { idempotencyKey: `smc-invoice-${payment.id}-draft` },
+      {
+        stripeAccount: connectedAccountId,
+        idempotencyKey: `smc-direct-invoice-${payment.id}-draft`,
+      },
     );
 
     await stripe.invoiceItems.create(
@@ -192,24 +258,34 @@ Deno.serve(async (req: Request) => {
         description: `${String(payment.kind).replaceAll("_", " ")} payment — ${project.title}`,
         metadata,
       },
-      { idempotencyKey: `smc-invoice-${payment.id}-item` },
+      {
+        stripeAccount: connectedAccountId,
+        idempotencyKey: `smc-direct-invoice-${payment.id}-item`,
+      },
     );
 
     const finalized = await stripe.invoices.finalizeInvoice(
       draft.id,
       {},
-      { idempotencyKey: `smc-invoice-${payment.id}-finalize` },
+      {
+        stripeAccount: connectedAccountId,
+        idempotencyKey: `smc-direct-invoice-${payment.id}-finalize`,
+      },
     );
 
     const sent = await stripe.invoices.sendInvoice(
       finalized.id,
       {},
-      { idempotencyKey: `smc-invoice-${payment.id}-send` },
+      {
+        stripeAccount: connectedAccountId,
+        idempotencyKey: `smc-direct-invoice-${payment.id}-send`,
+      },
     );
 
     const { error: updateError } = await admin
       .from("payments")
       .update({
+        provider_account_id: connectedAccountId,
         provider_customer_id: providerCustomerId,
         provider_invoice_id: sent.id,
         hosted_invoice_url: sent.hosted_invoice_url ?? null,
@@ -219,7 +295,8 @@ Deno.serve(async (req: Request) => {
         failure_message: null,
         cancelled_at: null,
       })
-      .eq("id", payment.id);
+      .eq("id", payment.id)
+      .eq("seller_id", payment.seller_id);
 
     if (updateError) return json({ error: "payment_state_update_failed" }, 500);
 
@@ -227,6 +304,7 @@ Deno.serve(async (req: Request) => {
       invoiceId: sent.id,
       hostedInvoiceUrl: sent.hosted_invoice_url ?? null,
       invoicePdfUrl: sent.invoice_pdf ?? null,
+      sellerAccountId: connectedAccountId,
       reused: false,
     });
   } catch (error) {
