@@ -43,13 +43,11 @@ function openHostedPayment(url: string) {
 export default function ProjectPaymentsCard({
   project,
   me,
-  canManageProject,
   isCustomer,
   onChanged,
 }: {
   project: LaunchProjectDetail;
   me: string;
-  canManageProject: boolean;
   isCustomer: boolean;
   onChanged: () => Promise<void> | void;
 }) {
