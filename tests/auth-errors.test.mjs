@@ -15,3 +15,8 @@ test("ordinary authentication failures use the caller's enumeration-safe fallbac
   assert.equal(described.message, "Sign-in could not be completed.");
   assert.doesNotMatch(described.message, /lookup|invalid_credentials/i);
 });
+
+test("unconfirmed accounts get verification guidance", () => {
+  const described = safeAuthFailure({ code: "email_not_confirmed", message: "x" }, "fallback");
+  assert.match(described.message, /not been verified/i);
+});

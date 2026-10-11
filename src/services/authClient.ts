@@ -73,7 +73,7 @@ export async function signUpWithPassword(input: { email: string; password: strin
       },
     },
   });
-  if (error) throw new Error(error.message, { cause: error });
+  if (error) throw safeAuthFailure(error, error.message || "Registration could not be completed. Please try again.");
   return { requiresEmailVerification: !data.session };
 }
 
