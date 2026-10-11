@@ -3,7 +3,7 @@ import { corsHeaders } from "jsr:@supabase/supabase-js@2/cors";
 import { createClient } from "npm:@supabase/supabase-js@2.112.3";
 import Stripe from "npm:stripe@22.6.0";
 
-const stripeMode = Deno.env.get("STRIPE_MODE") ?? "test";
+const stripeEnvironment = Deno.env.get("STRIPE_ENVIRONMENT") ?? "sandbox";
 const allowLive = Deno.env.get("ALLOW_LIVE_STRIPE") === "true";
 const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 const appBaseUrl = (Deno.env.get("APP_BASE_URL") ?? "https://smcprostudio.app").replace(/\/$/, "");
@@ -29,10 +29,18 @@ function publicKey(): string {
 
 function assertStripeEnvironment(): string | null {
   if (!stripeKey) return "Stripe is not configured for this environment.";
-  if (stripeMode !== "test" && stripeMode !== "live") return "STRIPE_MODE must be test or live.";
-  if (stripeMode === "test" && stripeKey.includes("_live_")) return "A live Stripe key cannot be used in test mode.";
-  if (stripeMode === "live" && !allowLive) return "Live Stripe payments are disabled for this deployment.";
-  if (stripeMode === "live" && stripeKey.includes("_test_")) return "A test Stripe key cannot be used in live mode.";
+  if (!["sandbox", "live"].includes(stripeEnvironment)) {
+    return "STRIPE_ENVIRONMENT must be sandbox or live.";
+  }
+  if (stripeEnvironment === "sandbox" && stripeKey.includes("_live_")) {
+    return "A live Stripe key cannot be used in the sandbox environment.";
+  }
+  if (stripeEnvironment === "live" && !allowLive) {
+    return "Live Stripe payments are disabled for this deployment.";
+  }
+  if (stripeEnvironment === "live" && stripeKey.includes("_test_")) {
+    return "A sandbox/test Stripe key cannot be used in the live environment.";
+  }
   return null;
 }
 
@@ -75,17 +83,54 @@ Deno.serve(async (req: Request) => {
 
   const { data: payment, error: paymentError } = await userClient
     .from("payments")
-    .select("id, project_id, customer_id, kind, status, currency, amount, collection_method, provider_checkout_session_id, checkout_attempt")
+    .select("id, project_id, customer_id, seller_id, kind, status, currency, amount, collection_method, provider_account_id, provider_checkout_session_id, checkout_attempt")
     .eq("id", payload.paymentId)
     .maybeSingle();
 
   if (paymentError) return json({ error: "payment_lookup_failed" }, 500);
   if (!payment) return json({ error: "payment_not_found" }, 404);
   if (payment.customer_id !== userData.user.id) return json({ error: "not_authorized" }, 403);
+  if (!payment.seller_id) return json({ error: "project_seller_required" }, 409);
   if (payment.collection_method !== "checkout") return json({ error: "payment_uses_invoice" }, 409);
   if (payment.currency !== "GBP") return json({ error: "unsupported_currency" }, 409);
   if (payment.status === "paid" || payment.status === "refunded") {
     return json({ error: "payment_already_settled" }, 409);
+  }
+
+  const { data: sellerAccount, error: sellerAccountError } = await admin
+    .from("stripe_connected_accounts")
+    .select("provider_account_id, dashboard, fees_collector, losses_collector, card_payments_status, charges_enabled, onboarding_complete")
+    .eq("professional_id", payment.seller_id)
+    .eq("environment", stripeEnvironment)
+    .maybeSingle();
+
+  if (sellerAccountError) return json({ error: "seller_account_lookup_failed" }, 500);
+  if (!sellerAccount) {
+    return json({
+      error: "seller_stripe_account_required",
+      message: "The professional must finish Stripe setup before accepting project payments.",
+    }, 409);
+  }
+  if (
+    sellerAccount.dashboard !== "full" ||
+    sellerAccount.fees_collector !== "stripe" ||
+    sellerAccount.losses_collector !== "stripe"
+  ) {
+    return json({
+      error: "seller_stripe_configuration_invalid",
+      message: "The professional Stripe account does not match the approved SMC Pro Studio payment model.",
+    }, 409);
+  }
+  if (!sellerAccount.onboarding_complete || !sellerAccount.charges_enabled || sellerAccount.card_payments_status !== "active") {
+    return json({
+      error: "seller_stripe_account_not_ready",
+      message: "The professional Stripe account is not ready to accept card payments yet.",
+    }, 409);
+  }
+
+  const connectedAccountId = sellerAccount.provider_account_id;
+  if (payment.provider_account_id && payment.provider_account_id !== connectedAccountId) {
+    return json({ error: "payment_seller_account_mismatch" }, 409);
   }
 
   const { error: claimError } = await admin.rpc("claim_project_payment_for_collection", {
@@ -104,7 +149,10 @@ Deno.serve(async (req: Request) => {
 
   if (payment.provider_checkout_session_id) {
     try {
-      const existing = await stripe.checkout.sessions.retrieve(payment.provider_checkout_session_id);
+      const existing = await stripe.checkout.sessions.retrieve(
+        payment.provider_checkout_session_id,
+        { stripeAccount: connectedAccountId },
+      );
       if (existing.status === "open" && existing.url) {
         return json({ checkoutUrl: existing.url, sessionId: existing.id, reused: true });
       }
@@ -112,25 +160,28 @@ Deno.serve(async (req: Request) => {
         return json({ checkoutUrl: null, sessionId: existing.id, processing: true, reused: true });
       }
     } catch {
-      // A missing/expired provider session is safely replaced below.
+      // A missing or expired session can be replaced safely below.
     }
   }
 
   const { data: project, error: projectError } = await userClient
     .from("projects")
-    .select("id, title")
+    .select("id, title, lead_professional_id")
     .eq("id", payment.project_id)
     .maybeSingle();
   if (projectError || !project) return json({ error: "project_not_found" }, 404);
+  if (project.lead_professional_id !== payment.seller_id) {
+    return json({ error: "project_seller_mismatch" }, 409);
+  }
 
   const attempt = Number(payment.checkout_attempt ?? 0) + 1;
   const metadata = {
     smc_payment_id: payment.id,
     smc_project_id: payment.project_id,
     smc_customer_id: payment.customer_id,
-    smc_environment: stripeMode,
+    smc_seller_id: payment.seller_id,
+    smc_environment: stripeEnvironment,
   };
-  const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8);
 
   try {
     const session = await stripe.checkout.sessions.create(
@@ -156,11 +207,13 @@ Deno.serve(async (req: Request) => {
           metadata,
           receipt_email: userData.user.email ?? undefined,
         },
-        integration_identifier: `smcpro_android_${suffix}`,
         success_url: `${appBaseUrl}/payments/return?payment_id=${payment.id}&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${appBaseUrl}/payments/return?payment_id=${payment.id}&cancelled=1`,
       },
-      { idempotencyKey: `smc-checkout-${payment.id}-${attempt}` },
+      {
+        stripeAccount: connectedAccountId,
+        idempotencyKey: `smc-direct-checkout-${payment.id}-${attempt}`,
+      },
     );
 
     if (!session.url) return json({ error: "checkout_url_missing" }, 502);
@@ -168,6 +221,7 @@ Deno.serve(async (req: Request) => {
     const { error: updateError } = await admin
       .from("payments")
       .update({
+        provider_account_id: connectedAccountId,
         provider_checkout_session_id: session.id,
         checkout_attempt: attempt,
         checkout_expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
@@ -176,11 +230,17 @@ Deno.serve(async (req: Request) => {
         failure_message: null,
         cancelled_at: null,
       })
-      .eq("id", payment.id);
+      .eq("id", payment.id)
+      .eq("seller_id", payment.seller_id);
 
     if (updateError) return json({ error: "payment_state_update_failed" }, 500);
 
-    return json({ checkoutUrl: session.url, sessionId: session.id, reused: false });
+    return json({
+      checkoutUrl: session.url,
+      sessionId: session.id,
+      sellerAccountId: connectedAccountId,
+      reused: false,
+    });
   } catch (error) {
     console.error("create-project-checkout", error instanceof Error ? error.message : "stripe_error");
     return json({ error: "checkout_creation_failed" }, 502);
