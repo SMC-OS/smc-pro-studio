@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BookOpen, Globe, Layers, LogOut, MapPin, Pencil, Settings, ShieldCheck, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
+import ProfessionalStripeCard from "../components/ProfessionalStripeCard";
 import { Avatar, Button, Card, EditorialHeading } from "../components/ui";
 import { signOut } from "../../services/authClient";
 import {
@@ -199,6 +200,8 @@ export default function ProfileRoute() {
           )}
         </div>
       </Card>
+
+      {isProfessional && <ProfessionalStripeCard />}
 
       {isProfessional && (
         <Card className="p-6">
