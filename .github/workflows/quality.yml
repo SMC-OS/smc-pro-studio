@@ -148,8 +148,10 @@ jobs:
 
 
   android-staging:
-    name: Android staging APK
-    needs: quality
+    name: Android staging debug APK
+    needs:
+      - quality
+      - database
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -161,10 +163,6 @@ jobs:
       VITE_SUPABASE_OAUTH_APPLE_ENABLED: "false"
       VITE_SUPABASE_OAUTH_FACEBOOK_ENABLED: "false"
       VITE_LEGACY_APP_OPT_IN: "false"
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Check out repository
@@ -193,8 +191,36 @@ jobs:
       - name: Install transient Capacitor Android plugins
         run: npm install --no-save --package-lock=false @capacitor/android@8.5.2 @capacitor/app@8 @capacitor/browser@8
 
+      - name: Assert staging-only environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VITE_APP_URL" = "https://staging.smcprostudio.app"
+          test "$VITE_API_BASE_URL" = "https://staging.smcprostudio.app"
+          test "$VITE_SUPABASE_URL" = "https://qezixxtknqbijnudvhal.supabase.co"
+          case "$VITE_SUPABASE_URL" in
+            https://qezixxtknqbijnudvhal.supabase.co) ;;
+            *) echo "::error::Android staging build is not pinned to the staging Supabase project"; exit 1 ;;
+          esac
+
       - name: Build staging web bundle
         run: bun run build
+
+      - name: Verify web bundle contains only staging Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t SUPABASE_URLS < <(grep -RahoE 'https://[a-z0-9]+\.supabase\.co' dist | sort -u || true)
+          printf 'Bundled Supabase endpoints:\n'
+          printf '%s\n' "${SUPABASE_URLS[@]:-<none>}"
+          test "${#SUPABASE_URLS[@]}" -eq 1 || {
+            echo "::error::Expected exactly one Supabase endpoint in the staging web bundle"
+            exit 1
+          }
+          test "${SUPABASE_URLS[0]}" = "https://qezixxtknqbijnudvhal.supabase.co" || {
+            echo "::error::Staging web bundle contains a non-staging Supabase endpoint"
+            exit 1
+          }
 
       - name: Generate Android project
         run: |
@@ -202,59 +228,96 @@ jobs:
           npx cap sync android
           node scripts/configure-android-staging.mjs
 
-      - name: Build unsigned release APK
+      - name: Build debug-signed staging APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon assembleDebug
 
-      - name: Sign and verify canonical staging APK
+      - name: Verify Samsung S24 Ultra staging APK
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${ANDROID_KEYSTORE_BASE64:-}" || { echo "::error::ANDROID_KEYSTORE_BASE64 is not configured"; exit 1; }
-          test -n "${ANDROID_KEYSTORE_PASSWORD:-}" || { echo "::error::ANDROID_KEYSTORE_PASSWORD is not configured"; exit 1; }
-          test -n "${ANDROID_KEY_PASSWORD:-}" || { echo "::error::ANDROID_KEY_PASSWORD is not configured"; exit 1; }
 
-          KEY_ALIAS="${ANDROID_KEY_ALIAS:-smcprostudio}"
-          KEYSTORE="/tmp/smcprostudio-release.jks"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
-
-          UNSIGNED="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
-          test -n "$UNSIGNED" || { echo "::error::Unsigned release APK not found"; find android/app/build/outputs -type f -maxdepth 6 -print; exit 1; }
-
-          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
-          ZIPALIGN="$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign"
-          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
-          test -x "$ZIPALIGN" && test -x "$APKSIGNER"
-
-          "$ZIPALIGN" -f 4 "$UNSIGNED" /tmp/smc-pro-studio-staging-aligned.apk
-          "$APKSIGNER" sign             --ks "$KEYSTORE"             --ks-key-alias "$KEY_ALIAS"             --ks-pass env:ANDROID_KEYSTORE_PASSWORD             --key-pass env:ANDROID_KEY_PASSWORD             --out smc-pro-studio-staging.apk             /tmp/smc-pro-studio-staging-aligned.apk
-
-          VERIFY_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs smc-pro-studio-staging.apk)"
-          printf '%s\n' "$VERIFY_OUTPUT"
-
-          ACTUAL_SHA256="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
-          EXPECTED_SHA256="12790dc53a15f98a0ce5e8169bf036f61cd5505e3e26ff9e2e93c0bca0acec8e"
-          test "$ACTUAL_SHA256" = "$EXPECTED_SHA256" || {
-            echo "::error::APK signing certificate does not match the canonical SMC Pro Studio certificate"
+          SOURCE_APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="smc-pro-studio-staging-debug.apk"
+          test -f "$SOURCE_APK" || {
+            echo "::error::Debug APK not found"
+            find android/app/build/outputs -maxdepth 6 -type f -print
             exit 1
           }
+          cp "$SOURCE_APK" "$APK"
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BUILD_TOOLS/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
+          test -x "$AAPT" && test -x "$APKSIGNER"
+
+          PACKAGE="$("$AAPT" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"
+          test "$PACKAGE" = "app.smcprostudio" || {
+            echo "::error::APK package is $PACKAGE, expected canonical app.smcprostudio"
+            exit 1
+          }
+
+          VERIFY_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$APK")"
+          printf '%s\n' "$VERIFY_OUTPUT"
+          DEBUG_CERT_SHA256="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test -n "$DEBUG_CERT_SHA256" || {
+            echo "::error::Debug APK signature fingerprint could not be read"
+            exit 1
+          }
+
+          CANONICAL_RELEASE_SHA256="12790dc53a15f98a0ce5e8169bf036f61cd5505e3e26ff9e2e93c0bca0acec8e"
+          test "$DEBUG_CERT_SHA256" != "$CANONICAL_RELEASE_SHA256" || {
+            echo "::error::Debug staging APK unexpectedly used the canonical release certificate"
+            exit 1
+          }
+
+          rm -rf /tmp/smc-staging-apk
+          mkdir -p /tmp/smc-staging-apk
+          unzip -q "$APK" -d /tmp/smc-staging-apk
+          mapfile -t APK_SUPABASE_URLS < <(grep -RahoE 'https://[a-z0-9]+\.supabase\.co' /tmp/smc-staging-apk | sort -u || true)
+          printf 'APK Supabase endpoints:\n'
+          printf '%s\n' "${APK_SUPABASE_URLS[@]:-<none>}"
+          test "${#APK_SUPABASE_URLS[@]}" -eq 1 || {
+            echo "::error::Expected exactly one Supabase endpoint inside the APK"
+            exit 1
+          }
+          test "${APK_SUPABASE_URLS[0]}" = "https://qezixxtknqbijnudvhal.supabase.co" || {
+            echo "::error::APK contains a non-staging Supabase endpoint"
+            exit 1
+          }
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          printf '%s  %s\n' "$APK_SHA256" "$APK" > apk-sha256.txt
 
           cat > build-info.txt <<EOF
           commit=${GITHUB_SHA}
           package=app.smcprostudio
+          build_type=debug
           environment=staging
+          app_url=https://staging.smcprostudio.app
+          api_base_url=https://staging.smcprostudio.app
           supabase_project=qezixxtknqbijnudvhal
-          signing_sha256=12:79:0D:C5:3A:15:F9:8A:0C:E5:E8:16:9B:F0:36:F6:1C:D5:50:5E:3E:26:FF:9E:2E:93:C0:BC:A0:AC:EC:8E
+          supabase_url=https://qezixxtknqbijnudvhal.supabase.co
+          apk_signing=android-debug-key
+          debug_signing_sha256=${DEBUG_CERT_SHA256}
+          canonical_release_signing_sha256=12:79:0D:C5:3A:15:F9:8A:0C:E5:E8:16:9B:F0:36:F6:1C:D5:50:5E:3E:26:FF:9E:2E:93:C0:BC:A0:AC:EC:8E
+          release_signing_status=not_used_for_this_debug_staging_artifact
+          apk_sha256=${APK_SHA256}
           EOF
+
+          echo "::notice title=Staging APK SHA-256::${APK_SHA256}"
+          echo "::notice title=Android package::app.smcprostudio"
+          echo "::notice title=Supabase staging project::qezixxtknqbijnudvhal"
 
       - name: Upload Samsung S24 Ultra staging APK
         uses: actions/upload-artifact@v4
         with:
-          name: smc-pro-studio-staging-apk-${{ github.sha }}
+          name: smc-pro-studio-staging-debug-apk-${{ github.sha }}
           path: |
-            smc-pro-studio-staging.apk
+            smc-pro-studio-staging-debug.apk
+            apk-sha256.txt
             build-info.txt
           if-no-files-found: error
           retention-days: 14
