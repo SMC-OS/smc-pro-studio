@@ -154,6 +154,7 @@ Deno.serve(async (req: Request) => {
     try {
       const existing = await stripe.invoices.retrieve(
         payment.provider_invoice_id,
+        {},
         { stripeAccount: connectedAccountId },
       );
       return json({
