@@ -135,6 +135,28 @@ export default function QuoteRequestRoute() {
   }
   if (state === "loading" || state === "idle") return <LoadingState label="Preparing quote request" />;
 
+  if (state === "ready" && professionals.length === 0) {
+    return (
+      <div className="flex flex-col gap-6">
+        <SectionHeading
+          eyebrow="Start a project"
+          title="Request a quote"
+          description="A quote can only be sent to a verified professional who is currently published in the SMC directory."
+        />
+        <Card className="grid gap-3 p-6">
+          <h2 className="text-lg font-semibold">No verified professional is available yet</h2>
+          <p className="text-sm leading-6 text-[var(--smc-charcoal-soft)]">
+            There is no published professional to receive this request right now. Browse the directory again later or contact SMC for help. We will not create an unassigned request.
+          </p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Link to="/network" className="inline-flex min-h-[48px] items-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white">Browse professionals</Link>
+            <Link to="/studio" className="inline-flex min-h-[48px] items-center rounded-full border border-[var(--smc-border-strong)] px-5 text-sm font-semibold">Explore materials</Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <SectionHeading
@@ -297,6 +319,11 @@ export default function QuoteRequestRoute() {
         <button type="submit" disabled={state === "saving" || !propertyId || !professionalId || !title.trim()} className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-6 text-sm font-semibold text-white disabled:opacity-50">
           <Send className="h-4 w-4" /> {state === "saving" ? "Sending…" : "Send quote request"}
         </button>
+        {state !== "saving" && (!propertyId || !professionalId || !title.trim()) && (
+          <p className="-mt-2 text-sm text-[var(--smc-charcoal-soft)]" role="status">
+            Choose a property, a verified professional and a project title to send your request.
+          </p>
+        )}
         <p className="flex items-center gap-2 text-xs text-[var(--smc-charcoal-faint)]"><Building2 className="h-4 w-4" /> The professional will see only the project information you submit and data your account is authorised to share.</p>
       </form>
     </div>

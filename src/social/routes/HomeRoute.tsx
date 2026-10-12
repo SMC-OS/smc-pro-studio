@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarDays, FolderKanban, Sparkles, Users } from "lucide-react";
+import { ArrowRight, CalendarDays, FolderKanban, Layers3, Sparkles, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card, SectionHeading } from "../components/ui";
 import { ErrorState, LoadingState } from "../components/StateViews";
@@ -74,10 +74,10 @@ export default function HomeRoute() {
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
-              to="/studio"
+              to="/quotes/new"
               className="inline-flex min-h-[48px] items-center gap-2 rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white"
             >
-              Explore Studio <ArrowRight className="h-4 w-4" />
+              Request a quote <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               to="/network"
@@ -89,21 +89,27 @@ export default function HomeRoute() {
         </section>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <Card className="p-5">
-            <Sparkles className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-            <h2 className="mt-4 font-semibold">Plan</h2>
-            <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Materials and design ideas in Studio.</p>
-          </Card>
-          <Card className="p-5">
-            <Users className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-            <h2 className="mt-4 font-semibold">Connect</h2>
-            <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Find real professional profiles and portfolios.</p>
-          </Card>
-          <Card className="p-5">
-            <FolderKanban className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-            <h2 className="mt-4 font-semibold">Build</h2>
-            <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Run approved work through one project record.</p>
-          </Card>
+          <Link to="/studio" className="block outline-none focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]">
+            <Card className="h-full p-5 transition-colors hover:bg-[var(--smc-limestone)]">
+              <Layers3 className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+              <h2 className="mt-4 font-semibold">Explore materials</h2>
+              <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Browse materials published by SMC.</p>
+            </Card>
+          </Link>
+          <Link to="/studio" className="block outline-none focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]">
+            <Card className="h-full p-5 transition-colors hover:bg-[var(--smc-limestone)]">
+              <Sparkles className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+              <h2 className="mt-4 font-semibold">Plan a project</h2>
+              <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Save ideas and carry choices into a quote.</p>
+            </Card>
+          </Link>
+          <Link to="/projects" className="block outline-none focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]">
+            <Card className="h-full p-5 transition-colors hover:bg-[var(--smc-limestone)]">
+              <FolderKanban className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+              <h2 className="mt-4 font-semibold">Keep work together</h2>
+              <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Quotes and approved projects stay in one place.</p>
+            </Card>
+          </Link>
         </div>
       </div>
     );
@@ -185,16 +191,11 @@ export default function HomeRoute() {
         <Card className="p-6">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--smc-mineral-bronze)]">Start here</p>
           <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em]">Turn an idea into your first project</h2>
-          <p className="mt-2 text-sm text-[var(--smc-charcoal-soft)]">
-            Explore materials in Studio or find a professional. Approved quotes become projects automatically.
-          </p>
+          <p className="mt-2 text-sm text-[var(--smc-charcoal-soft)]">Choose a material, find a professional, or send the brief for your project.</p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link to="/studio" className="inline-flex min-h-[44px] items-center rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white">
-              Open Studio
-            </Link>
-            <Link to="/network" className="inline-flex min-h-[44px] items-center rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold">
-              Find a professional
-            </Link>
+            <Link to="/quotes/new" className="inline-flex min-h-[44px] items-center rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white">Request a quote</Link>
+            <Link to="/studio" className="inline-flex min-h-[44px] items-center rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold">Explore materials</Link>
+            <Link to="/network" className="inline-flex min-h-[44px] items-center rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold">Find a professional</Link>
           </div>
         </Card>
       )}

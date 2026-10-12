@@ -44,7 +44,7 @@ export default function AppShell() {
           </div>
         </header>
 
-        <main id="main-content" className="mx-auto w-full max-w-3xl px-4 pb-24 pt-5 sm:px-6 lg:max-w-5xl lg:px-8 lg:pb-10 lg:pt-8">
+        <main id="main-content" className="mx-auto w-full max-w-3xl px-4 pb-[calc(4rem+var(--smc-safe-bottom)+1rem)] pt-5 sm:px-6 lg:max-w-5xl lg:px-8 lg:pb-10 lg:pt-8">
           <OfflineBanner />
           <Outlet context={auth} />
         </main>

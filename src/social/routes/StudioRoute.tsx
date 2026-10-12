@@ -56,20 +56,25 @@ export default function StudioRoute() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="p-5">
-          <Sparkles className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-          <h2 className="mt-4 font-semibold">Visualise</h2>
-          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Your saved room concepts and material ideas live here as the visualiser is connected into the launch flow.</p>
+          <Layers3 className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+          <h2 className="mt-4 font-semibold">Browse materials</h2>
+          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">See only materials currently published by SMC.</p>
         </Card>
         <Card className="p-5">
-          <Layers3 className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-          <h2 className="mt-4 font-semibold">Materials</h2>
-          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Browse the real SMC catalogue and carry a material choice into your project.</p>
+          <Ruler className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+          <h2 className="mt-4 font-semibold">Plan your brief</h2>
+          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Save the details a professional will need for a quote.</p>
         </Card>
         <Card className="p-5">
-          <Ruler className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-          <h2 className="mt-4 font-semibold">Measure & quote</h2>
-          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Project measurements and quote requests are now backed by the launch database.</p>
+          <Sparkles className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+          <h2 className="mt-4 font-semibold">Visualiser</h2>
+          <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">Coming later. Your ideas and quote brief are available now.</p>
         </Card>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <Link to="/quotes/new" className="inline-flex min-h-[48px] items-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white">Request a quote</Link>
+        <Link to="/network" className="inline-flex min-h-[48px] items-center rounded-full border border-[var(--smc-border-strong)] px-5 text-sm font-semibold text-[var(--smc-charcoal)]">Find professionals</Link>
       </div>
 
       {auth.status === "authenticated" && designs.length > 0 && (
@@ -107,7 +112,11 @@ export default function StudioRoute() {
           {state === "loading" && <LoadingState label="Loading Studio" />}
           {state === "error" && <ErrorState message={message} onRetry={load} />}
           {state === "ready" && visibleMaterials.length === 0 && (
-            <EmptyState title="No published materials in this view" description="Catalogue editors can publish real materials from the existing management area." />
+            <EmptyState
+              title={category === "all" ? "No materials published yet" : `No ${label(category)} materials yet`}
+              description={category === "all" ? "SMC will add materials here as they are reviewed and published. Nothing is invented or estimated." : "Try another category or view all published materials."}
+              action={category !== "all" ? <button type="button" onClick={() => setCategory("all")} className="min-h-[44px] rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold">View all materials</button> : undefined}
+            />
           )}
           {state === "ready" && visibleMaterials.length > 0 && (
             <ul className="grid gap-3 sm:grid-cols-2">
