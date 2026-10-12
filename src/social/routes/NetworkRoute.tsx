@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Search } from "lucide-react";
+import { ArrowRight, MapPin, Search, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, GuestNotice, LoadingState } from "../components/StateViews";
 import { Avatar, Card, Chip, SectionHeading } from "../components/ui";
+import { MaterialImage } from "../components/MaterialImage";
 import { searchPublicProfessionals, type PublicProfessional } from "../services/socialClient";
 import {
   fetchPublishedMaterials,
@@ -11,6 +12,7 @@ import {
   type MaterialCategory,
 } from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Network — professional discovery (people, trades, companies). Reframed
@@ -49,7 +51,7 @@ const PROFESSION_FILTER_OPTIONS = Object.keys(CATEGORY_LABELS);
 
 type NetworkTab = "professionals" | "materials" | "projects" | "architecture" | "interiors" | "applications";
 
-const TABS: Array<{ key: NetworkTab; label: string }> = [
+const ALL_TABS: Array<{ key: NetworkTab; label: string }> = [
   { key: "professionals", label: "Professionals" },
   { key: "materials", label: "Materials" },
   { key: "projects", label: "Projects" },
@@ -57,6 +59,12 @@ const TABS: Array<{ key: NetworkTab; label: string }> = [
   { key: "interiors", label: "Interiors" },
   { key: "applications", label: "Applications" },
 ];
+
+// Launch roadmap V1-5: only tabs backed by real data ship. The remaining
+// scaffolded tabs stay defined (and their honest empty state stays in place)
+// so they can be switched back on when their slices land.
+const LAUNCHED_TABS = new Set<NetworkTab>(["professionals", "materials"]);
+const TABS = ALL_TABS.filter((t) => LAUNCHED_TABS.has(t.key));
 
 const TAB_SEARCH_PLACEHOLDER: Record<NetworkTab, string> = {
   professionals: "Search by name or company…",
@@ -120,7 +128,7 @@ export default function NetworkRoute() {
     })
       .then((page) => setState({ status: "ready", professionals: page.items, cursor: page.nextCursor, loadingMore: false }))
       .catch((error: unknown) =>
-        setState({ status: "error", message: error instanceof Error ? error.message : "Network could not be loaded." })
+        setState({ status: "error", message: describeError(error, "Network could not be loaded.").message })
       );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profession, debouncedServiceArea, debouncedQuery]);
@@ -166,7 +174,7 @@ export default function NetworkRoute() {
     fetchPublishedMaterials(materialCategory === "all" ? undefined : materialCategory)
       .then((materials) => setMaterialsState({ status: "ready", materials }))
       .catch((error: unknown) =>
-        setMaterialsState({ status: "error", message: error instanceof Error ? error.message : "Materials could not be loaded." })
+        setMaterialsState({ status: "error", message: describeError(error, "Materials could not be loaded.").message })
       );
   }, [materialCategory]);
 
@@ -178,9 +186,23 @@ export default function NetworkRoute() {
     <div className="flex flex-col gap-5">
       <SectionHeading
         eyebrow="Network"
-        title="Find people, trades and companies"
-        description="Meet professionals across the built environment — architects, fabricators, installers and more building real projects."
+        title="Find the right professional"
+        description="Search verified, published profiles by trade, location or company. Compare real services before getting in touch."
       />
+
+      <section className="rounded-[2rem] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[var(--smc-limestone)] text-[var(--smc-mineral-bronze)]"><ShieldCheck className="h-6 w-6" aria-hidden="true" /></div>
+          <div>
+            <h2 className="text-lg font-semibold">People for your project, not just a directory</h2>
+            <p className="mt-1 text-sm leading-6 text-[var(--smc-charcoal-soft)]">Published professionals appear after verification. Browse their profile, then send your project requirements directly.</p>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Link to="/studio" className="flex min-h-12 items-center justify-center rounded-2xl border border-[var(--smc-border-strong)] px-3 text-center text-sm font-semibold">Explore materials</Link>
+          <Link to="/quotes/new" className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[var(--smc-charcoal)] px-3 text-center text-sm font-semibold text-white">Request a quote <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>
+        </div>
+      </section>
 
       {auth.status === "guest" && (
         <GuestNotice message="Browsing Network is open to everyone. Sign in to follow or connect with a professional." />
@@ -221,7 +243,7 @@ export default function NetworkRoute() {
           {materialsState.status === "loading" && <LoadingState label="Loading materials" />}
           {materialsState.status === "error" && <ErrorState message={materialsState.message} onRetry={loadMaterials} />}
           {materialsState.status === "ready" && materialsState.materials.length === 0 && materialCategory === "all" && (
-            <EmptyState title="No materials published yet" description="Published materials will appear here." />
+            <EmptyState title="No materials published yet" description="We only show reviewed, published materials. Explore the Studio or plan your requirements in the meantime." action={<Link to="/studio" className="inline-flex min-h-11 items-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white">Explore Studio</Link>} />
           )}
           {materialsState.status === "ready" && materialsState.materials.length === 0 && materialCategory !== "all" && (
             <EmptyState
@@ -242,10 +264,13 @@ export default function NetworkRoute() {
             <ul className="flex flex-col gap-3">
               {materialsState.materials.map((material) => (
                 <Card as="li" key={material.id} className="p-0">
-                  <Link to={`/materials/${material.slug}`} className="flex flex-col gap-1 p-4 outline-none">
-                    <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">{MATERIAL_CATEGORY_LABELS[material.category]}</p>
-                    <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{material.name}</p>
-                    {material.summary && <p className="text-sm text-[var(--smc-charcoal-soft)]">{material.summary}</p>}
+                  <Link to={`/materials/${material.slug}`} className="flex items-start gap-3 p-4 outline-none">
+                    <MaterialImage imagePath={material.image_path} name={material.name} variant="thumb" />
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">{MATERIAL_CATEGORY_LABELS[material.category]}</p>
+                      <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{material.name}</p>
+                      {material.summary && <p className="text-sm text-[var(--smc-charcoal-soft)]">{material.summary}</p>}
+                    </div>
                   </Link>
                 </Card>
               ))}
@@ -253,38 +278,28 @@ export default function NetworkRoute() {
           )}
         </>
       ) : tab !== "professionals" ? (
-        <EmptyState title={`${TABS.find((t) => t.key === tab)?.label} arrive in a later slice`} description={TAB_EMPTY_DESCRIPTION[tab]} />
+        <EmptyState title={`${ALL_TABS.find((t) => t.key === tab)?.label} arrive in a later slice`} description={TAB_EMPTY_DESCRIPTION[tab]} />
       ) : (
         <>
-          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
-            <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-[var(--smc-charcoal-soft)]">
-              Profession
-              <select
-                value={profession}
-                onChange={(event) => setProfession(event.target.value)}
-                aria-label="Filter by profession"
-                className="min-h-[44px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] px-3 text-sm text-[var(--smc-charcoal)] focus:border-[var(--smc-mineral-bronze)] focus:outline-none"
-              >
-                <option value="">All professions</option>
-                {PROFESSION_FILTER_OPTIONS.map((key) => (
-                  <option key={key} value={key}>
-                    {CATEGORY_LABELS[key]}
-                  </option>
-                ))}
-              </select>
+          <section className="rounded-2xl border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] p-4">
+            <h2 className="text-sm font-semibold">What kind of professional?</h2>
+            <div role="group" aria-label="Filter by profession" className="mt-3 flex gap-2 overflow-x-auto pb-2">
+              <button type="button" aria-pressed={profession === ""} onClick={() => setProfession("")}
+                className={`min-h-11 shrink-0 rounded-full border px-4 text-xs font-semibold ${profession === "" ? "border-[var(--smc-charcoal)] bg-[var(--smc-charcoal)] text-white" : "border-[var(--smc-border-strong)]"}`}>All trades</button>
+              {PROFESSION_FILTER_OPTIONS.map((key) => (
+                <button key={key} type="button" aria-pressed={profession === key} onClick={() => setProfession(key)}
+                  className={`min-h-11 shrink-0 rounded-full border px-4 text-xs font-semibold ${profession === key ? "border-[var(--smc-charcoal)] bg-[var(--smc-charcoal)] text-white" : "border-[var(--smc-border-strong)]"}`}>
+                  {CATEGORY_LABELS[key]}
+                </button>
+              ))}
+            </div>
+            <label className="mt-3 flex flex-col gap-2 text-sm font-medium">
+              <span className="flex items-center gap-2"><MapPin className="h-4 w-4" aria-hidden="true" /> Location or service area</span>
+              <input type="search" value={serviceArea} onChange={(event) => setServiceArea(event.target.value)}
+                placeholder="London, Wembley, Manchester…" aria-label="Filter by location or service area"
+                className="min-h-12 rounded-xl border border-[var(--smc-border)] bg-white px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--smc-mineral-bronze)]" />
             </label>
-            <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-[var(--smc-charcoal-soft)]">
-              Location / service area
-              <input
-                type="text"
-                value={serviceArea}
-                onChange={(event) => setServiceArea(event.target.value)}
-                placeholder="e.g. London, Greater Manchester"
-                aria-label="Filter by location or service area"
-                className="min-h-[44px] rounded-[var(--smc-radius-card)] border border-[var(--smc-border)] bg-[var(--smc-surface-raised)] px-3 text-sm text-[var(--smc-charcoal)] focus:border-[var(--smc-mineral-bronze)] focus:outline-none"
-              />
-            </label>
-          </div>
+          </section>
 
           <div className="relative">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--smc-charcoal-faint)]" aria-hidden="true" />
@@ -301,7 +316,7 @@ export default function NetworkRoute() {
           {state.status === "loading" && <LoadingState label="Loading professionals" />}
           {state.status === "error" && <ErrorState message={state.message} onRetry={load} />}
           {state.status === "ready" && state.professionals.length === 0 && !hasAnyFilter && (
-            <EmptyState title="No public professional profiles yet" description="Professionals who complete onboarding will appear here." />
+            <EmptyState title="No verified professionals published yet" description="The directory is awaiting approved profiles. Nobody is displayed or assigned until verification and publication are complete." action={<Link to="/studio" className="inline-flex min-h-11 items-center rounded-full border border-[var(--smc-border-strong)] px-5 text-sm font-semibold">Explore materials instead</Link>} />
           )}
           {state.status === "ready" && state.professionals.length === 0 && hasAnyFilter && (
             <EmptyState
@@ -319,26 +334,33 @@ export default function NetworkRoute() {
             />
           )}
           {state.status === "ready" && state.professionals.length > 0 && (
-            <ul className="flex flex-col gap-3">
-              {state.professionals.map((pro) => {
-                const name = pro.profile?.display_name ?? "SMC professional";
-                return (
-                  <Card as="li" key={pro.user_id} className="p-0">
-                    <Link to={`/profile/${pro.user_id}`} className="flex items-start gap-3 p-4 outline-none">
-                      <Avatar name={name} size={44} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-[var(--smc-charcoal)]">{name}</p>
-                        <p className="text-xs font-medium text-[var(--smc-mineral-bronze)]">
-                          {pro.category ? CATEGORY_LABELS[pro.category] ?? pro.category : "Professional"}
-                        </p>
-                        {pro.company_name && <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{pro.company_name}</p>}
-                        {pro.service_area && <p className="text-xs text-[var(--smc-charcoal-faint)]">{pro.service_area}</p>}
+            <section>
+              <p role="status" className="mb-3 text-sm text-[var(--smc-charcoal-soft)]">
+                {state.professionals.length} verified {state.professionals.length === 1 ? "professional" : "professionals"} shown
+              </p>
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {state.professionals.map((pro) => {
+                  const name = pro.profile?.display_name ?? pro.company_name ?? "Professional";
+                  return (
+                    <Card as="li" key={pro.user_id} className="flex flex-col justify-between p-5">
+                      <div className="flex items-start gap-3">
+                        <Avatar name={name} size={48} />
+                        <div className="min-w-0">
+                          <p className="break-words font-semibold">{name}</p>
+                          <p className="mt-1 text-xs font-semibold text-[var(--smc-mineral-bronze)]">{pro.category ? CATEGORY_LABELS[pro.category] ?? pro.category : "Professional"}</p>
+                          {pro.company_name && <p className="mt-2 text-sm text-[var(--smc-charcoal-soft)]">{pro.company_name}</p>}
+                          {pro.service_area && <p className="mt-1 flex items-center gap-1 text-xs text-[var(--smc-charcoal-faint)]"><MapPin className="h-3.5 w-3.5" aria-hidden="true" />{pro.service_area}</p>}
+                        </div>
                       </div>
-                    </Link>
-                  </Card>
-                );
-              })}
-            </ul>
+                      <div className="mt-5 grid grid-cols-2 gap-2">
+                        <Link to={`/profile/${pro.user_id}`} className="flex min-h-12 items-center justify-center rounded-xl border border-[var(--smc-border-strong)] px-2 text-center text-sm font-semibold">View profile</Link>
+                        <Link to={`/quotes/new?professional=${encodeURIComponent(pro.user_id)}`} className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--smc-charcoal)] px-2 text-center text-sm font-semibold text-white">Request quote</Link>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </ul>
+            </section>
           )}
           {state.status === "ready" && state.cursor && (
             <button

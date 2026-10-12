@@ -10,7 +10,7 @@ Status: engineering inventory for legal review before public beta. It is not leg
 | Staff-role assignments and audit | Authorization and accountability | `public.user_roles`, `private.role_assignment_audit` | Trusted server/admin only | Retention policy requires SMC/legal approval |
 | Avatar/public media | User-directed public presentation | Supabase Storage public buckets | Public URLs; uploads/changes restricted to owner | Removal workflow and moderation retention require approval |
 | Private user media | Private account/project preparation | Supabase Storage private bucket | Owner through RLS | Retention and deletion require approval |
-| Account-deletion request | Fulfil account deletion workflow | `public.account_deletion_requests` | Requesting user and trusted operations | Final deletion/anonymisation worker and legal retention review pending |
+| Account-deletion request | Fulfil account deletion workflow | `public.account_deletion_requests` | Requesting user (read) and trusted operations | Request/cancel via RPC with a configurable cancellation window; anonymisation worker implemented (see `docs/account-deletion-policy.md`); retention of safety records pending legal review |
 | Authentication session tokens | Session restoration and API authorization | Web `sessionStorage`; native memory only in Phase 2 | Current application context | Web tab lifetime; native persistence disabled until secure storage is implemented |
 
 ## Explicitly not enabled in Phase 2

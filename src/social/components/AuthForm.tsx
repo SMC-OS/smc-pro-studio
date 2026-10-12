@@ -1,19 +1,23 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion, type Transition } from "motion/react";
 import {
   isOAuthProviderEnabled,
   requestPasswordReset,
+  resendSignupConfirmation,
   signInWithOAuth,
   signInWithPassword,
   signUpWithPassword,
   updatePassword,
+  verifyRecoveryCode,
+  verifySignupCode,
   type AccountType,
   type ProfessionalCategory,
   type SupportedOAuthProvider,
 } from "../../services/authClient";
 import { Button } from "./ui";
+import { describeError } from "../services/networkErrors";
 
 /**
  * SMC-styled sign-in / create-account / forgot-password / reset-password
@@ -37,7 +41,7 @@ import { Button } from "./ui";
 const EASE_OUT: Transition["ease"] = [0.16, 1, 0.3, 1];
 const EASE_IN: Transition["ease"] = [0.4, 0, 1, 1];
 
-type Mode = "login" | "register" | "forgot" | "reset";
+type Mode = "login" | "register" | "verify" | "forgot" | "recover" | "reset";
 
 const PROFESSIONAL_CATEGORIES: Array<{ value: ProfessionalCategory; label: string }> = [
   { value: "architect", label: "Architect" },
@@ -48,7 +52,6 @@ const PROFESSIONAL_CATEGORIES: Array<{ value: ProfessionalCategory; label: strin
   { value: "contractor", label: "Contractor" },
   { value: "developer", label: "Developer" },
   { value: "construction_professional", label: "Construction Professional" },
-  { value: "smc_team", label: "SMC Team (profile only — no staff access)" },
   { value: "other", label: "Other" },
 ];
 
@@ -61,16 +64,22 @@ const PROVIDER_LABELS: Record<SupportedOAuthProvider, string> = {
 const HEADINGS: Record<Mode, { title: string; description: string }> = {
   login: { title: "Welcome back", description: "Sign in to save, share and manage your SMC Pro Studio account." },
   register: { title: "Create your account", description: "Join the SMC Pro Studio community — browse publicly as a guest, or sign in for the full experience." },
+  verify: { title: "Verify your email", description: "Open the newest SMC Pro Studio verification message. Use its button, or enter its code if one is shown." },
   forgot: { title: "Reset your password", description: "We'll send reset instructions to your email address." },
+  recover: { title: "Enter your recovery code", description: "Use the newest code from your password-reset email, then choose a new password." },
   reset: { title: "Choose a new password", description: "Set a new password to finish recovering your account." },
 };
 
 export default function AuthForm({
   initialMode = "login",
+  initialNotice = null,
+  initialError = null,
   lockMode = false,
   onSuccess,
 }: {
   initialMode?: Mode;
+  initialNotice?: string | null;
+  initialError?: string | null;
   /** true on the dedicated /auth/reset-password route — no tab-switching away from "reset". */
   lockMode?: boolean;
   onSuccess: () => void;
@@ -85,13 +94,26 @@ export default function AuthForm({
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
+  const [notice, setNotice] = useState<string | null>(initialNotice);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationComplete, setVerificationComplete] = useState(false);
+  const feedbackRef = useRef<HTMLDivElement>(null);
   const prefersReducedMotion = useReducedMotion();
 
   const enterTransition: Transition = prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: EASE_OUT };
   const exitTransition: Transition = prefersReducedMotion ? { duration: 0 } : { duration: 0.15, ease: EASE_IN };
   const bannerTransition: Transition = prefersReducedMotion ? { duration: 0 } : { duration: 0.16, ease: EASE_OUT };
+
+  useEffect(() => {
+    if (!error && !notice) return;
+    const revealFeedback = () => {
+      feedbackRef.current?.scrollIntoView();
+      feedbackRef.current?.focus({ preventScroll: true });
+    };
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(revealFeedback);
+    else revealFeedback();
+  }, [error, notice, prefersReducedMotion]);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -100,7 +122,7 @@ export default function AuthForm({
     try {
       await action();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Authentication is temporarily unavailable.");
+      setError(describeError(caught, "Authentication is temporarily unavailable.").message);
     } finally {
       setBusy(false);
     }
@@ -118,13 +140,30 @@ export default function AuthForm({
     event.preventDefault();
     void run(async () => {
       if (password !== confirmPassword) throw new Error("Passwords do not match.");
-      if (!acceptTerms) throw new Error("Accept the Terms and Privacy Notice to create an account.");
+      if (!acceptTerms) throw new Error("Accept the Terms of Use and Privacy Policy to create an account.");
       const result = await signUpWithPassword({ email, password, displayName, accountType, professionalCategory });
       if (result.requiresEmailVerification) {
-        setNotice("Check your email to verify the account before signing in.");
+        setMode("verify");
+        setNotice("Account created. Verify your email before signing in. Only the newest verification message will work.");
       } else {
         onSuccess();
       }
+    });
+  };
+
+  const handleVerify = (event: FormEvent) => {
+    event.preventDefault();
+    void run(async () => {
+      await verifySignupCode(email, verificationCode);
+      setVerificationComplete(true);
+      setNotice("Your email is verified. Continue to your account.");
+    });
+  };
+
+  const handleResend = () => {
+    void run(async () => {
+      await resendSignupConfirmation(email);
+      setNotice("If this account is awaiting verification, a new message has been requested. Use only the newest message and wait a few minutes before requesting another.");
     });
   };
 
@@ -132,7 +171,19 @@ export default function AuthForm({
     event.preventDefault();
     void run(async () => {
       await requestPasswordReset(email);
-      setNotice("If an eligible account exists, password-reset instructions have been sent.");
+      setMode("recover");
+      setNotice("If an eligible account exists, a password-recovery message has been requested. Use only the newest message.");
+    });
+  };
+
+  const handleRecovery = (event: FormEvent) => {
+    event.preventDefault();
+    void run(async () => {
+      if (password !== confirmPassword) throw new Error("Passwords do not match.");
+      await verifyRecoveryCode(email, verificationCode);
+      await updatePassword(password);
+      setVerificationComplete(true);
+      setNotice("Your password has been updated. Continue to your account.");
     });
   };
 
@@ -203,6 +254,8 @@ export default function AuthForm({
                 <motion.div
                   key="error"
                   role="alert"
+                  ref={feedbackRef}
+                  tabIndex={-1}
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0, transition: bannerTransition }}
                   exit={{ opacity: 0, y: -6, transition: bannerTransition }}
@@ -216,6 +269,9 @@ export default function AuthForm({
                 <motion.div
                   key="notice"
                   role="status"
+                  aria-live="polite"
+                  ref={feedbackRef}
+                  tabIndex={-1}
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0, transition: bannerTransition }}
                   exit={{ opacity: 0, y: -6, transition: bannerTransition }}
@@ -288,14 +344,41 @@ export default function AuthForm({
                 <label className="flex items-start gap-3 text-xs text-[var(--smc-charcoal-faint)]">
                   <input type="checkbox" checked={acceptTerms} onChange={(event) => setAcceptTerms(event.target.checked)} className="mt-0.5" />
                   <span>
-                    I accept the Terms of Use and{" "}
+                    I accept the{" "}
+                    <Link to="/terms" className="font-semibold underline underline-offset-2">
+                      Terms of Use
+                    </Link>{" "}
+                    and{" "}
                     <Link to="/community-guidelines" className="font-semibold underline underline-offset-2">
                       Community Guidelines
                     </Link>
-                    , and acknowledge the Privacy Notice. All require final legal review before public beta.
+                    , and I have read the{" "}
+                    <Link to="/privacy" className="font-semibold underline underline-offset-2">
+                      Privacy Policy
+                    </Link>
+                    .
                   </span>
                 </label>
                 <SubmitButton busy={busy}>Create account</SubmitButton>
+              </form>
+            )}
+
+            {mode === "verify" && (
+              <form onSubmit={handleVerify} className="mt-6 flex flex-col gap-4">
+                <EmailField value={email} onChange={setEmail} />
+                {!verificationComplete && (
+                  <>
+                    <TextField label="Verification code" value={verificationCode} onChange={setVerificationCode} autoComplete="one-time-code" maxLength={10} />
+                    <SubmitButton busy={busy}>Verify email</SubmitButton>
+                    <button type="button" disabled={busy} onClick={handleResend} className="min-h-[44px] text-center text-xs font-semibold text-[var(--smc-mineral-bronze)] hover:underline disabled:opacity-50">
+                      Resend verification message
+                    </button>
+                  </>
+                )}
+                {verificationComplete && <Button type="button" onClick={onSuccess}>Continue to your account</Button>}
+                <button type="button" onClick={() => setMode("login")} className="min-h-[44px] text-center text-xs font-semibold text-[var(--smc-charcoal-faint)] hover:text-[var(--smc-charcoal)]">
+                  Back to sign in
+                </button>
               </form>
             )}
 
@@ -304,6 +387,30 @@ export default function AuthForm({
                 <EmailField value={email} onChange={setEmail} />
                 <SubmitButton busy={busy}>Send reset instructions</SubmitButton>
                 <button type="button" onClick={() => setMode("login")} className="text-center text-xs font-semibold text-[var(--smc-charcoal-faint)] hover:text-[var(--smc-charcoal)]">
+                  Back to sign in
+                </button>
+              </form>
+            )}
+
+            {mode === "recover" && (
+              <form onSubmit={handleRecovery} className="mt-6 flex flex-col gap-4">
+                <EmailField value={email} onChange={setEmail} />
+                {!verificationComplete && (
+                  <>
+                    <TextField label="Recovery code" value={verificationCode} onChange={setVerificationCode} autoComplete="one-time-code" maxLength={10} />
+                    <PasswordField label="New password (minimum 8 characters)" value={password} onChange={setPassword} shown={showPassword} onToggle={() => setShowPassword(!showPassword)} autoComplete="new-password" />
+                    <PasswordField label="Confirm new password" value={confirmPassword} onChange={setConfirmPassword} shown={showPassword} onToggle={() => setShowPassword(!showPassword)} autoComplete="new-password" />
+                    <SubmitButton busy={busy}>Verify code and update password</SubmitButton>
+                    <button type="button" disabled={busy} onClick={() => void run(async () => {
+                      await requestPasswordReset(email);
+                      setNotice("If an eligible account exists, a new recovery message has been requested. Wait a few minutes before requesting another.");
+                    })} className="min-h-[44px] text-center text-xs font-semibold text-[var(--smc-mineral-bronze)] hover:underline disabled:opacity-50">
+                      Resend recovery message
+                    </button>
+                  </>
+                )}
+                {verificationComplete && <Button type="button" onClick={onSuccess}>Continue to your account</Button>}
+                <button type="button" onClick={() => setMode("login")} className="min-h-[44px] text-center text-xs font-semibold text-[var(--smc-charcoal-faint)] hover:text-[var(--smc-charcoal)]">
                   Back to sign in
                 </button>
               </form>

@@ -1,5 +1,9 @@
 # SMC Pro Studio UX direction
 
+## Slice A information-architecture reconciliation
+
+For the launch branch, the homeowner-first product direction approved for Slice A is authoritative. The primary shell remains **Home · Studio · Projects · Network · Profile**. Earlier social-first references to **Home · Network · Create · Projects · Profile** describe a previous product direction and are not the navigation contract for this branch. Social creation remains available at `/create`, while Home, Studio and Network are the main customer entry points for planning, discovery and quote requests.
+
 ## Product direction amendment — 2026-08-19 (professional network pivot)
 
 **Old emphasis (Phase 1–3 slices 1–3):** social-first discovery — a "premium social community" modelled loosely on consumer social apps, with Home as a content feed and Discover as a materials/people/inspiration browse surface.
@@ -18,7 +22,7 @@ This is a re-emphasis and re-labelling of the existing foundation, not a rebuild
 
 **Primary journey:** Discover → Network → Connect → Project → Deliver (the existing SMC service journey — Design → Quote → Survey → Fabrication → Installation — nests inside "Project → Deliver").
 
-**Primary navigation (mobile + desktop rail):** Home · Network · Create · Projects · Profile. Messages remains reachable contextually (header/profile/project/connection actions and a notification shortcut) rather than occupying a primary tab.
+**Primary navigation (mobile + desktop rail):** Home · Studio · Projects · Network · Profile. Messages remains reachable contextually (header/profile/project/connection actions and a notification shortcut) rather than occupying a primary tab.
 
 **What was "Discover" becomes "Network":** professional discovery — people, trades, companies — is the primary use of that surface, so it is renamed and reframed rather than duplicated. Materials/product discovery remains real but becomes a secondary, contextual surface (reachable from Home, Network, Projects, and search) instead of a primary tab. See the amendment section in `tasks/plan.md` for the concrete screen-hierarchy delta.
 

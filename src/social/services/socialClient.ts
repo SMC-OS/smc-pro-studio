@@ -49,6 +49,15 @@ export class SocialUnavailableError extends Error {
   }
 }
 
+/**
+ * V1-7: a failed auth.getUser() (for example while the connection is down) is
+ * not the same as being signed out — report it as a temporary problem, keeping
+ * the original error as `cause`, never as "Sign in to …".
+ */
+function sessionCheckFailed(error: unknown): SocialUnavailableError {
+  return new SocialUnavailableError("Your session could not be verified. Please try again.", { cause: error });
+}
+
 function requireClient() {
   if (!isSupabaseConfigured) throw new SocialUnavailableError();
   return getSupabaseClient();
@@ -111,7 +120,7 @@ export async function fetchHomeFeed(cursor: HomeFeedCursor | null = null, pageSi
     query = query.or(`created_at.lt.${quotedCreatedAt},and(created_at.eq.${quotedCreatedAt},id.lt.${cursor.id})`);
   }
   const { data, error } = await query;
-  if (error) throw new Error("The feed could not be loaded. Please try again.");
+  if (error) throw new Error("The feed could not be loaded. Please try again.", { cause: error });
   const rows = (data ?? []) as unknown as FeedPost[];
   const hasMore = rows.length > pageSize;
   const page = hasMore ? rows.slice(0, pageSize) : rows;
@@ -178,7 +187,7 @@ export async function searchPublicProfessionals(filters: ProfessionalSearchFilte
     after_user_id: filters.afterUserId ?? null,
     page_size: pageSize,
   });
-  if (error) throw new Error("Professionals could not be loaded. Please try again.");
+  if (error) throw new Error("Professionals could not be loaded. Please try again.", { cause: error });
   const rows = (data ?? []) as SearchProfessionalRow[];
   const hasMore = rows.length > pageSize;
   const page = hasMore ? rows.slice(0, pageSize) : rows;
@@ -209,20 +218,22 @@ export interface OwnProfile extends PublicAuthor {
 export async function fetchOwnProfile(): Promise<OwnProfile | null> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) return null;
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) return null;
   const { data, error } = await client
     .from("profiles")
     .select("id, display_name, username, avatar_path, account_type, bio, visibility, onboarding_completed")
     .eq("id", userData.user.id)
     .maybeSingle();
-  if (error) throw new Error("Your profile could not be loaded. Please try again.");
+  if (error) throw new Error("Your profile could not be loaded. Please try again.", { cause: error });
   return data as OwnProfile | null;
 }
 
 export async function createPost(input: { body: string; visibility: ContentVisibility; postType: PostType }): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to post.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to post.");
   const body = input.body.trim();
   if (!body) throw new Error("Write something before posting.");
   if (body.length > 3000) throw new Error("Posts must be 3000 characters or fewer.");
@@ -232,43 +243,47 @@ export async function createPost(input: { body: string; visibility: ContentVisib
     visibility: input.visibility,
     post_type: input.postType,
   });
-  if (error) throw new Error("The post could not be published. Please try again.");
+  if (error) throw new Error("The post could not be published. Please try again.", { cause: error });
 }
 
 export async function followUser(followeeId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to follow.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to follow.");
   const { error } = await client.from("follows").insert({ follower_id: userData.user.id, followee_id: followeeId });
-  if (error) throw new Error("This could not be followed right now.");
+  if (error) throw new Error("This could not be followed right now.", { cause: error });
 }
 
 export async function unfollowUser(followeeId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to manage follows.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to manage follows.");
   const { error } = await client
     .from("follows")
     .delete()
     .eq("follower_id", userData.user.id)
     .eq("followee_id", followeeId);
-  if (error) throw new Error("This could not be unfollowed right now.");
+  if (error) throw new Error("This could not be unfollowed right now.", { cause: error });
 }
 
 export async function savePost(postId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to save.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to save.");
   const { error } = await client.from("saved_posts").insert({ user_id: userData.user.id, post_id: postId });
-  if (error) throw new Error("This could not be saved right now.");
+  if (error) throw new Error("This could not be saved right now.", { cause: error });
 }
 
 export async function unsavePost(postId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to manage saved posts.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to manage saved posts.");
   const { error } = await client.from("saved_posts").delete().eq("user_id", userData.user.id).eq("post_id", postId);
-  if (error) throw new Error("This could not be unsaved right now.");
+  if (error) throw new Error("This could not be unsaved right now.", { cause: error });
 }
 
 /** Which of the given post ids the signed-in user has already saved — used so the feed can render an honest, real toggle state rather than assuming "not saved." */
@@ -296,13 +311,14 @@ export interface OwnProfessionalProfile {
 export async function fetchOwnProfessionalProfile(): Promise<OwnProfessionalProfile | null> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) return null;
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) return null;
   const { data, error } = await client
     .from("professional_profiles")
     .select("user_id, category, company_name, services, service_area, website_url, verification_status")
     .eq("user_id", userData.user.id)
     .maybeSingle();
-  if (error) throw new Error("Your professional profile could not be loaded. Please try again.");
+  if (error) throw new Error("Your professional profile could not be loaded. Please try again.", { cause: error });
   return data as OwnProfessionalProfile | null;
 }
 
@@ -339,7 +355,7 @@ export async function fetchPublicProfileById(userId: string): Promise<PublicProf
     .select("id, display_name, username, avatar_path, account_type, bio")
     .eq("id", userId)
     .maybeSingle();
-  if (error) throw new Error("This profile could not be loaded. Please try again.");
+  if (error) throw new Error("This profile could not be loaded. Please try again.", { cause: error });
   if (!data) return null;
   const profile = data as PublicProfileDetail;
   let professional: OwnProfessionalProfile | null = null;
@@ -376,7 +392,7 @@ export async function fetchPublicPostsByAuthor(authorId: string, limit = 5): Pro
     .eq("moderation_status", "visible")
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (error) throw new Error("This person's activity could not be loaded. Please try again.");
+  if (error) throw new Error("This person's activity could not be loaded. Please try again.", { cause: error });
   return (data ?? []) as unknown as FeedPost[];
 }
 
@@ -426,17 +442,19 @@ export async function fetchPostEngagement(postIds: string[]): Promise<Map<string
 export async function reactToPost(postId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to react.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to react.");
   const { error } = await client.from("reactions").insert({ post_id: postId, user_id: userData.user.id, reaction_type: "like" });
-  if (error) throw new Error("This could not be reacted to right now.");
+  if (error) throw new Error("This could not be reacted to right now.", { cause: error });
 }
 
 export async function unreactToPost(postId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to manage reactions.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to manage reactions.");
   const { error } = await client.from("reactions").delete().eq("post_id", postId).eq("user_id", userData.user.id);
-  if (error) throw new Error("This could not be undone right now.");
+  if (error) throw new Error("This could not be undone right now.", { cause: error });
 }
 
 // ==========================================================================
@@ -460,14 +478,15 @@ export async function fetchComments(postId: string): Promise<PostComment[]> {
     .eq("post_id", postId)
     .eq("moderation_status", "visible")
     .order("created_at", { ascending: true });
-  if (error) throw new Error("Comments could not be loaded. Please try again.");
+  if (error) throw new Error("Comments could not be loaded. Please try again.", { cause: error });
   return (data ?? []) as unknown as PostComment[];
 }
 
 export async function addComment(postId: string, body: string): Promise<PostComment> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to comment.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to comment.");
   const trimmed = body.trim();
   if (!trimmed) throw new Error("Write a comment before posting.");
   if (trimmed.length > 1000) throw new Error("Comments must be 1000 characters or fewer.");
@@ -476,16 +495,17 @@ export async function addComment(postId: string, body: string): Promise<PostComm
     .insert({ post_id: postId, author_id: userData.user.id, body: trimmed })
     .select("id, post_id, author_id, body, created_at, author:profiles(id, display_name, username, avatar_path, account_type)")
     .single();
-  if (error) throw new Error("Your comment could not be posted. Please try again.");
+  if (error) throw new Error("Your comment could not be posted. Please try again.", { cause: error });
   return data as unknown as PostComment;
 }
 
 export async function deleteComment(commentId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to manage comments.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to manage comments.");
   const { error } = await client.from("comments").delete().eq("id", commentId);
-  if (error) throw new Error("This comment could not be deleted. Please try again.");
+  if (error) throw new Error("This comment could not be deleted. Please try again.", { cause: error });
 }
 
 // ==========================================================================
@@ -541,21 +561,23 @@ export async function fetchConnectionState(userId: string): Promise<ConnectionSu
 export async function requestConnection(userId: string): Promise<string> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to connect.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to connect.");
   if (userData.user.id === userId) throw new Error("You can't connect with yourself.");
   const { data, error } = await client
     .from("connections")
     .insert({ requester_id: userData.user.id, addressee_id: userId, status: "pending" })
     .select("id")
     .single();
-  if (error) throw new Error("This connection request could not be sent right now.");
+  if (error) throw new Error("This connection request could not be sent right now.", { cause: error });
   return data.id as string;
 }
 
 export async function respondToConnection(connectionId: string, accept: boolean): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to manage connection requests.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to manage connection requests.");
   const { data, error } = await client
     .from("connections")
     .update({ status: accept ? "accepted" : "declined", responded_at: new Date().toISOString() })
@@ -571,7 +593,8 @@ export async function respondToConnection(connectionId: string, accept: boolean)
 export async function revokeConnectionRequest(connectionId: string): Promise<void> {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) throw new Error("Sign in to manage connection requests.");
+  if (userError) throw sessionCheckFailed(userError);
+  if (!userData.user) throw new Error("Sign in to manage connection requests.");
   const { data, error } = await client
     .from("connections")
     .update({ status: "revoked", responded_at: new Date().toISOString() })
@@ -630,7 +653,7 @@ export async function fetchMyConnections(limit = 100): Promise<ConnectionListIte
     .in("status", ["pending", "accepted"])
     .order("created_at", { ascending: false })
     .limit(limit);
-  if (error) throw new Error("Your connections could not be loaded. Please try again.");
+  if (error) throw new Error("Your connections could not be loaded. Please try again.", { cause: error });
   const rows = (data ?? []) as unknown as ConnectionRow[];
   const items: ConnectionListItem[] = [];
   for (const row of rows) {

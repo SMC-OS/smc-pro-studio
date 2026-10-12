@@ -41,6 +41,7 @@ mock.module(socialClientUrl, {
 mock.module(materialsClientUrl, {
   exports: {
     MATERIAL_CATEGORIES: ["quartz", "granite", "marble", "porcelain", "dekton"],
+    getMaterialImageUrl: (path) => (path ? `https://cdn.test/materials-media/${path}` : null),
     fetchPublishedMaterials: async (...args) => {
       fetchPublishedMaterialsCalls.push(args);
       return fetchPublishedMaterialsImpl(...args);
@@ -96,6 +97,7 @@ const VALID_MATERIAL = {
   summary: "A fixture summary.",
   description: "A longer fixture description.",
   applications: ["Kitchen Worktops"],
+  image_path: null,
 };
 
 test.beforeEach(() => {
@@ -201,12 +203,24 @@ test("Materials tab: category chips cover exactly the five locked categories, no
   assert.deepEqual(chipLabels, ["All", "Quartz", "Granite", "Marble", "Porcelain", "Dekton"]);
 });
 
-test("other tabs are unaffected: switching to Projects still shows its own later-slice empty state, not the Materials empty state", async () => {
+test("V1 ships only data-backed tabs: Professionals and Materials, with no 'later slice' placeholder tabs", async () => {
   const container = await mount();
-  await React.act(async () => {
-    findTab(container, "Projects").click();
-  });
-  await flush();
-  assert.match(container.textContent, /Projects arrive in a later slice/);
-  assert.doesNotMatch(container.textContent, /No materials published yet/);
+  const labels = [...container.querySelectorAll('[role="tablist"][aria-label="Network categories"] [role="tab"]')].map((t) => t.textContent.trim());
+  assert.deepEqual(labels, ["Professionals", "Materials"]);
+  assert.doesNotMatch(container.textContent, /arrive in a later slice/);
+});
+
+test("Materials tab: a material with an image shows a decorative thumbnail; one without shows none", async () => {
+  const path = `materials/${VALID_MATERIAL.id}/0f8b3c1e-1111-4222-8333-944455556666.webp`;
+  fetchPublishedMaterialsImpl = async () => [
+    { ...VALID_MATERIAL, image_path: path },
+    { ...VALID_MATERIAL, id: "d0000000-0000-0000-0000-000000000002", slug: "plain-granite", name: "Plain Granite", category: "granite" },
+  ];
+  const container = await mount();
+  await clickMaterialsTab(container);
+  const imgs = container.querySelectorAll("img");
+  assert.equal(imgs.length, 1);
+  assert.equal(imgs[0].getAttribute("src"), `https://cdn.test/materials-media/${path}`);
+  assert.equal(imgs[0].getAttribute("alt"), "", "thumbnail is decorative — the name is already the link text");
+  assert.equal(imgs[0].getAttribute("loading"), "lazy");
 });

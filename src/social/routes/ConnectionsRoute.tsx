@@ -10,6 +10,7 @@ import {
   type ConnectionListItem,
 } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 type LoadState =
   | { status: "loading" }
@@ -41,7 +42,7 @@ export default function ConnectionsRoute() {
     fetchMyConnections()
       .then((items) => setState({ status: "ready", items }))
       .catch((error: unknown) =>
-        setState({ status: "error", message: error instanceof Error ? error.message : "Your connections could not be loaded." })
+        setState({ status: "error", message: describeError(error, "Your connections could not be loaded.").message })
       );
   }, [auth.status]);
 
@@ -61,7 +62,7 @@ export default function ConnectionsRoute() {
           : prev
       );
     } catch (err) {
-      setRowError((prev) => ({ ...prev, [item.connectionId]: err instanceof Error ? err.message : "This request could not be updated right now." }));
+      setRowError((prev) => ({ ...prev, [item.connectionId]: describeError(err, "This request could not be updated right now.").message }));
     } finally {
       setBusyId(null);
     }
@@ -75,7 +76,7 @@ export default function ConnectionsRoute() {
       await respondToConnection(item.connectionId, false);
       setState((prev) => (prev.status === "ready" ? { status: "ready", items: prev.items.filter((i) => i.connectionId !== item.connectionId) } : prev));
     } catch (err) {
-      setRowError((prev) => ({ ...prev, [item.connectionId]: err instanceof Error ? err.message : "This request could not be updated right now." }));
+      setRowError((prev) => ({ ...prev, [item.connectionId]: describeError(err, "This request could not be updated right now.").message }));
     } finally {
       setBusyId(null);
     }
@@ -89,7 +90,7 @@ export default function ConnectionsRoute() {
       await revokeConnectionRequest(item.connectionId);
       setState((prev) => (prev.status === "ready" ? { status: "ready", items: prev.items.filter((i) => i.connectionId !== item.connectionId) } : prev));
     } catch (err) {
-      setRowError((prev) => ({ ...prev, [item.connectionId]: err instanceof Error ? err.message : "This request could not be withdrawn right now." }));
+      setRowError((prev) => ({ ...prev, [item.connectionId]: describeError(err, "This request could not be withdrawn right now.").message }));
     } finally {
       setBusyId(null);
     }

@@ -3,6 +3,7 @@ import { EmptyState, LoadingState } from "../components/StateViews";
 import { Button, Card, SectionHeading } from "../components/ui";
 import { createPost, type ContentVisibility, type PostType } from "../services/socialClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 const VISIBILITY_OPTIONS: Array<{ value: ContentVisibility; label: string }> = [
   { value: "public", label: "Public — anyone can see this" },
@@ -54,7 +55,7 @@ function PostComposer() {
     } catch (caught) {
       // body/visibility/postType are deliberately left as-is here — a failed
       // submit must not lose the author's draft or their selected post type.
-      setError(caught instanceof Error ? caught.message : "The post could not be published.");
+      setError(describeError(caught, "The post could not be published.").message);
     } finally {
       setBusy(false);
     }

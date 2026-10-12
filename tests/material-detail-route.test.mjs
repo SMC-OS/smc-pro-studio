@@ -23,6 +23,7 @@ const fetchMaterialBySlugCalls = [];
 
 mock.module(materialsClientUrl, {
   exports: {
+    getMaterialImageUrl: (path) => (path ? `https://cdn.test/materials-media/${path}` : null),
     fetchMaterialBySlug: async (...args) => {
       fetchMaterialBySlugCalls.push(args);
       return fetchMaterialBySlugImpl(...args);
@@ -71,6 +72,7 @@ const VALID_MATERIAL = {
   summary: "A fixture summary.",
   description: "A longer fixture description.",
   applications: ["Kitchen Worktops"],
+  image_path: null,
 };
 
 test.beforeEach(() => {
@@ -141,4 +143,36 @@ test("the not-found state offers a link back to Network", async () => {
   await flush();
   const link = container.querySelector('a[href="/network"]');
   assert.ok(link, "expected a link back to Network");
+});
+
+// ==========================================================================
+// Phase 5 Slice C: editorial image
+// ==========================================================================
+
+test("a material with an image renders it with descriptive alt text from the public bucket URL", async () => {
+  const path = `materials/${VALID_MATERIAL.id}/0f8b3c1e-1111-4222-8333-944455556666.jpg`;
+  fetchMaterialBySlugImpl = async () => ({ ...VALID_MATERIAL, image_path: path });
+  const container = await mount("/materials/calacatta-quartz");
+  await flush();
+  const img = container.querySelector("img");
+  assert.ok(img, "expected the material image");
+  assert.equal(img.getAttribute("src"), `https://cdn.test/materials-media/${path}`);
+  assert.equal(img.getAttribute("alt"), "Calacatta Quartz surface");
+});
+
+test("a material without an image renders no image and no placeholder", async () => {
+  fetchMaterialBySlugImpl = async () => VALID_MATERIAL;
+  const container = await mount("/materials/calacatta-quartz");
+  await flush();
+  assert.equal(container.querySelectorAll("img").length, 0);
+});
+
+test("an image that fails to load is removed rather than shown broken", async () => {
+  const path = `materials/${VALID_MATERIAL.id}/0f8b3c1e-1111-4222-8333-944455556666.jpg`;
+  fetchMaterialBySlugImpl = async () => ({ ...VALID_MATERIAL, image_path: path });
+  const container = await mount("/materials/calacatta-quartz");
+  await flush();
+  await React.act(async () => container.querySelector("img").dispatchEvent(new window.Event("error")));
+  await flush();
+  assert.equal(container.querySelectorAll("img").length, 0);
 });

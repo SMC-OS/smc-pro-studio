@@ -20,7 +20,16 @@ test("main.tsx renders the social shell by default, legacy App only behind LEGAC
   const main = await read("src/main.tsx");
   assert.match(main, /import SocialApp from '\.\/social\/SocialApp\.tsx'/);
   assert.match(main, /import\s*\{\s*LEGACY_APP_OPT_IN\s*\}\s*from '\.\/social\/flags\.ts'/);
-  assert.match(main, /\{LEGACY_APP_OPT_IN \? <App \/> : <SocialApp \/>\}/);
+  // Pre-native hardening: the legacy App must never be statically imported,
+  // or production ships its whole module graph as dead code. Its only import
+  // is dynamic, inside a branch guarded directly by import.meta.env.PROD (a
+  // build-time constant), so production builds remove it entirely.
+  assert.doesNotMatch(main, /^\s*import\s+App\b/m, "no static import of the legacy App");
+  assert.doesNotMatch(main, /import\s*\(\s*['"]\.\/App\.tsx['"]\s*\)[\s\S]*import\s*\(\s*['"]\.\/App\.tsx['"]\s*\)/, "exactly one legacy import");
+  assert.match(
+    main,
+    /if \(!import\.meta\.env\.PROD && LEGACY_APP_OPT_IN\) \{\s*void import\('\.\/App\.tsx'\)\.then\(\(\{default: App\}\) => render\(App\)\);\s*\} else \{\s*render\(SocialApp\);\s*\}/,
+  );
 });
 
 test("legacy app flag requires an explicit VITE_LEGACY_APP_OPT_IN=true opt-in", async () => {

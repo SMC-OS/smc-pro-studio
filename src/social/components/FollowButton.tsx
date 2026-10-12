@@ -2,6 +2,7 @@ import { useState } from "react";
 import { UserCheck, UserPlus } from "lucide-react";
 import { Button } from "./ui";
 import { followUser, unfollowUser } from "../services/socialClient";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Follow/unfollow — unilateral, no acceptance step. Deliberately separate
@@ -35,7 +36,7 @@ export function FollowButton({
       else await unfollowUser(userId);
       setFollowing(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "This could not be updated right now.");
+      setError(describeError(err, "This could not be updated right now.").message);
     } finally {
       setBusy(false);
     }
