@@ -63,42 +63,25 @@ test("HomeRoute is project-first and no longer owns the legacy social-feed saved
   );
 });
 
-test("BottomNav never falls back to Home when no primary tab matches the route", async () => {
+test("BottomNav never falls back to Home when no primary tab matches", async () => {
   const source = await read("src/social/components/BottomNav.tsx");
-  assert.doesNotMatch(
-    source,
-    /Math\.max\(\s*0,\s*NAV_ITEMS\.findIndex/,
-    "must not coerce findIndex's -1 (\"no primary tab matches\") into 0 (\"Home\")"
-  );
-  assert.match(
-    source,
-    /function findActiveIndex\(pathname: string\): number \| null/,
-    "active-tab resolution must be able to report \"no tab active\" (null), not just an index"
-  );
-  assert.match(
-    source,
-    /matchPath\(\{ path: "\/connections", end: false \}, pathname\)/,
-    "/connections must still resolve to Profile's tab (it's a profile-owned contextual subroute, not its own primary tab - see SocialApp.tsx)"
-  );
-  assert.match(
-    source,
-    /cx === null/,
-    "the bar path builder must have a safe flat-bar fallback for when no tab is active"
-  );
+  assert.ok(source.includes("function findActiveIndex(pathname: string): number"));
+  assert.ok(source.includes("return -1;"), "unknown routes must not incorrectly activate Home");
+  assert.ok(source.includes('path: "/connections"'), "Connections must activate Profile");
+  assert.ok(source.includes('path: "/settings"'), "Settings must activate Profile");
+  assert.ok(source.includes("activeIndex >= 0 ? NAV_ITEMS[activeIndex].icon : null"), "no icon should be raised on unmatched routes");
+  assert.doesNotMatch(source, /Math\.max\(\s*0,\s*NAV_ITEMS\.findIndex/);
 });
 
-test("BottomNav sets a real aria-current on the tab the bead visually claims, including Profile on /connections", async () => {
+test("BottomNav links and raised indicator agree about the active tab", async () => {
   const source = await read("src/social/components/BottomNav.tsx");
-  assert.doesNotMatch(
-    source,
-    /<NavLink/,
-    "must use plain `Link`, not `NavLink` - NavLink always overwrites a caller-supplied aria-current with its own native-isActive computation, which disagrees with isBeadActive for Profile on /connections"
-  );
-  assert.match(
-    source,
-    /aria-current=\{isBeadActive \? "page" : undefined\}/,
-    "aria-current must be driven by the same isBeadActive used for icon/label suppression, not react-router's native per-link isActive"
-  );
+  assert.doesNotMatch(source, /<NavLink/);
+  assert.ok(source.includes('aria-current={active ? "page" : undefined}'));
+  assert.ok(source.includes('data-testid="raised-active-indicator"'));
+  assert.ok(source.includes('grid-cols-5'), "all five destinations keep equal widths");
+  assert.ok(source.includes("translate3d("), "the indicator should move between tab columns");
+  assert.ok(source.includes("motion-reduce:transition-none"), "respect user motion preferences");
+  assert.doesNotMatch(source, /ResizeObserver|useLayoutEffect|useMotionValue/, "indicator must not measure the screen or anchors");
 });
 
 test("NavRail (desktop) agrees with BottomNav (mobile) about which tab owns /connections, both visually and via aria-current", async () => {
