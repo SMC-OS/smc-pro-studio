@@ -75,7 +75,7 @@ test("the launch dashboard settles and renders real project state under React.St
   });
 
   assert.ok(dashboardLoads >= 1, "expected the launch dashboard to be requested");
-  assert.match(container.textContent, /Good to see you, Alder/);
+  assert.match(container.textContent, /Welcome back, Alder/);
   assert.match(container.textContent, /Kitchen renovation/);
   assert.match(container.textContent, /68%/);
   assert.doesNotMatch(container.textContent, /Professional activity/);
