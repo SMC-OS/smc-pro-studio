@@ -20,7 +20,7 @@ function findActiveIndex(pathname: string): number {
 /**
  * The indicator is positioned by a fixed five-column grid, not by measuring
  * anchors or the viewport. Its percentage transform is relative to its own
- * one-tab-wide box: no ResizeObserver, animation frame, or orientation state.
+ * one-tab-wide box: no DOM layout observer, animation frame, or orientation state.
  * The reduced-motion variant does not move at all.
  */
 export default function BottomNav() {
