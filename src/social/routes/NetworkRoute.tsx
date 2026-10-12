@@ -243,7 +243,7 @@ export default function NetworkRoute() {
           {materialsState.status === "loading" && <LoadingState label="Loading materials" />}
           {materialsState.status === "error" && <ErrorState message={materialsState.message} onRetry={loadMaterials} />}
           {materialsState.status === "ready" && materialsState.materials.length === 0 && materialCategory === "all" && (
-            <EmptyState title="Our material selection is being prepared" description="We only show reviewed, published materials. Explore the Studio or plan your requirements in the meantime." action={<Link to="/studio" className="inline-flex min-h-11 items-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white">Explore Studio</Link>} />
+            <EmptyState title="No materials published yet" description="We only show reviewed, published materials. Explore the Studio or plan your requirements in the meantime." action={<Link to="/studio" className="inline-flex min-h-11 items-center rounded-full bg-[var(--smc-charcoal)] px-5 text-sm font-semibold text-white">Explore Studio</Link>} />
           )}
           {materialsState.status === "ready" && materialsState.materials.length === 0 && materialCategory !== "all" && (
             <EmptyState
