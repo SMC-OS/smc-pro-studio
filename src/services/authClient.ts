@@ -1,9 +1,15 @@
-import type { AuthChangeEvent, Provider, Session } from "@supabase/supabase-js";
+import type { AuthChangeEvent, EmailOtpType, Provider, Session } from "@supabase/supabase-js";
 import { apiFetch } from "./apiClient";
+import { getAuthErrorCode, safeAuthFailure } from "./authErrors";
 import { getAuthRedirectUrl, getSupabaseClient, isSupabaseConfigured, SupabaseConfigurationError } from "./supabaseClient";
 
 export type AccountType = "customer" | "professional";
 export type ProfessionalCategory = "architect" | "interior_designer" | "stone_fabricator" | "stone_supplier" | "installer" | "contractor" | "developer" | "construction_professional" | "smc_team" | "other";
+/** Categories a member may choose at sign-up. "smc_team" is staff-assigned only (owner decision O3). */
+export const SELF_SELECTABLE_PROFESSIONAL_CATEGORIES: readonly ProfessionalCategory[] = [
+  "architect", "interior_designer", "stone_fabricator", "stone_supplier", "installer",
+  "contractor", "developer", "construction_professional", "other",
+];
 export type SupportedOAuthProvider = "google" | "apple" | "facebook";
 export type StaffRole = "user" | "smc_staff" | "moderator" | "catalogue_editor" | "project_manager" | "admin" | "owner";
 
@@ -51,6 +57,10 @@ export async function signUpWithPassword(input: { email: string; password: strin
   validatePassword(input.password);
   const displayName = input.displayName.trim();
   if (!displayName || displayName.length > 100) throw new Error("Enter a name no longer than 100 characters.");
+  if (input.accountType === "professional" && input.professionalCategory !== undefined
+      && !SELF_SELECTABLE_PROFESSIONAL_CATEGORIES.includes(input.professionalCategory)) {
+    throw new Error("Choose your profession from the list.");
+  }
   const { data, error } = await requireConfigured().auth.signUp({
     email: validateEmail(input.email),
     password: input.password,
@@ -63,14 +73,19 @@ export async function signUpWithPassword(input: { email: string; password: strin
       },
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(error.message, { cause: error });
   return { requiresEmailVerification: !data.session };
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<void> {
   if (!password) throw new Error("Password is required.");
   const { error } = await requireConfigured().auth.signInWithPassword({ email: validateEmail(email), password });
-  if (error) throw new Error("The email or password is incorrect, or the account is not ready for sign-in.");
+  if (error) {
+    throw safeAuthFailure(
+      error,
+      "Sign-in could not be completed. Check your details and, if you recently registered, verify your email before trying again.",
+    );
+  }
 }
 
 export async function signInWithOAuth(provider: SupportedOAuthProvider): Promise<void> {
@@ -86,7 +101,43 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const { error } = await requireConfigured().auth.resetPasswordForEmail(validateEmail(email), {
     redirectTo: getAuthRedirectUrl("/auth/reset-password"),
   });
-  if (error) throw new Error("Password recovery could not be started. Please try again later.");
+  if (error) throw safeAuthFailure(error, "Password recovery could not be started. Please try again later.");
+}
+
+export async function resendSignupConfirmation(email: string): Promise<void> {
+  const { error } = await requireConfigured().auth.resend({
+    type: "signup",
+    email: validateEmail(email),
+    options: { emailRedirectTo: getAuthRedirectUrl() },
+  });
+  if (getAuthErrorCode(error) === "user_not_found") return;
+  if (error) throw safeAuthFailure(error, "A new verification message could not be requested. Please try again later.");
+}
+
+export async function verifySignupCode(email: string, token: string): Promise<void> {
+  const normalizedToken = token.replace(/\s/g, "");
+  if (!/^\d{6,10}$/.test(normalizedToken)) throw new Error("Enter the verification code from your email.");
+  const { data, error } = await requireConfigured().auth.verifyOtp({
+    email: validateEmail(email),
+    token: normalizedToken,
+    type: "signup",
+  });
+  if (error || !data.user?.email_confirmed_at) {
+    throw safeAuthFailure(error, "The verification code is invalid or has expired. Request a new message and try again.");
+  }
+}
+
+export async function verifyRecoveryCode(email: string, token: string): Promise<void> {
+  const normalizedToken = token.replace(/\s/g, "");
+  if (!/^\d{6,10}$/.test(normalizedToken)) throw new Error("Enter the recovery code from your email.");
+  const { data, error } = await requireConfigured().auth.verifyOtp({
+    email: validateEmail(email),
+    token: normalizedToken,
+    type: "recovery",
+  });
+  if (error || !data.session) {
+    throw safeAuthFailure(error, "The recovery code is invalid or has expired. Request a new message and try again.");
+  }
 }
 
 export async function updatePassword(password: string): Promise<void> {
@@ -98,30 +149,82 @@ export async function updatePassword(password: string): Promise<void> {
 export async function completeAuthRedirect(url = window.location.href): Promise<void> {
   if (!isSupabaseConfigured) return;
   const parsed = new URL(url);
-  const errorDescription = parsed.searchParams.get("error_description");
+  const fragment = new URLSearchParams(parsed.hash.replace(/^#/, ""));
+  const errorDescription = parsed.searchParams.get("error_description") ?? fragment.get("error_description");
   if (errorDescription) throw new Error(errorDescription);
   const code = parsed.searchParams.get("code");
+  let handled = false;
   if (code) {
     const { error } = await getSupabaseClient().auth.exchangeCodeForSession(code);
     if (error) throw new Error("The authentication link is invalid or has expired.");
+    handled = true;
+  } else {
+    const tokenHash = parsed.searchParams.get("token_hash");
+    const type = parsed.searchParams.get("type");
+    const allowedTypes = new Set<EmailOtpType>(["signup", "recovery", "email", "magiclink", "email_change"]);
+    if (tokenHash && type && allowedTypes.has(type as EmailOtpType)) {
+      const { error } = await getSupabaseClient().auth.verifyOtp({ token_hash: tokenHash, type: type as EmailOtpType });
+      if (error) throw new Error("The authentication link is invalid or has expired.");
+      handled = true;
+    } else {
+      const accessToken = fragment.get("access_token");
+      const refreshToken = fragment.get("refresh_token");
+      if (accessToken && refreshToken) {
+        const { error } = await getSupabaseClient().auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (error) throw new Error("The authentication link is invalid or has expired.");
+        handled = true;
+      }
+    }
+  }
+
+  if (!handled) throw new Error("The authentication link is incomplete.");
+
+  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
     parsed.searchParams.delete("code");
-    window.history.replaceState({}, document.title, `${parsed.pathname}${parsed.search}${parsed.hash}`);
+    parsed.searchParams.delete("token_hash");
+    parsed.searchParams.delete("type");
+    parsed.hash = "";
+    window.history.replaceState({}, document.title, `${parsed.pathname}${parsed.search}`);
   }
 }
 
-export async function getAuthSession(): Promise<AuthSession | null> {
+/**
+ * `includeServerRoles` asks the Express API for server-verified staff roles.
+ * The social shell passes false: it never uses these roles (every privileged
+ * screen re-checks access through its own RPC), and a packaged mobile app has
+ * no Express API to call (launch roadmap R6/V1-4). The legacy app keeps the
+ * default.
+ */
+/**
+ * Thrown by getAuthSession when the session could not be checked because the
+ * connection failed (an expired access token whose refresh hit a network
+ * error). The stored session is untouched — Supabase only removes it when the
+ * server actually rejects the refresh token — so callers must not treat this
+ * as "signed out" (launch roadmap V1-7).
+ */
+export class AuthSessionUnavailableError extends Error {
+  constructor(options?: ErrorOptions) {
+    super("Your session can't be checked right now.", options);
+    this.name = "AuthSessionUnavailableError";
+  }
+}
+
+export async function getAuthSession(options: { includeServerRoles?: boolean } = {}): Promise<AuthSession | null> {
   if (!isSupabaseConfigured) return null;
   const { data, error } = await getSupabaseClient().auth.getSession();
+  if (error && error.name === "AuthRetryableFetchError") throw new AuthSessionUnavailableError({ cause: error });
   if (error || !data.session?.user) return null;
   let roles: StaffRole[] = [];
-  try {
-    const response = await apiFetch("/api/auth/session");
-    if (response.ok) {
-      const principal = await response.json() as { roles?: StaffRole[] };
-      roles = Array.isArray(principal.roles) ? principal.roles : [];
+  if (options.includeServerRoles !== false) {
+    try {
+      const response = await apiFetch("/api/auth/session");
+      if (response.ok) {
+        const principal = await response.json() as { roles?: StaffRole[] };
+        roles = Array.isArray(principal.roles) ? principal.roles : [];
+      }
+    } catch {
+      roles = [];
     }
-  } catch {
-    roles = [];
   }
   return {
     subject: data.session.user.id,
@@ -144,13 +247,12 @@ export async function signOut(): Promise<void> {
 }
 
 export async function requestAccountDeletion(): Promise<void> {
+  // Legacy-app entry point. Requests are RPC-only since the V1 launch gate
+  // migration (they are scheduled for the end of the cancellation window).
   const client = requireConfigured();
   const { data } = await client.auth.getUser();
   if (!data.user) throw new Error("Sign in again before requesting account deletion.");
-  const { error } = await client.from("account_deletion_requests").insert({ user_id: data.user.id });
-  if (error) {
-    if (error.code === "23505") throw new Error("An account deletion request is already active.");
-    throw new Error("The account deletion request could not be recorded.");
-  }
+  const { error } = await client.rpc("request_account_deletion");
+  if (error) throw new Error("The account deletion request could not be recorded.");
   await signOut();
 }

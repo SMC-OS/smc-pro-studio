@@ -1,7 +1,7 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.smcprostudio.app',
+  appId: 'app.smcprostudio',
   appName: 'SMC Pro Studio',
   webDir: 'dist',
   server: {

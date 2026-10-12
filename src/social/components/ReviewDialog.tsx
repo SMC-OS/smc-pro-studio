@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "./ui";
 import { reviewReport, REVIEW_NOTE_MAX_LENGTH, type ReviewDecision, type ReviewResult } from "../services/moderationClient";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Phase 4 Slice J: the Resolve/Dismiss confirmation dialog for one pending
@@ -176,7 +177,7 @@ export function ReviewDialog({
       // genuine backend failure and the concurrent-already-reviewed case
       // (review_report()'s own atomic transition rejects a second call
       // identically) — the queue's own Refresh is the recovery path either way.
-      setSubmitError(err instanceof Error ? err.message : "This report could not be reviewed. Please try again.");
+      setSubmitError(describeError(err, "This report could not be reviewed. Please try again.").message);
     } finally {
       if (mountedRef.current) setSubmitting(false);
     }

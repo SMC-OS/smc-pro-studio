@@ -39,27 +39,27 @@ test("PostCard resyncs saved state from the parent's authoritative prop, with no
   );
 });
 
-test("HomeRoute owns saved-id fetch sequencing so a pre-mutation stale fetch can't clobber a confirmed save/unsave", async () => {
+test("HomeRoute is project-first and no longer owns the legacy social-feed saved-state machinery", async () => {
   const source = await read("src/social/routes/HomeRoute.tsx");
   assert.match(
     source,
-    /const savedMutationSeqRef = useRef<Map<string, number>>\(new Map\(\)\);/,
-    "must track a per-post mutation sequence so a saved-ids fetch can detect it was superseded by a mutation for that id"
+    /fetchLaunchDashboard/,
+    "Home must be driven by the launch dashboard rather than the legacy social feed"
   );
   assert.match(
     source,
-    /const notifySaveMutated = useCallback\(\(postId: string, nowSaved: boolean\) => \{/,
-    "must expose a mutation-notification callback that updates savedIds immediately on a confirmed save/unsave"
+    /to="\/projects"/,
+    "Home must provide a direct Projects path"
   );
   assert.match(
     source,
-    /onSaveMutated=\{notifySaveMutated\}/,
-    "must wire the mutation-notification callback into PostCard"
+    /to="\/studio"/,
+    "Home must provide a direct Studio path"
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
-    /savedIdsGenerationRef\.current \+= 1;/,
-    "a full reload must invalidate in-flight saved-ids fetches from the previous context, mirroring engagementGenerationRef"
+    /fetchHomeFeed|fetchMySavedPostIds|PostCard|Professional activity/,
+    "the launch Home must not regress to the social-feed-first product"
   );
 });
 

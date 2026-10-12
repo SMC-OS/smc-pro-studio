@@ -2378,7 +2378,7 @@ export default function App() {
 
   useEffect(() => {
     if (chatBottomRef.current) {
-      chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
+      (chatBottomRef.current as Element).scrollIntoView({ behavior: "smooth" });
     }
   }, [chatMessages, isAiLoading]);
 
@@ -4855,16 +4855,16 @@ export default function App() {
               onInitializeNewQuote={() => {
                 handleAddEstimatePart();
                 const el = document.getElementById("estimator-working-grid");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
+                if (el) (el as Element).scrollIntoView({ behavior: "smooth" });
               }}
               onTriggerAiScan={() => alert("Automatic drawing analysis is not currently available. Please add parts manually using the estimator below.")}
               onFocusManualEntry={() => {
                 const el = document.getElementById("estimator-working-grid");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
+                if (el) (el as Element).scrollIntoView({ behavior: "smooth" });
               }}
               onSelectRecentEstimate={(est) => {
                 const el = document.getElementById("estimator-working-grid");
-                if (el) el.scrollIntoView({ behavior: "smooth" });
+                if (el) (el as Element).scrollIntoView({ behavior: "smooth" });
               }}
               formatCurrency={formatCurrency}
             />

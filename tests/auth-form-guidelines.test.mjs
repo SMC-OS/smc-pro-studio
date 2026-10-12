@@ -16,29 +16,40 @@ const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.HTMLElement = dom.window.HTMLElement;
+globalThis.HTMLElement.prototype.scrollIntoView = () => {};
 globalThis.Node = dom.window.Node;
 Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
 globalThis.window.matchMedia =
   globalThis.window.matchMedia ||
-  (() => ({ matches: false, media: "", addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+  (() => ({ matches: true, media: "(prefers-reduced-motion: reduce)", addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+globalThis.window.requestAnimationFrame = (callback) => setTimeout(() => callback(Date.now()), 0);
+globalThis.window.cancelAnimationFrame = (handle) => clearTimeout(handle);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const authClientUrl = new URL("../src/services/authClient.ts", import.meta.url).href;
 
 let signUpCalls = [];
 let signUpImpl = async () => ({ requiresEmailVerification: true });
+let resendCalls = [];
+let verifyCalls = [];
+let recoveryCalls = [];
+let passwordResetCalls = [];
+let updatePasswordCalls = [];
 
 mock.module(authClientUrl, {
   exports: {
     isOAuthProviderEnabled: () => false,
-    requestPasswordReset: async () => {},
+    requestPasswordReset: async (...args) => { passwordResetCalls.push(args); },
+    resendSignupConfirmation: async (...args) => { resendCalls.push(args); },
     signInWithOAuth: async () => {},
     signInWithPassword: async () => {},
     signUpWithPassword: async (...args) => {
       signUpCalls.push(args);
       return signUpImpl(...args);
     },
-    updatePassword: async () => {},
+    updatePassword: async (...args) => { updatePasswordCalls.push(args); },
+    verifyRecoveryCode: async (...args) => { recoveryCalls.push(args); },
+    verifySignupCode: async (...args) => { verifyCalls.push(args); },
   },
 });
 
@@ -51,6 +62,11 @@ let currentRoot = null;
 
 function resetAll() {
   signUpCalls = [];
+  resendCalls = [];
+  verifyCalls = [];
+  recoveryCalls = [];
+  passwordResetCalls = [];
+  updatePasswordCalls = [];
   signUpImpl = async () => ({ requiresEmailVerification: true });
 }
 
@@ -100,13 +116,24 @@ test("the Community Guidelines link is present on the signup form, with an exact
   assert.equal(link.getAttribute("href"), "/community-guidelines");
 });
 
-test("no fabricated /terms route or unrelated Terms/Privacy change was introduced — 'Terms of Use' and 'Privacy Notice' remain plain text, not links", async () => {
+test("V1 launch gate (O7): the signup consent links the real Terms of Use and Privacy Policy pages", async () => {
   const container = await mountRegister();
-  const links = [...container.querySelectorAll("a")].map((a) => a.textContent.trim());
-  assert.ok(!links.includes("Terms of Use"), "Terms of Use must not become a link (no /terms route exists in this shell)");
-  assert.ok(!links.includes("Privacy Notice"), "Privacy Notice must remain exactly as before — unlinked plain text");
-  assert.match(container.textContent, /I accept the Terms of Use and Community Guidelines, and acknowledge the Privacy Notice/);
-  assert.match(container.textContent, /All require final legal review before public beta/);
+  const href = (text) => [...container.querySelectorAll("a")].find((a) => a.textContent.trim() === text)?.getAttribute("href");
+  assert.equal(href("Terms of Use"), "/terms");
+  assert.equal(href("Privacy Policy"), "/privacy");
+  assert.equal(href("Community Guidelines"), "/community-guidelines");
+  assert.match(container.textContent, /I accept the Terms of Use and Community Guidelines, and I have read the Privacy Policy\./);
+});
+
+test("V1 launch gate (O3): SMC Team is not offered as a sign-up profession", async () => {
+  const container = await mountRegister();
+  const proButton = [...container.querySelectorAll("button")].find((b) => b.textContent.trim().toLowerCase() === "professional");
+  await React.act(async () => proButton.click());
+  await flush();
+  const values = [...container.querySelectorAll("select option")].map((o) => o.value);
+  assert.ok(values.includes("installer"), "the profession list is rendered");
+  assert.ok(!values.includes("smc_team"));
+  assert.doesNotMatch(container.textContent, /SMC Team/);
 });
 
 test("the acceptance checkbox is still required — submitting register mode with it unchecked never calls signUpWithPassword", async () => {
@@ -137,9 +164,9 @@ test("the acceptance checkbox is still required — submitting register mode wit
   await React.act(async () => {
     submit.click();
   });
-  await flush();
+  await flush(500);
   assert.equal(signUpCalls.length, 0, "signUpWithPassword must never be called while the acceptance checkbox is unchecked");
-  assert.match(container.textContent, /Accept the Terms and Privacy Notice to create an account/i);
+  assert.match(container.textContent, /Accept the Terms of Use and Privacy Policy to create an account/i);
 });
 
 test("checking the acceptance checkbox and submitting a valid form does call signUpWithPassword — the checkbox is the only thing that was blocking it", async () => {
@@ -173,6 +200,66 @@ test("checking the acceptance checkbox and submitting a valid form does call sig
   await React.act(async () => {
     submit.click();
   });
-  await flush();
+  await flush(500);
   assert.equal(signUpCalls.length, 1, "checking the box must be sufficient to let submission proceed to signUpWithPassword");
+  assert.match(container.textContent, /Account created\. Verify your email before signing in/i);
+  assert.ok([...container.querySelectorAll("button")].some((button) => button.textContent.trim() === "Resend verification message"));
+});
+
+test("verification requires the emailed code and only continues after server confirmation", async () => {
+  resetAll();
+  const container = await mountRegister();
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  const inputs = [...container.querySelectorAll("input")];
+  const nameInput = inputs.find((input) => !input.type || input.type === "text");
+  const emailInput = container.querySelector('input[type="email"]');
+  const passwordInputs = [...container.querySelectorAll('input[type="password"]')];
+  await React.act(async () => {
+    nativeSetter.call(nameInput, "Verification Test"); nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    nativeSetter.call(emailInput, "verify@example.test"); emailInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    for (const input of passwordInputs) { nativeSetter.call(input, "correcthorsebattery"); input.dispatchEvent(new window.Event("input", { bubbles: true })); }
+    container.querySelector('input[type="checkbox"]').click();
+  });
+  await React.act(async () => [...container.querySelectorAll('button[type="submit"]')].find((button) => button.textContent.trim() === "Create account").click());
+  await flush(500);
+
+  const codeInput = [...container.querySelectorAll("input")].find((input) => input.autocomplete === "one-time-code");
+  await React.act(async () => {
+    nativeSetter.call(codeInput, "123456"); codeInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    [...container.querySelectorAll('button[type="submit"]')].find((button) => button.textContent.trim() === "Verify email").click();
+  });
+  await flush(500);
+  assert.deepEqual(verifyCalls, [["verify@example.test", "123456"]]);
+  assert.match(container.textContent, /Your email is verified/i);
+});
+
+test("password recovery verifies the emailed code before updating the password", async () => {
+  resetAll();
+  const root = freshRoot();
+  await React.act(async () => root.render(React.createElement(MemoryRouter, {}, React.createElement(AuthForm, { onSuccess: () => {} }))));
+  await flush();
+  const container = document.getElementById("root");
+  await React.act(async () => [...container.querySelectorAll("button")].find((button) => button.textContent.trim() === "Forgot password?").click());
+  await flush();
+  const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+  let emailInput = container.querySelector('input[type="email"]');
+  await React.act(async () => {
+    nativeSetter.call(emailInput, "recover@example.test");
+    emailInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    [...container.querySelectorAll('button[type="submit"]')].find((button) => button.textContent.trim() === "Send reset instructions").click();
+  });
+  await flush(500);
+  assert.deepEqual(passwordResetCalls, [["recover@example.test"]]);
+
+  const codeInput = [...container.querySelectorAll("input")].find((input) => input.autocomplete === "one-time-code");
+  const passwordInputs = [...container.querySelectorAll('input[type="password"]')];
+  await React.act(async () => {
+    nativeSetter.call(codeInput, "654321"); codeInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    for (const input of passwordInputs) { nativeSetter.call(input, "newcorrecthorsebattery"); input.dispatchEvent(new window.Event("input", { bubbles: true })); }
+    [...container.querySelectorAll('button[type="submit"]')].find((button) => button.textContent.trim() === "Verify code and update password").click();
+  });
+  await flush(500);
+  assert.deepEqual(recoveryCalls, [["recover@example.test", "654321"]]);
+  assert.deepEqual(updatePasswordCalls, [["newcorrecthorsebattery"]]);
+  assert.match(container.textContent, /Your password has been updated/i);
 });

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "./ui";
 import { moderateReportedMessage, REVIEW_NOTE_MAX_LENGTH, type EnforcementResult, type ModerationAction } from "../services/moderationClient";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Phase 4 Slice K: the Hide/Restore confirmation dialog for the exact
@@ -187,7 +188,7 @@ export function EnforcementDialog({
       // (moderate_reported_message()'s own atomic compare-and-swap rejects
       // a second identical action identically) — reloading the report is
       // the recovery path either way.
-      setSubmitError(err instanceof Error ? err.message : "This action could not be completed. Please try again.");
+      setSubmitError(describeError(err, "This action could not be completed. Please try again.").message);
     } finally {
       if (mountedRef.current) setSubmitting(false);
     }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, Clock, UserRoundPlus } from "lucide-react";
 import { Button } from "./ui";
 import { requestConnection, respondToConnection, revokeConnectionRequest, type ConnectionState } from "../services/socialClient";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Connect — a mutual request/accept relationship, kept conceptually and
@@ -43,7 +44,7 @@ export function ConnectButton({
       setConnectionId(id);
       setState("pending_outgoing");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "This request could not be sent right now.");
+      setError(describeError(err, "This request could not be sent right now.").message);
     } finally {
       setBusy(false);
     }
@@ -57,7 +58,7 @@ export function ConnectButton({
       await revokeConnectionRequest(connectionId);
       setState("none");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "This request could not be withdrawn right now.");
+      setError(describeError(err, "This request could not be withdrawn right now.").message);
     } finally {
       setBusy(false);
     }
@@ -71,7 +72,7 @@ export function ConnectButton({
       await respondToConnection(connectionId, accept);
       setState(accept ? "connected" : "none");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "This request could not be updated right now.");
+      setError(describeError(err, "This request could not be updated right now.").message);
     } finally {
       setBusy(false);
     }

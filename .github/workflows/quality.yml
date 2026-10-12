@@ -19,12 +19,13 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 24.18.0
+          node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -37,8 +38,286 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      - name: Set up Deno for Edge Functions
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check Supabase Edge Functions
+        run: |
+          deno check --node-modules-dir=auto supabase/functions/connect-professional-account/index.ts
+          deno check --node-modules-dir=auto supabase/functions/create-project-checkout/index.ts
+          deno check --node-modules-dir=auto supabase/functions/create-project-invoice/index.ts
+          deno check --node-modules-dir=auto supabase/functions/refund-project-payment/index.ts
+          deno check --node-modules-dir=auto supabase/functions/stripe-webhook/index.ts
+
       - name: Run tests
         run: bun run test
 
       - name: Build application
         run: bun run build
+
+      - name: Scan production bundle for fabricated content
+        run: node scripts/scan-bundle-for-fabricated-content.mjs
+
+      - name: Check production bundle excludes legacy code
+        run: node scripts/check-bundle-excludes-legacy.mjs
+
+      - name: Build server
+        run: bun run build:server
+
+  database:
+    name: Database (pgTAP) and real-backend integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Start local Supabase (pinned CLI)
+        run: npx --yes supabase@2.115.0 start -x studio,imgproxy,vector,logflare,edge-runtime,supavisor
+
+      - name: Run pgTAP suite
+        # Exit status is unchanged; on failure the failing lines are also raised as
+        # an annotation so they are readable from the PR checks and the REST API.
+        run: |
+          set -o pipefail
+          npx --yes supabase@2.115.0 test db 2>&1 | tee pgtap.log || {
+            status=$?
+            summary=$(grep -E "not ok|^# |Failed|ERROR|error:|Dubious|Parse errors|Result:" pgtap.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=pgTAP failures::${summary:-no failing lines matched; see the job log}"
+            exit $status
+          }
+
+      - name: Run real-backend integration tests
+        run: |
+          eval "$(npx --yes supabase@2.115.0 status -o env)"
+          export SMC_REAL_SUPABASE_URL="$API_URL"
+          export SMC_REAL_SUPABASE_ANON_KEY="$ANON_KEY"
+          export SMC_REAL_SUPABASE_SERVICE_KEY="$SERVICE_ROLE_KEY"
+          test -n "$SMC_REAL_SUPABASE_URL" && test -n "$SMC_REAL_SUPABASE_ANON_KEY" && test -n "$SMC_REAL_SUPABASE_SERVICE_KEY"
+          set -o pipefail
+          bun run test:integration 2>&1 | tee integration.log || {
+            status=$?
+            summary=$(grep -E "^✖|not ok|Error|ℹ (tests|pass|fail)" integration.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Integration failures::${summary:-see the job log}"
+            exit $status
+          }
+
+      - name: Supabase advisors (complete report)
+        if: always()
+        # Every finding at INFO and above, one line each, raised as a notice so
+        # the complete list is readable from the PR checks and the REST API.
+        run: |
+          npx --yes supabase@2.115.0 db advisors --local --type all --level info --output-format json > advisors.json 2> advisors.err || true
+          node scripts/ci/advisors-summary.mjs advisors.json > advisors.txt || cat advisors.err
+          cat advisors.txt
+          # Annotation messages are truncated at ~4 KB, so emit the TOTAL line
+          # first and split the findings across numbered notices.
+          { grep '^TOTAL' advisors.txt; grep -v '^TOTAL' advisors.txt; } > advisors.ordered.txt
+          node -e '
+            const lines = require("fs").readFileSync("advisors.ordered.txt", "utf8").trim().split("\n");
+            const parts = []; let cur = "";
+            for (const l of lines) { if (cur && (cur + l).length > 3800) { parts.push(cur); cur = ""; } cur += l + "\n"; }
+            if (cur) parts.push(cur);
+            const esc = (t) => t.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+            parts.forEach((t, i) => console.log(`::notice title=Supabase advisors (complete) ${i + 1}/${parts.length}::${esc(t)}`));
+          '
+
+      - name: Supabase advisors gate (fail on ERROR)
+        run: npx --yes supabase@2.115.0 db advisors --local --type all --level error --fail-on error
+
+      - name: Stop local Supabase
+        if: always()
+        run: npx --yes supabase@2.115.0 stop --no-backup
+
+
+  android-staging:
+    name: Android staging debug APK
+    needs:
+      - quality
+      - database
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VITE_APP_URL: https://staging.smcprostudio.app
+      VITE_API_BASE_URL: https://staging.smcprostudio.app
+      VITE_SUPABASE_URL: https://qezixxtknqbijnudvhal.supabase.co
+      VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_olxZJ4esZqiQlwX1UwKUYA_-_tw7uGl
+      VITE_SUPABASE_OAUTH_GOOGLE_ENABLED: "false"
+      VITE_SUPABASE_OAUTH_APPLE_ENABLED: "false"
+      VITE_SUPABASE_OAUTH_FACEBOOK_ENABLED: "false"
+      VITE_LEGACY_APP_OPT_IN: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install web dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install transient Capacitor Android plugins
+        run: npm install --no-save --package-lock=false @capacitor/android@8.5.2 @capacitor/app@8 @capacitor/browser@8
+
+      - name: Assert staging-only environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$VITE_APP_URL" = "https://staging.smcprostudio.app"
+          test "$VITE_API_BASE_URL" = "https://staging.smcprostudio.app"
+          test "$VITE_SUPABASE_URL" = "https://qezixxtknqbijnudvhal.supabase.co"
+          case "$VITE_SUPABASE_URL" in
+            https://qezixxtknqbijnudvhal.supabase.co) ;;
+            *) echo "::error::Android staging build is not pinned to the staging Supabase project"; exit 1 ;;
+          esac
+
+      - name: Build staging web bundle
+        run: bun run build
+
+      - name: Verify web bundle contains only staging Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t SUPABASE_URLS < <(grep -RahoE 'https://[a-z0-9]+\.supabase\.co' dist | sort -u || true)
+          printf 'Bundled Supabase endpoints:\n'
+          printf '%s\n' "${SUPABASE_URLS[@]:-<none>}"
+          test "${#SUPABASE_URLS[@]}" -eq 1 || {
+            echo "::error::Expected exactly one Supabase endpoint in the staging web bundle"
+            exit 1
+          }
+          test "${SUPABASE_URLS[0]}" = "https://qezixxtknqbijnudvhal.supabase.co" || {
+            echo "::error::Staging web bundle contains a non-staging Supabase endpoint"
+            exit 1
+          }
+
+      - name: Generate Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+          node scripts/configure-android-staging.mjs
+
+      - name: Build debug-signed staging APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Verify Samsung S24 Ultra staging APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SOURCE_APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="smc-pro-studio-staging-debug.apk"
+          test -f "$SOURCE_APK" || {
+            echo "::error::Debug APK not found"
+            find android/app/build/outputs -maxdepth 6 -type f -print
+            exit 1
+          }
+          cp "$SOURCE_APK" "$APK"
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BUILD_TOOLS/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
+          test -x "$AAPT" && test -x "$APKSIGNER"
+
+          PACKAGE="$("$AAPT" dump badging "$APK" | sed -n "s/package: name='\([^']*\)'.*/\1/p" | head -1)"
+          test "$PACKAGE" = "app.smcprostudio" || {
+            echo "::error::APK package is $PACKAGE, expected canonical app.smcprostudio"
+            exit 1
+          }
+
+          VERIFY_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs "$APK")"
+          printf '%s\n' "$VERIFY_OUTPUT"
+          DEBUG_CERT_SHA256="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n -E 's/^(Signer #1|V2 Signer): certificate SHA-256 digest: //p' | head -1 | tr '[:upper:]' '[:lower:]' | tr -d ':')"
+          test -n "$DEBUG_CERT_SHA256" || {
+            echo "::error::Debug APK signature fingerprint could not be read"
+            exit 1
+          }
+
+          CANONICAL_RELEASE_SHA256="12790dc53a15f98a0ce5e8169bf036f61cd5505e3e26ff9e2e93c0bca0acec8e"
+          test "$DEBUG_CERT_SHA256" != "$CANONICAL_RELEASE_SHA256" || {
+            echo "::error::Debug staging APK unexpectedly used the canonical release certificate"
+            exit 1
+          }
+
+          rm -rf /tmp/smc-staging-apk
+          mkdir -p /tmp/smc-staging-apk
+          unzip -q "$APK" -d /tmp/smc-staging-apk
+          mapfile -t APK_SUPABASE_URLS < <(grep -RahoE 'https://[a-z0-9]+\.supabase\.co' /tmp/smc-staging-apk | sort -u || true)
+          printf 'APK Supabase endpoints:\n'
+          printf '%s\n' "${APK_SUPABASE_URLS[@]:-<none>}"
+          test "${#APK_SUPABASE_URLS[@]}" -eq 1 || {
+            echo "::error::Expected exactly one Supabase endpoint inside the APK"
+            exit 1
+          }
+          test "${APK_SUPABASE_URLS[0]}" = "https://qezixxtknqbijnudvhal.supabase.co" || {
+            echo "::error::APK contains a non-staging Supabase endpoint"
+            exit 1
+          }
+
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          printf '%s  %s\n' "$APK_SHA256" "$APK" > apk-sha256.txt
+
+          cat > build-info.txt <<EOF
+          commit=${GITHUB_SHA}
+          package=app.smcprostudio
+          build_type=debug
+          environment=staging
+          app_url=https://staging.smcprostudio.app
+          api_base_url=https://staging.smcprostudio.app
+          supabase_project=qezixxtknqbijnudvhal
+          supabase_url=https://qezixxtknqbijnudvhal.supabase.co
+          apk_signing=android-debug-key
+          debug_signing_sha256=${DEBUG_CERT_SHA256}
+          canonical_release_signing_sha256=12:79:0D:C5:3A:15:F9:8A:0C:E5:E8:16:9B:F0:36:F6:1C:D5:50:5E:3E:26:FF:9E:2E:93:C0:BC:A0:AC:EC:8E
+          release_signing_status=not_used_for_this_debug_staging_artifact
+          apk_sha256=${APK_SHA256}
+          EOF
+
+          echo "::notice title=Staging APK SHA-256::${APK_SHA256}"
+          echo "::notice title=Android package::app.smcprostudio"
+          echo "::notice title=Supabase staging project::qezixxtknqbijnudvhal"
+
+      - name: Upload Samsung S24 Ultra staging APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smc-pro-studio-staging-debug-apk-${{ github.sha }}
+          path: |
+            smc-pro-studio-staging-debug.apk
+            apk-sha256.txt
+            build-info.txt
+          if-no-files-found: error
+          retention-days: 14

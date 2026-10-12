@@ -1,4 +1,5 @@
 import { Card, EditorialHeading, SectionHeading } from "../components/ui";
+import { SUPPORT_EMAIL } from "../contact";
 
 /**
  * Phase 4 Community Guidelines page — `/community-guidelines`.
@@ -33,7 +34,8 @@ import { Card, EditorialHeading, SectionHeading } from "../components/ui";
  */
 
 const EFFECTIVE_DATE = "3 September 2026";
-const SAFETY_CONTACT_EMAIL = "smcprostudio@outlook.com";
+// Single public support/safety contact (owner decision O9).
+const SAFETY_CONTACT_EMAIL = SUPPORT_EMAIL;
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

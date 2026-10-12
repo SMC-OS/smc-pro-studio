@@ -1,5 +1,7 @@
 # SMC Pro Studio Social Transformation Plan
 
+> **Launch sequencing, V1 scope and release gates now live in [`tasks/launch-roadmap.md`](launch-roadmap.md) (authoritative from 2026-10-01).** This file remains the detailed historical record.
+
 ## Amendment — 2026-08-19: professional network pivot
 
 Owner-directed product-direction lock. Full rationale in `DESIGN.md`'s amendment section — summarised here as the concrete architecture/navigation delta against this plan's original "Final navigation" and "Screen hierarchy" sections below (neither section's original text is deleted; both are updated in place to the amended IA, with this note as the record of why).

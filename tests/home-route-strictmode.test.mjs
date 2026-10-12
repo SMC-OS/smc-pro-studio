@@ -2,21 +2,8 @@ import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
-// Regression test for the StrictMode `mountedRef` bug in HomeRoute: a saved
-// post's id, fetched after mount, must still reach the UI even though React
-// StrictMode (enabled in src/main.tsx) synchronously mounts -> cleans up ->
-// remounts every effect once in development. A `mountedRef` that is only
-// ever set to `true` by its `useRef(true)` initializer - and never reset to
-// `true` inside the effect body itself - gets stuck at `false` forever after
-// that cleanup runs, silently discarding every later fetch result guarded by
-// it. This test fails against that implementation and passes once the
-// effect body also does `mountedRef.current = true`.
-//
-// There is no jsdom/React Testing Library/vitest normally installed in this
-// project's toolchain (see tests/phase2-foundation.test.mjs) - `jsdom` was
-// added as a devDependency specifically to let this one test mount a real
-// component tree under `React.StrictMode`. Run via:
-//   npx tsx --test --experimental-test-module-mocks tests/home-route-strictmode.test.mjs
+// Launch regression: the project-first Home dashboard must settle correctly
+// under React.StrictMode's development-only mount -> cleanup -> remount cycle.
 
 const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "http://localhost/" });
 globalThis.window = dom.window;
@@ -28,17 +15,9 @@ globalThis.window.matchMedia =
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const authUrl = new URL("../src/social/services/useAuthSession.ts", import.meta.url).href;
-const socialClientUrl = new URL("../src/social/services/socialClient.ts", import.meta.url).href;
+const launchClientUrl = new URL("../src/social/services/launchClient.ts", import.meta.url).href;
 
-const TEST_POST = {
-  id: "post-1",
-  author_id: "author-1",
-  body: "Regression test post",
-  visibility: "public",
-  post_type: "general",
-  created_at: new Date().toISOString(),
-  author: null,
-};
+let dashboardLoads = 0;
 
 mock.module(authUrl, {
   exports: {
@@ -46,21 +25,32 @@ mock.module(authUrl, {
   },
 });
 
-mock.module(socialClientUrl, {
+mock.module(launchClientUrl, {
   exports: {
-    fetchHomeFeed: async () => ({ posts: [TEST_POST], nextCursor: null }),
-    // The post is already saved server-side before this card ever mounts -
-    // exactly the "late initial saved-ID fetch" scenario that was silently
-    // dropped by the StrictMode-broken mountedRef guard.
-    fetchMySavedPostIds: async () => new Set([TEST_POST.id]),
-    fetchPostEngagement: async () => new Map(),
-    savePost: async () => {},
-    unsavePost: async () => {},
-    reactToPost: async () => {},
-    unreactToPost: async () => {},
-    addComment: async () => ({ id: "comment-1", body: "", created_at: new Date().toISOString(), author: null }),
-    deleteComment: async () => {},
-    fetchComments: async () => [],
+    fetchLaunchDashboard: async () => {
+      dashboardLoads += 1;
+      return {
+        profile: { display_name: "Alder Stone", account_type: "customer" },
+        projects: [
+          {
+            id: "project-1",
+            title: "Kitchen renovation",
+            status: "fabrication",
+            progress: 68,
+            target_completion_date: null,
+            updated_at: new Date().toISOString(),
+            property: { label: "Home", city: "London" },
+          },
+        ],
+        quoteRequests: [],
+        quotes: [],
+        appointments: [],
+        unreadNotifications: 0,
+      };
+    },
+    fetchLaunchProjects: async () => [],
+    fetchLaunchProject: async () => null,
+    fetchStudioDesigns: async () => [],
   },
 });
 
@@ -69,7 +59,7 @@ const { createRoot } = await import("react-dom/client");
 const { MemoryRouter } = await import("react-router-dom");
 const { default: HomeRoute } = await import(new URL("../src/social/routes/HomeRoute.tsx", import.meta.url).href);
 
-test("a saved post's id fetched after mount reaches the UI under React.StrictMode", async () => {
+test("the launch dashboard settles and renders real project state under React.StrictMode", async () => {
   const container = document.getElementById("root");
 
   await React.act(async () => {
@@ -78,22 +68,15 @@ test("a saved post's id fetched after mount reaches the UI under React.StrictMod
       React.createElement(
         React.StrictMode,
         null,
-        React.createElement(MemoryRouter, null, React.createElement(HomeRoute, null))
-      )
+        React.createElement(MemoryRouter, null, React.createElement(HomeRoute, null)),
+      ),
     );
-    // Lets fetchHomeFeed's promise resolve -> state becomes "ready" -> the
-    // saved-ids effect fires -> fetchMySavedPostIds's promise resolves ->
-    // setSavedIds -> PostCard re-renders with initiallySaved=true. All of
-    // this is plain microtask-chained promise work, so draining once past a
-    // macrotask boundary is enough to settle it.
     await new Promise((resolve) => setTimeout(resolve, 100));
   });
 
-  const saveButton = container.querySelector('button[aria-label="Save post"], button[aria-label="Remove from saved"]');
-  assert.ok(saveButton, "expected the post's save/unsave button to render");
-  assert.equal(
-    saveButton.getAttribute("aria-label"),
-    "Remove from saved",
-    "the already-saved post's fetched state must reach PostCard even after React StrictMode's mount/cleanup/remount cycle"
-  );
+  assert.ok(dashboardLoads >= 1, "expected the launch dashboard to be requested");
+  assert.match(container.textContent, /Good to see you, Alder/);
+  assert.match(container.textContent, /Kitchen renovation/);
+  assert.match(container.textContent, /68%/);
+  assert.doesNotMatch(container.textContent, /Professional activity/);
 });

@@ -11,19 +11,21 @@ export class SupabaseConfigurationError extends Error {
   }
 }
 
-const nativeMemoryStorage = new Map<string, string>();
 const authStorage = {
   getItem(key: string): string | null {
-    if (Capacitor.isNativePlatform()) return nativeMemoryStorage.get(key) ?? null;
     if (typeof window === "undefined") return null;
+    // Capacitor's WebView storage is app-private and survives process restarts.
+    // The previous in-memory Map silently signed Android users out whenever the
+    // process was reclaimed. Web sessions remain tab-scoped by design.
+    if (Capacitor.isNativePlatform()) return window.localStorage.getItem(key);
     return window.sessionStorage.getItem(key);
   },
   setItem(key: string, value: string): void {
-    if (Capacitor.isNativePlatform()) nativeMemoryStorage.set(key, value);
+    if (Capacitor.isNativePlatform()) window.localStorage.setItem(key, value);
     else window.sessionStorage.setItem(key, value);
   },
   removeItem(key: string): void {
-    if (Capacitor.isNativePlatform()) nativeMemoryStorage.delete(key);
+    if (Capacitor.isNativePlatform()) window.localStorage.removeItem(key);
     else window.sessionStorage.removeItem(key);
   },
 };

@@ -75,6 +75,7 @@ const VALID_ROW = {
   summary: "A fixture summary.",
   description: "A fixture description.",
   applications: ["Kitchen Worktops"],
+  image_path: null,
   status: "draft",
 };
 
@@ -276,6 +277,7 @@ test("createDraftMaterial: a returned row is validated and mapped, including sta
     summary: VALID_ROW.summary,
     description: VALID_ROW.description,
     applications: VALID_ROW.applications,
+    image_path: null,
     status: "draft",
   });
 });

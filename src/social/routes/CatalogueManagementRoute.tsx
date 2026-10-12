@@ -2,18 +2,23 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState, ErrorState, LoadingState } from "../components/StateViews";
 import { Button, Card, SectionHeading } from "../components/ui";
+import { MaterialImage } from "../components/MaterialImage";
 import {
   archiveMaterial,
   checkCatalogueEditorAccess,
   createDraftMaterial,
   fetchMaterialsForEditor,
   MATERIAL_CATEGORIES,
+  MATERIAL_IMAGE_TYPES,
   publishMaterial,
+  removeMaterialImage,
   updateDraftMaterial,
+  uploadMaterialImage,
   type EditorMaterial,
   type MaterialCategory,
 } from "../services/materialsClient";
 import { useAuthSession } from "../services/useAuthSession";
+import { describeError } from "../services/networkErrors";
 
 /**
  * Phase 5 Slice B: `/catalogue` — staff-only materials catalogue authoring
@@ -24,6 +29,9 @@ import { useAuthSession } from "../services/useAuthSession";
  * a genuinely empty catalogue and a confirmed access denial are two
  * distinct, clearly-worded states, and nothing here renders before the
  * corresponding server call actually confirms it.
+ *
+ * Phase 5 Slice C adds one editorial image per material (upload, replace,
+ * remove) for draft and published materials.
  *
  * No price, stock, discount, origin, certification, standards, warranty,
  * or provenance field exists anywhere on this screen — the underlying
@@ -56,7 +64,7 @@ export default function CatalogueManagementRoute() {
     checkCatalogueEditorAccess()
       .then((granted) => setAccessState(granted ? { status: "granted" } : { status: "denied" }))
       .catch((error: unknown) =>
-        setAccessState({ status: "error", message: error instanceof Error ? error.message : "We couldn't verify your access. Please try again." })
+        setAccessState({ status: "error", message: describeError(error, "We couldn't verify your access. Please try again.").message })
       );
   }, [auth.status]);
 
@@ -142,7 +150,7 @@ function CatalogueWorkspace() {
     fetchMaterialsForEditor()
       .then((items) => setListState({ status: "ready", items }))
       .catch((error: unknown) =>
-        setListState({ status: "error", message: error instanceof Error ? error.message : "The catalogue could not be loaded." })
+        setListState({ status: "error", message: describeError(error, "The catalogue could not be loaded.").message })
       );
   }, []);
 
@@ -186,7 +194,7 @@ function CatalogueWorkspace() {
     } catch (caught) {
       // Form values are deliberately left as-is on failure — a rejected
       // save must not lose the editor's in-progress draft text.
-      setFormError(caught instanceof Error ? caught.message : "This material could not be saved.");
+      setFormError(describeError(caught, "This material could not be saved.").message);
     } finally {
       setSaving(false);
     }
@@ -200,7 +208,37 @@ function CatalogueWorkspace() {
       await publishMaterial(id);
       load();
     } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "This material could not be published.");
+      setRowError(describeError(caught, "This material could not be published.").message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function handleImageSelected(material: EditorMaterial, input: HTMLInputElement) {
+    const file = input.files?.[0];
+    input.value = ""; // allow re-selecting the same file after a failure
+    if (!file || rowBusyId) return;
+    setRowBusyId(material.id);
+    setRowError(null);
+    try {
+      await uploadMaterialImage(material.id, file, material.image_path);
+      load();
+    } catch (caught) {
+      setRowError(describeError(caught, "This image could not be uploaded.").message);
+    } finally {
+      setRowBusyId(null);
+    }
+  }
+
+  async function handleRemoveImage(material: EditorMaterial) {
+    if (rowBusyId) return;
+    setRowBusyId(material.id);
+    setRowError(null);
+    try {
+      await removeMaterialImage(material.id, material.image_path);
+      load();
+    } catch (caught) {
+      setRowError(describeError(caught, "This image could not be removed.").message);
     } finally {
       setRowBusyId(null);
     }
@@ -215,7 +253,7 @@ function CatalogueWorkspace() {
       if (editingId === id) startCreate();
       load();
     } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "This material could not be archived.");
+      setRowError(describeError(caught, "This material could not be archived.").message);
     } finally {
       setRowBusyId(null);
     }
@@ -344,7 +382,28 @@ function CatalogueWorkspace() {
                 </span>
               </div>
               {material.summary && <p className="text-sm text-[var(--smc-charcoal-soft)]">{material.summary}</p>}
+              <MaterialImage imagePath={material.image_path} name={material.name} variant="thumb" />
               <div className="flex flex-wrap gap-2 pt-1">
+                {material.status !== "archived" && (
+                  <label
+                    className={`inline-flex min-h-[44px] cursor-pointer items-center justify-center rounded-[var(--smc-radius-pill)] border border-[var(--smc-border-strong)] px-4 text-sm font-semibold text-[var(--smc-charcoal)] hover:bg-[var(--smc-limestone)] focus-within:ring-2 focus-within:ring-[var(--smc-mineral-bronze)] ${rowBusyId === material.id ? "pointer-events-none opacity-60" : ""}`}
+                  >
+                    {material.image_path ? "Replace image" : "Add image"}
+                    <input
+                      type="file"
+                      accept={MATERIAL_IMAGE_TYPES.join(",")}
+                      className="sr-only"
+                      aria-label={`${material.image_path ? "Replace" : "Add"} image for ${material.name} (JPEG, PNG or WebP, up to 8MB)`}
+                      disabled={rowBusyId === material.id}
+                      onChange={(event) => void handleImageSelected(material, event.currentTarget)}
+                    />
+                  </label>
+                )}
+                {material.status !== "archived" && material.image_path && (
+                  <Button type="button" variant="ghost" onClick={() => handleRemoveImage(material)} disabled={rowBusyId === material.id}>
+                    Remove image
+                  </Button>
+                )}
                 {material.status === "draft" && (
                   <Button type="button" variant="secondary" onClick={() => startEdit(material)} disabled={rowBusyId === material.id}>
                     Edit
