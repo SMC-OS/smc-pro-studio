@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarDays, FolderKanban, Layers3, Sparkles, Users } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Card, SectionHeading } from "../components/ui";
+import { Card } from "../components/ui";
 import { ErrorState, LoadingState } from "../components/StateViews";
 import { fetchLaunchDashboard, type LaunchDashboard } from "../services/launchClient";
 import { useAuthSession } from "../services/useAuthSession";
@@ -129,11 +129,13 @@ export default function HomeRoute() {
   return (
     <div className="flex flex-col gap-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <SectionHeading
-          eyebrow={dashboard.profile.account_type === "professional" ? "Professional workspace" : "Your renovation workspace"}
-          title={`Good to see you, ${firstName}`}
-          description="Here is what needs your attention next."
-        />
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--smc-mineral-bronze)]">
+            {dashboard.profile.account_type === "professional" ? "Professional workspace" : "Your renovation workspace"}
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-[-0.035em] sm:text-3xl">Welcome back, {firstName}</h1>
+          <p className="mt-2 text-sm leading-6 text-[var(--smc-charcoal-soft)]">Your next step starts here.</p>
+        </div>
         {dashboard.unreadNotifications > 0 && (
           <Link
             to="/notifications"
@@ -188,45 +190,38 @@ export default function HomeRoute() {
           </Card>
         </Link>
       ) : (
-        <Card className="p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--smc-mineral-bronze)]">Start here</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-[-0.03em]">Turn an idea into your first project</h2>
-          <p className="mt-2 text-sm text-[var(--smc-charcoal-soft)]">Choose a material, find a professional, or send the brief for your project.</p>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Link to="/quotes/new" className="inline-flex min-h-[44px] items-center rounded-full bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white">Request a quote</Link>
-            <Link to="/studio" className="inline-flex min-h-[44px] items-center rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold">Explore materials</Link>
-            <Link to="/network" className="inline-flex min-h-[44px] items-center rounded-full border border-[var(--smc-border-strong)] px-4 text-sm font-semibold">Find a professional</Link>
+        <Card className="p-5 sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--smc-mineral-bronze)]">Build your next project</p>
+          <h2 className="mt-2 text-xl font-semibold leading-snug tracking-tight">What are you planning?</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--smc-charcoal-soft)]">Tell us about the work, explore surfaces or find the right professional.</p>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <Link to="/quotes/new" className="col-span-2 inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[var(--smc-charcoal)] px-4 text-sm font-semibold text-white">Request a quote <ArrowRight aria-hidden="true" className="h-4 w-4" /></Link>
+            <Link to="/studio" className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[var(--smc-border-strong)] px-3 text-center text-sm font-semibold">Explore materials</Link>
+            <Link to="/network" className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-[var(--smc-border-strong)] px-3 text-center text-sm font-semibold">Find professionals</Link>
           </div>
         </Card>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Card className="p-5">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-            <h2 className="font-semibold">Next appointment</h2>
-          </div>
-          {nextAppointment ? (
-            <div className="mt-4">
-              <p className="text-sm font-semibold">{label(nextAppointment.appointment_type)}</p>
-              <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{when(nextAppointment.starts_at)}</p>
-              {nextAppointment.project && <p className="mt-1 text-xs text-[var(--smc-charcoal-faint)]">{nextAppointment.project.title}</p>}
+        {nextAppointment && (
+          <Card className="p-5">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+              <h2 className="font-semibold">Next appointment</h2>
             </div>
-          ) : (
-            <p className="mt-4 text-sm text-[var(--smc-charcoal-soft)]">Nothing scheduled yet.</p>
-          )}
-        </Card>
-
+            <p className="mt-4 text-sm font-semibold">{label(nextAppointment.appointment_type)}</p>
+            <p className="mt-1 text-sm text-[var(--smc-charcoal-soft)]">{when(nextAppointment.starts_at)}</p>
+            {nextAppointment.project && <p className="mt-1 text-xs text-[var(--smc-charcoal-faint)]">{nextAppointment.project.title}</p>}
+          </Card>
+        )}
         <Card className="p-5">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-[var(--smc-mineral-bronze)]" />
-            <h2 className="font-semibold">Studio</h2>
+            <Sparkles className="h-5 w-5 text-[var(--smc-mineral-bronze)]" aria-hidden="true" />
+            <h2 className="font-semibold">Explore Studio</h2>
           </div>
-          <p className="mt-4 text-sm text-[var(--smc-charcoal-soft)]">
-            Explore materials and keep design ideas connected to the project journey.
-          </p>
-          <Link to="/studio" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold">
-            Open Studio <ArrowRight className="h-4 w-4" />
+          <p className="mt-3 text-sm leading-6 text-[var(--smc-charcoal-soft)]">Browse published materials, compare surfaces and prepare your project brief.</p>
+          <Link to="/studio" className="mt-3 inline-flex min-h-11 items-center gap-2 text-sm font-semibold">
+            Explore materials <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </Link>
         </Card>
       </div>
